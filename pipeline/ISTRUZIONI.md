@@ -357,6 +357,17 @@ python valutazione.py misura prova1 --modelli "gemma4; nemotron-3-ultra"
    Le misure riguardano le letture dell'archivio (per livello di provenienza), i modelli indicati (in
    `risultati\_prove\`, senza archivio) e l'estrazione.
 
+Per provare tutti i modelli attivi in FreeLLMAPI (FreeLLMAPI deve essere acceso):
+```
+python valutazione.py misura riferimento_1 --modelli tutti --solo-elenco
+python valutazione.py misura riferimento_1 --modelli tutti
+```
+Il primo comando mostra solo l'elenco dei modelli che verrebbero provati. Sono esclusi i router (`auto`, `fusion`), i
+filtri di sicurezza, i modelli per il codice, per immagini e audio e gli strumenti specializzati; altri si escludono
+con `--escludi "parte del nome; ..."`. Ogni modello legge i passaggi verificati senza archivio e senza la regola
+delle forme inequivocabili, così la misura riguarda solo il modello. I risultati si salvano man mano in
+`modelli_<data>.jsonl`; la tabella finale va in `misure_<data>.md`. `--limite 6` fa una prova veloce.
+
 ## Problemi frequenti
 
 - *«All models exhausted»* in Jan: le quote gratuite del momento sono finite per il modello della chat. Riprova più tardi; le quote di Gemini si rinnovano alle 9. Le ricerche già avviate aspettano e riprendono da sole.

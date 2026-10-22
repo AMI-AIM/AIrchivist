@@ -496,12 +496,35 @@ def misura(args, cfg):
             per_livello["archivio, tutte le letture"].append((c["riferimento"]["giudizio"], v["analisi"]["pertinente"]))
         for et, coppie in sorted(per_livello.items(), key=lambda x: -len(x[1])):
             out.append(riga_misure(et, misure(coppie)))
-        for modello in [x.strip() for x in (args.modelli or "").split(";") if x.strip()] or ([None] if args.config_attuale else []):
-            m = prova_modello(args, cfg, validi, modello)
-            if m:
-                out.append(riga_misure(f"modello {m[0]} (smistamento, senza archivio)", m[1]))
         out += ["", "Richiamo: pertinenti veri riconosciuti / pertinenti veri. Precisione: «sì» davvero pertinenti "
                 "/ «sì». IC 95% con il metodo di Wilson: con pochi passaggi l'intervallo è largo.", ""]
+        modelli = elenco_modelli(args, cfg)
+        if modelli:
+            # i passaggi con l'entità corretta a mano in un nome equivalente si leggono con la scheda nuova
+            da_leggere = [dict(c, entita=c["riferimento"]["entita_verificata"]) if c in equivalenti else c
+                          for c in validi]
+            f_mod = d / f"modelli_{dt.datetime.now():%Y%m%d_%H%M}.jsonl"
+            out += ["## Modelli (smistamento dei passaggi verificati, senza archivio né regole)", "",
+                    f"Modelli provati: {len(modelli)}. Risultati man mano in `{f_mod.name}`.", "",
+                    "| modello richiesto | ha risposto | passaggi letti | richiamo (sì o incerto) | richiamo (solo sì) "
+                    "| precisione |", "|---|---|---|---|---|---|"]
+            for i, modello in enumerate(modelli, 1):
+                print(f"\n######## [{i}/{len(modelli)}] {modello or 'configurazione attuale'}")
+                m = prova_modello(args, cfg, da_leggere, modello)
+                riga = {"modello": modello or "configurazione attuale", "risposto": m[0] if m else "",
+                        "misure": m[1] if m else None}
+                with open(f_mod, "a", encoding="utf-8", newline="\n") as fm:
+                    fm.write(json.dumps(riga, ensure_ascii=False) + "\n")
+                if m:
+                    mm = m[1]
+                    out.append(f"| {riga['modello']} | {m[0]} | {mm['n']}/{len(da_leggere)} | "
+                               f"{proporzione(*mm['richiamo'])} | {proporzione(*mm['richiamo_stretto'])} | "
+                               f"{proporzione(*mm['precisione'])} |")
+                else:
+                    out.append(f"| {riga['modello']} | nessuna risposta | 0/{len(da_leggere)} | — | — | — |")
+            out += ["", "«Ha risposto»: il modello che il router ha usato davvero (se è diverso da quello richiesto, "
+                    "la riga non misura il modello richiesto). Passaggi letti: quelli con una scheda in entita.ini e "
+                    "a cui il modello ha risposto.", ""]
     if (d / "estrazione.json").exists():
         e = json.loads((d / "estrazione.json").read_text(encoding="utf-8"))
         k, mancate = e["occorrenze_estrazione"], e["mancate_confermate"]
@@ -519,8 +542,41 @@ def misura(args, cfg):
     print(f"\nScritto: {f}")
 
 
+# modelli che non servono a leggere passaggi: router, filtri di sicurezza, codice, immagini e audio, strumenti
+# specializzati (estrazione da documenti, traduzione dedicata, calibrazione)
+NON_LETTORI = re.compile(r"^(auto|fusion)\b|guard|safety|topic-control|code|fim\b|vision|llava|moondream|voxtral|"
+                         r"robotics|diffusion|parse|translate|calibration|-lora$", re.IGNORECASE)
+
+
+def elenco_modelli(args, cfg):
+    """Modelli da provare: quelli indicati, «tutti» (i modelli attivi nel router, senza i NON_LETTORI e quelli
+    di --escludi) oppure la configurazione attuale (--config-attuale)."""
+    voce = (args.modelli or "").strip()
+    if voce.lower() == "tutti":
+        from valuta import modelli_disponibili
+        try:
+            attivi = sorted(set(modelli_disponibili(cfg)))
+        except Exception as e:
+            sys.exit(f"Non riesco a leggere i modelli attivi dal router ({e}): FreeLLMAPI è acceso?")
+        escludi = [x.strip().lower() for x in (args.escludi or "").split(";") if x.strip()]
+        scelti = [m for m in attivi if not NON_LETTORI.search(m) and not any(x in m.lower() for x in escludi)]
+        scartati = [m for m in attivi if m not in scelti]
+        print(f"Modelli attivi: {len(attivi)}; da provare: {len(scelti)}; esclusi: {', '.join(scartati)}")
+        modelli = scelti
+    else:
+        modelli = [x.strip() for x in voce.split(";") if x.strip()]
+    if args.config_attuale:
+        modelli.append(None)
+    if args.solo_elenco:
+        print("\n".join(m or "configurazione attuale" for m in modelli))
+        sys.exit(0)
+    return modelli
+
+
 def prova_modello(args, cfg, validi, modello):
-    """Smistamento dei passaggi dell'insieme con un modello (o con la configurazione attuale), senza archivio."""
+    """Smistamento dei passaggi dell'insieme con un modello (o con la configurazione attuale), senza archivio e
+    senza le regole che saltano il modello (forme inequivocabili): la misura è del solo modello."""
+    import configparser
     from llm import percorso
     from valuta import config_per_modello
     ora = f"{dt.datetime.now():%Y%m%d_%H%M%S}"
@@ -529,12 +585,24 @@ def prova_modello(args, cfg, validi, modello):
     prova.mkdir(parents=True, exist_ok=True)
     (prova / ".senza_archivio").write_text("Cartella di prova: niente archivio unico.\n", encoding="utf-8")
     with open(prova / "passaggi.jsonl", "w", encoding="utf-8", newline="\n") as f:
-        for c in validi:
+        for c in validi[:args.limite or None]:
             f.write(json.dumps({k: v for k, v in c.items() if k != "riferimento"}, ensure_ascii=False) + "\n")
-    cfg_file = Path(args.config) if args.config else CARTELLA / "config.ini"
+    cfg_base = Path(args.config) if args.config else CARTELLA / "config.ini"
+    cfg_file = prova / "config_prova.ini"
+    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
+    cp.optionxform = str
     if modello:
-        config_per_modello(cfg_file, modello, prova / "config_prova.ini")
-        cfg_file = prova / "config_prova.ini"
+        config_per_modello(cfg_base, modello, cfg_file)
+        cp.read(cfg_file, encoding="utf-8")
+    else:                                   # configurazione attuale, con i percorsi resi assoluti
+        cp.read(cfg_base, encoding="utf-8")
+        for k in cp["percorsi"]:
+            cp["percorsi"][k] = str(percorso(cfg, k))
+    if not cp.has_section("estrazione"):
+        cp.add_section("estrazione")
+    cp["estrazione"]["forme_sicure"] = "no"
+    with open(cfg_file, "w", encoding="utf-8") as fc:
+        cp.write(fc)
     r = subprocess.run([sys.executable, str(CARTELLA / "classifica.py"), str(prova), str(percorso(cfg, "entita")),
                         "--solo-smistamento", "--config", str(cfg_file)], cwd=CARTELLA)
     f = prova / "classificati.jsonl"
@@ -570,7 +638,11 @@ def main():
     c.add_argument("nome")
     m = sub.add_parser("misura")
     m.add_argument("nome")
-    m.add_argument("--modelli", default="", help="modelli da provare, separati da ';' (nomi del router)")
+    m.add_argument("--modelli", default="", help="modelli da provare, separati da ';' (nomi del router), "
+                                                 "oppure «tutti» (i modelli attivi in FreeLLMAPI)")
+    m.add_argument("--escludi", default="", help="con --modelli tutti: parti di nome da escludere, separate da ';'")
+    m.add_argument("--solo-elenco", action="store_true", help="mostra i modelli che verrebbero provati ed esce")
+    m.add_argument("--limite", type=int, default=None, help="solo i primi N passaggi (prova veloce)")
     m.add_argument("--config-attuale", action="store_true", help="prova anche i modelli di config.ini")
     for p in (a, b, c, m):
         p.add_argument("--config", default=None)
