@@ -880,7 +880,9 @@ def prova_rapida(args, cfg):
             coppie = [(c["riferimento"]["giudizio"], esiti[(c["id"], c["entita"])]) for c in insieme_fase
                       if (c["id"], c["entita"]) in esiti]
             return {"modello": m, "risposto": ", ".join(x for x, _ in usati.most_common(3)), "letti": len(coppie),
-                    "da_leggere": len(insieme_fase), "errore": errore, "misure": misure(coppie) if coppie else None}
+                    "da_leggere": len(insieme_fase), "errore": errore, "misure": misure(coppie) if coppie else None,
+                    # decisione del modello su ogni passaggio, per confrontare gli errori tra i modelli
+                    "decisioni": {f"{i}|{e}": v for (i, e), v in esiti.items()}}
 
         with ThreadPoolExecutor(max_workers=args.paralleli) as ex:
             risultati = list(ex.map(uno, lista))
@@ -951,6 +953,70 @@ def prova_rapida(args, cfg):
     print(f"\nScritto: {f}")
 
 
+def errori_comuni(args, cfg):
+    """Passaggi su cui i modelli della seconda fase di una prova rapida sbagliano rispetto al giudizio verificato:
+    prima quelli sbagliati da tutti, poi quelli sbagliati dalla maggioranza. Per ognuno: giudizio, decisioni dei
+    modelli, decisione dell'archivio, note della scheda e testo del passaggio."""
+    from archivio import Archivio, descrivi_provenienza, provenienza
+    from estrai_occorrenze import carica_entita
+    from llm import percorso
+    from citazioni import per_passaggio
+    d = cartella(cfg, args.nome)
+    prove_dir = percorso(cfg, "risultati") / "_prove"
+    if args.prova:
+        prova = Path(args.prova) if Path(args.prova).is_absolute() else prove_dir / args.prova
+    else:
+        candidate = [p for p in prove_dir.glob("prova_rapida_*") if (p / "seconda.jsonl").exists()
+                     and "decisioni" in (p / "seconda.jsonl").read_text(encoding="utf-8")]
+        if not candidate:
+            sys.exit("Nessuna prova rapida con le decisioni dei modelli: rifai «valutazione.py modelli».")
+        prova = max(candidate, key=lambda p: p.stat().st_mtime)
+    risultati = [json.loads(r) for r in (prova / "seconda.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
+    risultati = [r for r in risultati if r.get("decisioni") and r["letti"] == r["da_leggere"]]
+    if not risultati:
+        sys.exit(f"In {prova.name} nessun modello ha letto tutti i passaggi della seconda fase.")
+    schede = carica_entita(percorso(cfg, "entita"))
+    from archivio import equivalenze
+    eq = equivalenze(percorso(cfg, "risultati"))
+    arch = Archivio(percorso(cfg, "risultati"))
+    dati = percorso(cfg, "dati")
+    insieme = [json.loads(r) for r in (d / "insieme.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
+    casi = []
+    for c in insieme:
+        g = c["riferimento"]["giudizio"]
+        ent = c["riferimento"].get("entita_verificata") or eq.get(c["entita"], {}).get("nuovo") or c["entita"]
+        dec = {r["modello"]: r["decisioni"].get(f"{c['id']}|{ent}") for r in risultati}
+        dec = {m: v for m, v in dec.items() if v}
+        if g not in ("sì", "no") or not dec:
+            continue
+        # «incerto» di un modello su un pertinente vale come trovato (richiamo), non come errore
+        sbagliati = [m for m, v in dec.items() if (g == "sì" and v == "no") or (g == "no" and v != "no")]
+        if len(sbagliati) * 2 > len(dec):
+            casi.append((len(sbagliati) == len(dec), c, ent, g, dec))
+    casi.sort(key=lambda x: (not x[0], x[3], x[2]))
+    out = [f"# Errori comuni dei modelli: {args.nome}", "", f"*{dt.datetime.now():%Y-%m-%d %H:%M}* — prova {prova.name}, "
+           f"modelli: {', '.join(r['modello'] for r in risultati)}.", "",
+           f"Passaggi sbagliati da tutti i modelli: {sum(1 for x in casi if x[0])}; dalla maggioranza: "
+           f"{sum(1 for x in casi if not x[0])}. Un «incerto» su un passaggio pertinente non conta come errore.", ""]
+    for n_caso, (tutti, c, ent, g, dec) in enumerate(casi, 1):
+        v = arch.per_id.get((c["id"], c["entita"]))
+        a = v["analisi"] if v else {}
+        s = schede.get(ent, {})
+        out += [f"## {n_caso}. {ent} — {'tutti sbagliano' if tutti else 'la maggioranza sbaglia'}", "",
+                f"- Fonte: {per_passaggio(c, dati)[0]}",
+                f"- Giudizio verificato: **{g}**" + (f" (nota: {c['riferimento']['note']})" if c["riferimento"].get("note") else ""),
+                "- Modelli: " + "; ".join(f"{m} {x}" for m, x in dec.items()),
+                f"- Archivio: {a.get('pertinente', '—')}" + (f" ({descrivi_provenienza(provenienza(a))})" if a else ""),
+                f"- Forme trovate: {'; '.join(c.get('varianti_trovate', []))}",
+                f"- Note della scheda: {s.get('note') or '(nessuna)'}", "",
+                "> " + (c.get("passaggio_evidenziato") or c.get("passaggio", ""))[:1500], "",
+                f"*Verifica: `{c['file']}`, riga {c.get('riga')}, id {c['id']}.*", ""]
+    f = d / f"errori_comuni_{dt.datetime.now():%Y%m%d_%H%M}.md"
+    f.write_bytes("\n".join(out).encode("utf-8"))
+    print("\n".join(out[:6]))
+    print(f"Scritto: {f}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="comando", required=True)
@@ -990,13 +1056,16 @@ def main():
     r.add_argument("--seme", type=int, default=2026)
     r.add_argument("--riprendi", default="", help="cartella di una prova rapida (in risultati/_prove): rifà solo la "
                                                   "seconda fase, partendo dalla prima già fatta")
-    for p in (a, b, c, m, r):
+    e = sub.add_parser("errori", help="passaggi sbagliati da tutti (o dalla maggioranza) dei modelli di una prova")
+    e.add_argument("nome")
+    e.add_argument("--prova", default="", help="cartella della prova rapida (predefinita: l'ultima con le decisioni)")
+    for p in (a, b, c, m, r, e):
         p.add_argument("--config", default=None)
     args = ap.parse_args()
     from llm import leggi_config
     cfg = leggi_config(args.config)
     {"campione": campione, "candidati": candidati, "importa": importa, "misura": misura,
-     "modelli": prova_rapida}[args.comando](args, cfg)
+     "modelli": prova_rapida, "errori": errori_comuni}[args.comando](args, cfg)
 
 
 if __name__ == "__main__":
