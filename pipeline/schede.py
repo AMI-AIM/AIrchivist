@@ -184,8 +184,13 @@ def passaggi_identici(cp, risultati):
                                                "probabile doppione")
            for ps, es in gruppi.items() if len(es) > 1]
     # letture registrate sotto un nome che non ha più una scheda (scheda rinominata o unita a un'altra)
+    from archivio import equivalenze
+    eq = equivalenze(risultati)
     for e, ps in sorted(per_entita.items()):
-        if e not in cp.sections():
+        if e not in cp.sections() and eq.get(e, {}).get("nuovo") in cp.sections():
+            out.append(("info", e, f"{len(ps)} passaggi nell'archivio sotto un nome dichiarato equivalente a "
+                                   f"«{eq[e]['nuovo']}» (python archivio.py riattribuisci per riportarli sotto la scheda)"))
+        elif e not in cp.sections():
             simili = [s for s in cp.sections() if norm(re.sub(r"\(.*?\)", "", s)) == norm(re.sub(r"\(.*?\)", "", e))]
             out.append(("avviso", e, f"{len(ps)} passaggi nell'archivio sotto un nome senza scheda"
                         + (f" (simile a «{simili[0]}»: scheda rinominata?)" if simili else "")))

@@ -413,8 +413,8 @@ def importa(args, cfg):
                 f.writelines(righe)
             tmp.replace(d / "insieme.jsonl")
             if cambiate:
-                print("Entità corrette a mano (escluse dalle misure della classificazione, elencate a parte):\n  "
-                      + "\n  ".join(cambiate))
+                print("Entità corrette a mano (contate nelle misure solo se i due nomi sono dichiarati equivalenti "
+                      "con «archivio.py equivalenza», altrimenti escluse):\n  " + "\n  ".join(cambiate))
             print(f"insieme.jsonl: {len(nascosti)} passaggi verificati ({dict(Counter(x['giudizio'] for x in g.values()))}).")
             fatto = True
     if f_candidati:
@@ -461,14 +461,24 @@ def misura(args, cfg):
             if (d / "campione_nascosto.jsonl").exists() else len(insieme)
         if len(insieme) != attesi:
             sys.exit(f"insieme.jsonl ha {len(insieme)} passaggi, il campione {attesi}: rifai «importa».")
-        # con l'entità corretta a mano il giudizio riguarda un'altra scheda: non misura la lettura di quella originale
-        corrette = [c for c in insieme if c["riferimento"].get("entita_verificata")]
+        # con l'entità corretta a mano il giudizio riguarda un'altra scheda e non misura la lettura di quella
+        # originale, salvo che i due nomi siano dichiarati equivalenti (archivio.py equivalenza): allora conta
+        from archivio import equivalenze
+        eq = equivalenze(percorso(cfg, "risultati"))
+        corrette = [c for c in insieme if c["riferimento"].get("entita_verificata")
+                    and eq.get(c["entita"], {}).get("nuovo") != c["riferimento"]["entita_verificata"]]
+        equivalenti = [c for c in insieme if c["riferimento"].get("entita_verificata") and c not in corrette]
         validi = [c for c in insieme if c["riferimento"]["giudizio"] in ("sì", "no") and c not in corrette]
         incerti = sum(1 for c in insieme if c["riferimento"]["giudizio"] == "incerto" and c not in corrette)
         out += [f"Insieme di riferimento: {len(insieme)} passaggi verificati a mano ({incerti} «incerti» e "
                 f"{len(corrette)} con l'entità corretta a mano esclusi dalle misure).", ""]
+        if equivalenti:
+            out += ["Entità corrette a mano con un nome equivalente (contate, sulla lettura fatta sotto il nome "
+                    "originale):", ""] + [
+                f"- {c['id']}: {c['entita']} = {c['riferimento']['entita_verificata']} (giudizio "
+                f"{c['riferimento']['giudizio']})" for c in equivalenti] + [""]
         if corrette:
-            out += ["Entità corrette a mano:", ""] + [
+            out += ["Entità corrette a mano, escluse:", ""] + [
                 f"- {c['id']}: {c['entita']} -> {c['riferimento']['entita_verificata']} (giudizio "
                 f"{c['riferimento']['giudizio']})" for c in corrette] + [""]
         out += ["## Classificazione", "",

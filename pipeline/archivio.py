@@ -15,6 +15,10 @@ Uso da riga di comando:
   python archivio.py stato        (quante letture per entità e per livello di provenienza)
   python archivio.py provenienza [--prova]
                                   (registra la provenienza nelle letture che non l'hanno; --prova: solo conteggi)
+  python archivio.py equivalenza "nome vecchio" "nome della scheda" [nota]
+                                  (dichiara che due nomi indicano la stessa entità: risultati/_archivio/equivalenze.json)
+  python archivio.py riattribuisci "nome vecchio" "nome della scheda" [--applica]
+                                  (piano per portare le letture sotto la scheda; --applica le aggiunge all'archivio)
 """
 import datetime as dt
 import hashlib
@@ -320,6 +324,153 @@ def apri(cfg):
     return Archivio(percorso(cfg, "risultati"))
 
 
+# ---------------------------------------------------------------- nomi equivalenti e riattribuzione
+def equivalenze(risultati):
+    """Nomi di entità dichiarati equivalenti: {nome vecchio: {"nuovo": ..., "dichiarata_il": ..., "nota": ...}}."""
+    f = Path(risultati) / NOME / "equivalenze.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+
+
+def registra_equivalenza(risultati, vecchio, nuovo, nota=""):
+    eq = equivalenze(risultati)
+    eq[vecchio] = {"nuovo": nuovo, "dichiarata_il": dt.date.today().isoformat(), "nota": nota}
+    f = Path(risultati) / NOME / "equivalenze.json"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(json.dumps(eq, ensure_ascii=False, indent=1).encode("utf-8"))
+
+
+def piano_riattribuzione(cfg, vecchio, nuovo):
+    """Per ogni lettura dell'entità 'vecchio': il passaggio che la scheda 'nuovo' estrarrebbe nello stesso punto
+    (stessi criteri di estrai_occorrenze.py), e che cosa farne. Esiti:
+      riattribuire          nessuna lettura per il passaggio della scheda nuova: si copia quella vecchia
+      gia_letto             il passaggio ha già una lettura sotto la scheda nuova: resta quella
+      decisioni_diverse     come sopra, ma con decisione diversa da quella vecchia: da controllare
+      letture_discordi      più letture vecchie confluiscono in un passaggio nuovo con decisioni diverse
+      fuori_dalla_scheda    la scheda nuova non trova nulla in quel punto (forma che non ha tra le varianti)
+    Restituisce (righe del piano, nuove voci da aggiungere all'archivio)."""
+    from estrai_occorrenze import carica_entita, compila, leggi_intestazione, passaggi_del_testo
+    from llm import percorso
+    ris, dati = percorso(cfg, "risultati"), percorso(cfg, "dati")
+    schede = carica_entita(percorso(cfg, "entita"))
+    if nuovo not in schede:
+        sys.exit(f"La scheda «{nuovo}» non c'è in entita.ini.")
+    scheda = {nuovo: schede[nuovo]}
+    compila(scheda)
+    finestra = cfg.getint("estrazione", "finestra", fallback=400)
+    arch = Archivio(ris)
+    vecchie = {i: v for (i, e), v in arch.per_id.items() if e == vecchio}
+    if not vecchie:
+        sys.exit(f"Nessuna lettura sotto «{vecchio}» nell'archivio.")
+    record = {}
+    for nome_f in ("passaggi.jsonl", "classificati.jsonl"):
+        for f in file_risultati(ris, nome_f):
+            with open(f, encoding="utf-8") as fh:
+                for r in fh:
+                    if r.strip():
+                        c = json.loads(r)
+                        if c.get("entita") == vecchio and c["id"] in vecchie and "offset" in c:
+                            record.setdefault(c["id"], c)
+    per_file = {}
+    for i, v in vecchie.items():
+        per_file.setdefault(v.get("file") or (record.get(i) or {}).get("file", ""), []).append(i)
+    righe, assegnati = [], {}
+    for rel, ids in sorted(per_file.items()):
+        try:
+            testo = (dati / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            testo = ""
+        _, inizio = leggi_intestazione(testo)
+        estratti = passaggi_del_testo(testo, inizio, rel, nuovo, scheda[nuovo], finestra) if testo else []
+        nuovi = [r for r, _ in estratti]
+        fini = {r["id"]: g["fine"] for r, g in estratti}
+        for i in ids:
+            a = vecchie[i]["analisi"]
+            rec = record.get(i)
+            riga = {"id_vecchio": i, "file": rel, "decisione_vecchia": a.get("pertinente"),
+                    "provenienza": descrivi_provenienza(provenienza(a)),
+                    "forme_vecchie": "; ".join((rec or {}).get("varianti_trovate", [])),
+                    "id_nuovo": "", "forme_nuove": "", "decisione_nuova": "", "esito": ""}
+            if not rec:
+                riga["esito"] = "fuori_dalla_scheda"
+                riga["nota"] = "passaggio vecchio non trovato nelle cartelle dei risultati (manca la posizione)"
+                righe.append(riga)
+                continue
+            p = next((n for n in nuovi if n["offset"] <= rec["offset"] <= fini[n["id"]]), None)
+            if not p:
+                riga["esito"] = "fuori_dalla_scheda"
+                righe.append(riga)
+                continue
+            riga["id_nuovo"], riga["forme_nuove"] = p["id"], "; ".join(p["varianti_trovate"])
+            gia = arch.per_id.get((p["id"], nuovo))
+            if not gia:
+                c_imp = arch.per_impronta.get(impronta(p))
+                gia = c_imp if c_imp and c_imp["entita"] == nuovo else None
+            if gia:
+                riga["decisione_nuova"] = gia["analisi"].get("pertinente")
+                riga["esito"] = "gia_letto" if riga["decisione_nuova"] == a.get("pertinente") else "decisioni_diverse"
+            else:
+                assegnati.setdefault(p["id"], []).append((i, a, p))
+                riga["esito"] = "riattribuire"
+            righe.append(riga)
+    oggi = dt.date.today().isoformat()
+    voci = []
+    for pid, gruppo in assegnati.items():
+        decisioni = {a.get("pertinente") for _, a, _ in gruppo}
+        if len(decisioni) > 1:
+            for r in righe:
+                if r["id_nuovo"] == pid:
+                    r["esito"] = "letture_discordi"
+            continue
+        # se più letture vecchie confluiscono nello stesso passaggio, vale quella tradotta (o la prima)
+        i, a, p = sorted(gruppo, key=lambda x: not (x[1].get("traduzione_it") or "").strip())[0]
+        analisi = dict(a, riattribuita_da={"entita": vecchio, "id": i, "il": oggi})
+        voci.append({"id": pid, "entita": nuovo, "file": p["file"], "impronta": impronta(p),
+                     "origine": f"riattribuzione da {vecchio}", "letto_il": vecchie[i].get("letto_il", oggi),
+                     "analisi": analisi})
+    return righe, voci
+
+
+def riattribuisci(cfg, vecchio, nuovo, applica=False):
+    import csv
+    from llm import percorso
+    ris = percorso(cfg, "risultati")
+    if equivalenze(ris).get(vecchio, {}).get("nuovo") != nuovo:
+        sys.exit(f"Prima dichiara l'equivalenza: python archivio.py equivalenza \"{vecchio}\" \"{nuovo}\"")
+    righe, voci = piano_riattribuzione(cfg, vecchio, nuovo)
+    slug = re.sub(r"[^\w]+", "_", vecchio).strip("_")
+    f_piano = ris / NOME / f"riattribuzione_{slug}_{dt.date.today():%Y%m%d}.csv"
+    campi = ["esito", "id_vecchio", "id_nuovo", "file", "decisione_vecchia", "decisione_nuova", "forme_vecchie",
+             "forme_nuove", "provenienza", "nota"]
+    with open(f_piano, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, campi, delimiter=";", extrasaction="ignore")
+        w.writeheader()
+        w.writerows(sorted(righe, key=lambda r: (r["esito"], r["file"])))
+    conta = Counter(r["esito"] for r in righe)
+    print(f"Letture sotto «{vecchio}»: {len(righe)}")
+    for esito, n in conta.most_common():
+        dec = Counter(r["decisione_vecchia"] for r in righe if r["esito"] == esito)
+        print(f"  {esito}: {n} ({', '.join(f'{k} {v}' for k, v in dec.most_common())})")
+    fuori = Counter(f for r in righe if r["esito"] == "fuori_dalla_scheda" and r["decisione_vecchia"] != "no"
+                    for f in r["forme_vecchie"].split("; ") if f)
+    if fuori:
+        print("Forme dei passaggi pertinenti o incerti che la scheda nuova non trova: "
+              + "; ".join(f"{f} ({n})" for f, n in fuori.most_common(15)))
+    print(f"Nuove letture da aggiungere sotto «{nuovo}»: {len(voci)}\nPiano: {f_piano}")
+    if applica:
+        arch = Archivio(ris)
+        dest = Path(__file__).resolve().parent / "_backup" / f"{dt.date.today().isoformat()}_riattribuzione"
+        dest.mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy2(arch.file, dest / f"letture_{dt.datetime.now():%H%M%S}.jsonl")
+        with open(arch.file, "a", encoding="utf-8", newline="\n") as f:
+            for v in voci:
+                f.write(json.dumps(v, ensure_ascii=False) + "\n")
+        print(f"Aggiunte {len(voci)} letture (copia dell'archivio in {dest}). Le letture sotto «{vecchio}» restano "
+              "nell'archivio come storia; le ricerche usano quelle nuove.")
+    else:
+        print("Nessuna modifica: per applicare, aggiungi --applica.")
+
+
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from llm import leggi_config, percorso
@@ -327,7 +478,20 @@ def main():
     ris = percorso(cfg, "risultati")
     arch = Archivio(ris)
     azione = sys.argv[1] if len(sys.argv) > 1 else "stato"
-    if azione == "importa":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
+    if azione == "equivalenza":
+        if len(sys.argv) < 4:
+            sys.exit('Uso: python archivio.py equivalenza "nome vecchio" "nome della scheda" [nota]')
+        registra_equivalenza(ris, sys.argv[2], sys.argv[3], " ".join(sys.argv[4:]))
+        print(f"Registrato: «{sys.argv[2]}» = «{sys.argv[3]}» ({ris / NOME / 'equivalenze.json'})")
+    elif azione == "riattribuisci":
+        if len(sys.argv) < 4:
+            sys.exit('Uso: python archivio.py riattribuisci "nome vecchio" "nome della scheda" [--applica]')
+        riattribuisci(cfg, sys.argv[2], sys.argv[3], "--applica" in sys.argv)
+    elif azione == "importa":
         agg = arch.importa(ris)
         for k, n in agg.most_common():
             print(f"  {k}: {n} letture aggiunte")

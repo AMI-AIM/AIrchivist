@@ -153,6 +153,53 @@ def forma_trovata(t):
     return re.sub(r"\s+", "", t) if is_cjk(t) else compatta(t)
 
 
+def id_passaggio(rel, nome, inizio):
+    """Identificativo del passaggio: file, entità e posizione della prima occorrenza del gruppo."""
+    return hashlib.sha1(f"{rel}|{nome}|{inizio}".encode("utf-8")).hexdigest()[:10]
+
+
+def passaggi_del_testo(testo, inizio_testo, rel, nome, info, finestra):
+    """Passaggi di un'entità in un testo: [(record senza i metadati del file, gruppo di occorrenze)].
+    Le occorrenze vicine (entro due finestre) formano un solo passaggio."""
+    hits = [(m.start(), m.end(), m.group(0)) for m in info["rx"].finditer(testo, inizio_testo)]
+    gruppi = []
+    for s, e, t in hits:
+        if gruppi and s - finestra <= gruppi[-1]["fine"] + finestra:
+            gruppi[-1]["fine"] = e
+            gruppi[-1]["hits"].append((s, e, t))
+        else:
+            gruppi.append({"inizio": s, "fine": e, "hits": [(s, e, t)]})
+    out = []
+    for g in gruppi:
+        a = max(inizio_testo, g["inizio"] - finestra)
+        b = min(len(testo), g["fine"] + finestra)
+        a, b = allarga(testo, a, b)
+        a = max(a, inizio_testo)
+        grezzo = testo[a:b]
+
+        evidenziato, cursore = [], a
+        for s, e, _ in g["hits"]:
+            evidenziato.append(testo[cursore:s])
+            evidenziato.append(INIZIO_EVID + testo[s:e] + FINE_EVID)
+            cursore = e
+        evidenziato.append(testo[cursore:b])
+
+        norm_pass = normalizza(grezzo)
+        out.append(({
+            "id": id_passaggio(rel, nome, g["inizio"]),
+            "entita": nome,
+            "file": rel,
+            "riga": testo.count("\n", 0, g["inizio"]) + 1,
+            "offset": g["inizio"],
+            "n_occorrenze": len(g["hits"]),
+            "varianti_trovate": sorted({forma_trovata(t) for _, _, t in g["hits"]}),
+            "contesto_presente": any(normalizza(c) in norm_pass for c in info["contesto"]),
+            "passaggio": compatta(grezzo),
+            "passaggio_evidenziato": compatta("".join(evidenziato)),
+        }, g))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="Estrazione esaustiva delle occorrenze")
     ap.add_argument("corpus")
@@ -210,53 +257,9 @@ def main():
         for nome, info in entita.items():
             if candidati is not None and rel not in candidati[nome]:
                 continue
-            hits = [(m.start(), m.end(), m.group(0)) for m in info["rx"].finditer(testo, inizio_testo)]
-            if not hits:
-                continue
-            # raggruppa occorrenze vicine in un unico passaggio
-            gruppi = []
-            for s, e, t in hits:
-                if gruppi and s - args.finestra <= gruppi[-1]["fine"] + args.finestra:
-                    gruppi[-1]["fine"] = e
-                    gruppi[-1]["hits"].append((s, e, t))
-                else:
-                    gruppi.append({"inizio": s, "fine": e, "hits": [(s, e, t)]})
-
-            for g in gruppi:
-                a = max(inizio_testo, g["inizio"] - args.finestra)
-                b = min(len(testo), g["fine"] + args.finestra)
-                a, b = allarga(testo, a, b)
-                a = max(a, inizio_testo)
-                grezzo = testo[a:b]
-
-                evidenziato, cursore = [], a
-                for s, e, _ in g["hits"]:
-                    evidenziato.append(testo[cursore:s])
-                    evidenziato.append(INIZIO_EVID + testo[s:e] + FINE_EVID)
-                    cursore = e
-                evidenziato.append(testo[cursore:b])
-
-                varianti_trovate = sorted({forma_trovata(t) for _, _, t in g["hits"]})
-                norm_pass = normalizza(grezzo)
-                contesto_presente = any(normalizza(c) in norm_pass for c in info["contesto"])
-
-                rid = hashlib.sha1(f"{rel}|{nome}|{g['inizio']}".encode("utf-8")).hexdigest()[:10]
-                record.append({
-                    "id": rid,
-                    "entita": nome,
-                    "fonte": fonte,
-                    "citazione": citazione,
-                    "data": data,
-                    "data_affidabile": data_affidabile,
-                    "file": rel,
-                    "riga": testo.count("\n", 0, g["inizio"]) + 1,
-                    "offset": g["inizio"],
-                    "n_occorrenze": len(g["hits"]),
-                    "varianti_trovate": varianti_trovate,
-                    "contesto_presente": contesto_presente,
-                    "passaggio": compatta(grezzo),
-                    "passaggio_evidenziato": compatta("".join(evidenziato)),
-                })
+            for r, g in passaggi_del_testo(testo, inizio_testo, rel, nome, info, args.finestra):
+                record.append({"id": r["id"], "entita": nome, "fonte": fonte, "citazione": citazione, "data": data,
+                               "data_affidabile": data_affidabile, **r})
                 per_entita[nome] += len(g["hits"])
                 for _, _, t in g["hits"]:
                     per_variante[nome][forma_trovata(t)] += 1

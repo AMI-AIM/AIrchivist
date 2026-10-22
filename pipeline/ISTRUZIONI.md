@@ -297,6 +297,19 @@ la propria provenienza, separatamente per la decisione sulla pertinenza e per la
 conteggi). Per le esclusioni fatte in sessione vale una regola in più: se la stessa motivazione si ripete in almeno
 5 passaggi della stessa entità, l'esclusione conta come fatta in blocco, cioè per regola.
 
+Quando una scheda viene rinominata o unita a un'altra, le letture restano nell'archivio sotto il nome vecchio.
+Per riportarle sotto la scheda:
+```
+python archivio.py equivalenza "nome vecchio" "nome della scheda" "nota"
+python archivio.py riattribuisci "nome vecchio" "nome della scheda"
+python archivio.py riattribuisci "nome vecchio" "nome della scheda" --applica
+```
+Il primo comando registra che i due nomi indicano la stessa entità (`risultati\_archivio\equivalenze.json`). Il
+secondo ricalcola i passaggi come li estrarrebbe la scheda e scrive il piano in `risultati\_archivio\` senza
+toccare nulla. Ogni lettura vecchia risulta in uno di questi casi: già letta sotto la scheda, da riattribuire,
+con decisione diversa, fuori dalla scheda (forma che la scheda non ha). Il terzo aggiunge all'archivio solo le
+letture da riattribuire, dopo averne fatto una copia in `pipeline\_backup`.
+
 ## Meno richieste al modello
 
 Le impostazioni sono in `config.ini`, sezione `[estrazione]`:
