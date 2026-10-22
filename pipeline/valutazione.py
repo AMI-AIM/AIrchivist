@@ -371,8 +371,13 @@ def giudizi(path, chiave):
         if not g:
             errori.append(f"riga {r.get('N')}: GIUDIZIO «{r.get('GIUDIZIO', '')}» (servono sì, no o incerto)")
             continue
-        out[r[chiave] if isinstance(chiave, str) else tuple(r[k] for k in chiave)] = \
-            {"giudizio": g, "note": (r.get("NOTE") or "").strip(), "verificato_da": (r.get("VERIFICATO_DA") or "").strip()}
+        k = r.get(chiave, "") if isinstance(chiave, str) else tuple(r.get(x, "") for x in chiave)
+        if k in out:
+            errori.append(f"riga {r.get('N')}: {chiave} «{k}» ripetuto")
+            continue
+        out[k] = {"giudizio": g, "note": (r.get("NOTE") or "").strip(),
+                  "verificato_da": (r.get("VERIFICATO_DA") or "").strip(),
+                  "entita_nel_file": (r.get("ENTITA") or "").strip(), "n": r.get("N")}
     return out, errori
 
 
@@ -381,18 +386,35 @@ def importa(args, cfg):
     fatto = False
     f_campione, f_candidati = file_compilato(d, "campione"), file_compilato(d, "candidati")
     if f_campione:
-        g, errori = giudizi(f_campione, ("ID", "ENTITA"))
+        # i passaggi si ritrovano per ID (unico nel campione): la colonna ENTITA si può correggere a mano
+        g, errori = giudizi(f_campione, "ID")
+        nascosti = [json.loads(r) for r in (d / "campione_nascosto.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
+        ids = {c["id"] for c in nascosti}
+        errori += [f"passaggio {c['id']} ({c['entita']}) assente dal file compilato" for c in nascosti if c["id"] not in g]
+        errori += [f"riga {x['n']}: ID «{i}» non appartiene al campione" for i, x in g.items() if i not in ids]
         if errori:
-            print(f"{f_campione.name} non è completo:\n  " + "\n  ".join(errori[:30])
+            print(f"{f_campione.name} non è completo (insieme.jsonl non scritto):\n  " + "\n  ".join(errori[:30])
                   + (f"\n  ... e altre {len(errori) - 30} righe" if len(errori) > 30 else ""))
         else:
-            nascosti = [json.loads(r) for r in (d / "campione_nascosto.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
             oggi = dt.date.today().isoformat()
-            with open(d / "insieme.jsonl", "w", encoding="utf-8", newline="\n") as f:
-                for c in nascosti:
-                    x = g[(c["id"], c["entita"])]
-                    c = {k: v for k, v in c.items() if k != "analisi"}
-                    f.write(json.dumps(dict(c, riferimento=dict(x, importato_il=oggi)), ensure_ascii=False) + "\n")
+            righe, cambiate = [], []
+            for c in nascosti:
+                x = dict(g[c["id"]], importato_il=oggi)
+                nel_file = x.pop("entita_nel_file")
+                x.pop("n")
+                if nel_file and nel_file != c["entita"]:
+                    # entità corretta da chi verifica: il giudizio vale per l'entità indicata nel file
+                    x["entita_verificata"] = nel_file
+                    cambiate.append(f"{c['id']}: {c['entita']} -> {nel_file} (giudizio {x['giudizio']})")
+                c = {k: v for k, v in c.items() if k != "analisi"}
+                righe.append(json.dumps(dict(c, riferimento=x), ensure_ascii=False) + "\n")
+            tmp = d / "insieme.jsonl.tmp"                  # scritto per intero, poi sostituisce il precedente
+            with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(righe)
+            tmp.replace(d / "insieme.jsonl")
+            if cambiate:
+                print("Entità corrette a mano (escluse dalle misure della classificazione, elencate a parte):\n  "
+                      + "\n  ".join(cambiate))
             print(f"insieme.jsonl: {len(nascosti)} passaggi verificati ({dict(Counter(x['giudizio'] for x in g.values()))}).")
             fatto = True
     if f_candidati:
@@ -435,10 +457,21 @@ def misura(args, cfg):
     out = [f"# Misure: {args.nome}", "", f"*{dt.datetime.now():%Y-%m-%d %H:%M}*", ""]
     if (d / "insieme.jsonl").exists():
         insieme = [json.loads(r) for r in (d / "insieme.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
-        validi = [c for c in insieme if c["riferimento"]["giudizio"] in ("sì", "no")]
-        out += [f"Insieme di riferimento: {len(insieme)} passaggi verificati a mano ({len(insieme) - len(validi)} "
-                "«incerti» esclusi dalle misure).", "",
-                "## Classificazione", "",
+        attesi = sum(1 for r in (d / "campione_nascosto.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()) \
+            if (d / "campione_nascosto.jsonl").exists() else len(insieme)
+        if len(insieme) != attesi:
+            sys.exit(f"insieme.jsonl ha {len(insieme)} passaggi, il campione {attesi}: rifai «importa».")
+        # con l'entità corretta a mano il giudizio riguarda un'altra scheda: non misura la lettura di quella originale
+        corrette = [c for c in insieme if c["riferimento"].get("entita_verificata")]
+        validi = [c for c in insieme if c["riferimento"]["giudizio"] in ("sì", "no") and c not in corrette]
+        incerti = sum(1 for c in insieme if c["riferimento"]["giudizio"] == "incerto" and c not in corrette)
+        out += [f"Insieme di riferimento: {len(insieme)} passaggi verificati a mano ({incerti} «incerti» e "
+                f"{len(corrette)} con l'entità corretta a mano esclusi dalle misure).", ""]
+        if corrette:
+            out += ["Entità corrette a mano:", ""] + [
+                f"- {c['id']}: {c['entita']} -> {c['riferimento']['entita_verificata']} (giudizio "
+                f"{c['riferimento']['giudizio']})" for c in corrette] + [""]
+        out += ["## Classificazione", "",
                 "| chi decide | passaggi | richiamo (sì o incerto) | richiamo (solo sì) | precisione |",
                 "|---|---|---|---|---|"]
         arch = Archivio(percorso(cfg, "risultati"))
