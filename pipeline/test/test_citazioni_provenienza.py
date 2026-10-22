@@ -98,6 +98,41 @@ class Valutazione(unittest.TestCase):
             self.assertTrue(rx.search(V.senza_accenti(t)), t)
         self.assertFalse(rx.search("Strobllandia"))
 
+    def test_csv_con_punto_e_virgola(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "campione.csv"
+            V.scrivi_csv(f, ["N", "PASSAGGIO", "GIUDIZIO"], [{"N": 1, "PASSAGGIO": "a; b, «c»\nd", "GIUDIZIO": "sì"}])
+            self.assertTrue(f.read_bytes().startswith(b"\xef\xbb\xbfN;PASSAGGIO;GIUDIZIO"))
+            self.assertEqual(V.leggi_csv(f), [{"N": "1", "PASSAGGIO": "a; b, «c»\nd", "GIUDIZIO": "sì"}])
+
+    def test_righe_intere_nella_prima_colonna(self):
+        # file aperto in Excel con il separatore sbagliato: la riga del CSV resta nella colonna A, il giudizio
+        # è scritto nella colonna B
+        tabella = [["N,FILE,OFFSET,FORMA,CONTESTO,GIUDIZIO,NOTE,VERIFICATO_DA", ""],
+                   ['1,a.txt,10,Strobl,"x, y",,,', "si", "IM"],
+                   ["2,a.txt,20,Franz,z,,,", "no"]]
+        r = V.righe_da_tabella(tabella)
+        # le celle compilate a destra vanno, nell'ordine, a GIUDIZIO, NOTE, VERIFICATO_DA
+        self.assertEqual([(x["OFFSET"], x["CONTESTO"], x["GIUDIZIO"], x["NOTE"]) for x in r],
+                         [("10", "x, y", "si", "IM"), ("20", "z", "no", "")])
+
+    def test_xlsx(self):
+        try:
+            import openpyxl
+        except ImportError:
+            self.skipTest("openpyxl non installato: serve solo a scrivere il file di prova")
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "candidati.csv"                   # .xlsx salvato con il nome .csv
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["N", "FILE", "OFFSET", "FORMA", "GIUDIZIO", "NOTE", "VERIFICATO_DA"])
+            ws.append([1, "a.txt", 129801, "施特罗伯尔", "sì", "cognome da solo", "IM"])
+            wb.save(f)
+            self.assertEqual(V.leggi_csv(f), [{"N": "1", "FILE": "a.txt", "OFFSET": "129801", "FORMA": "施特罗伯尔",
+                                               "GIUDIZIO": "sì", "NOTE": "cognome da solo", "VERIFICATO_DA": "IM"}])
+
     def test_misure(self):
         m = V.misure([("sì", "sì"), ("sì", "incerto"), ("sì", "no"), ("no", "sì"), ("no", "no")])
         self.assertEqual(m["richiamo"], (2, 3))

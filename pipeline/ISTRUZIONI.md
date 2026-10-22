@@ -336,7 +336,9 @@ python valutazione.py misura prova1 --modelli "gemma4; nemotron-3-ultra"
 2. `candidati`: cerca in un campione di file le forme più larghe del nome (cognome da solo, una lettera o un
    carattere diversi, accenti) che l'estrazione non trova. In `candidati.csv` segna GIUDIZIO = sì per le vere
    menzioni sfuggite.
-3. `importa`: controlla i due file compilati e salva l'insieme di riferimento.
+3. `importa`: controlla i due file compilati e salva l'insieme di riferimento. I file usano il punto e virgola
+   come separatore, così Excel li apre già divisi in colonne. Si possono salvare come CSV oppure come cartella di
+   lavoro Excel (`campione.xlsx`, `candidati.xlsx`): vale il file salvato per ultimo.
 4. `misura`: calcola richiamo e precisione, con un intervallo di confidenza al 95%, e scrive `misure_<data>.md`.
    Le misure riguardano le letture dell'archivio (per livello di provenienza), i modelli indicati (in
    `risultati\_prove\`, senza archivio) e l'estrazione.

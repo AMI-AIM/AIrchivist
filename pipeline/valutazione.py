@@ -18,7 +18,8 @@ Procedura (ogni insieme sta in risultati/_valutazione/<nome>/):
        Ricerca larga (cognome da solo, una lettera o un carattere diversi, senza accenti) in un campione di
        file: scrive candidati.csv con le forme che l'estrazione NON trova. GIUDIZIO = sì se è davvero una
        menzione dell'entità sfuggita all'estrazione, no altrimenti.
-  3. Compilare i due CSV (Excel o LibreOffice; salvare come CSV UTF-8).
+  3. Compilare i due file (separatore punto e virgola: Excel li apre con un doppio clic). Si possono salvare
+     come CSV oppure come cartella di lavoro Excel (campione.xlsx, candidati.xlsx): vale il più recente.
   4. python valutazione.py importa <nome>
        Controlla i CSV compilati e scrive insieme.jsonl (passaggi con il giudizio) ed estrazione.json.
   5. python valutazione.py misura <nome> [--modelli "nome1; nome2"] [--config config.ini]
@@ -62,20 +63,97 @@ def cartella(cfg, nome):
 
 
 def scrivi_csv(path, campi, righe):
+    # punto e virgola: è il separatore che Excel in italiano (e nelle lingue con la virgola decimale) si aspetta
+    # quando si apre il file con un doppio clic
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, campi, extrasaction="ignore")
+        w = csv.DictWriter(f, campi, extrasaction="ignore", delimiter=";")
         w.writeheader()
         w.writerows(righe)
 
 
 def leggi_csv(path):
-    # Excel può salvare con il punto e virgola come separatore
+    """Righe di un file compilato: CSV (separatore virgola, punto e virgola o tabulazione) oppure cartella di
+    lavoro Excel (.xlsx), anche se salvata con il nome .csv."""
     import io
+    with open(path, "rb") as f:
+        inizio = f.read(4)
+    if inizio.startswith(b"PK"):
+        return righe_da_tabella(leggi_xlsx(path))
     with open(path, encoding="utf-8-sig", newline="") as f:
         testo = f.read()
     prima = testo.split("\n", 1)[0]
     sep = max(",;\t", key=prima.count)              # dalla riga dei titoli delle colonne
     return list(csv.DictReader(io.StringIO(testo, newline=""), delimiter=sep))
+
+
+def righe_da_tabella(tabella):
+    """Dizionari dalle righe di un foglio. Se Excel ha lasciato ogni riga del CSV intera nella prima colonna
+    (file aperto con il separatore sbagliato), la ricompone e assegna le celle compilate a destra alle colonne
+    da compilare ancora vuote (GIUDIZIO, NOTE, VERIFICATO_DA), nell'ordine."""
+    import io
+    tabella = [r for r in tabella if any((x or "").strip() for x in r)]
+    if not tabella:
+        return []
+    titoli = [(x or "").strip() for x in tabella[0]]
+    if "GIUDIZIO" in titoli:
+        return [dict(zip(titoli, [(x or "") for x in r] + [""] * (len(titoli) - len(r)))) for r in tabella[1:]]
+    prima = titoli[0]
+    if "GIUDIZIO" not in prima:
+        sys.exit("Il foglio non ha la colonna GIUDIZIO: è il file giusto?")
+    sep = max(",;\t", key=prima.count)
+    righe = list(csv.DictReader(io.StringIO("\n".join(r[0] or "" for r in tabella), newline=""), delimiter=sep))
+    for d, r in zip(righe, tabella[1:]):
+        extra = [(x or "").strip() for x in r[1:] if (x or "").strip()]
+        for campo in ("GIUDIZIO", "NOTE", "VERIFICATO_DA"):
+            if extra and not (d.get(campo) or "").strip():
+                d[campo] = extra.pop(0)
+    return righe
+
+
+def leggi_xlsx(path):
+    """Righe del primo foglio di un file .xlsx, come liste di testi (solo libreria standard)."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+    m = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    rel = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+    with zipfile.ZipFile(path) as z:
+        condivise = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall(f"{m}si"):
+                condivise.append("".join(t.text or "" for t in si.findall(f"{m}t") + si.findall(f"{m}r/{m}t")))
+        primo = ET.fromstring(z.read("xl/workbook.xml")).find(f"{m}sheets/{m}sheet")
+        rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+        dest = next(r.get("Target") for r in rels if r.get("Id") == primo.get(rel))
+        foglio = ET.fromstring(z.read(dest.lstrip("/") if dest.startswith("/") else "xl/" + dest))
+    tabella = []
+    for riga in foglio.iter(f"{m}row"):
+        valori = {}
+        for i, c in enumerate(riga.findall(f"{m}c")):
+            ref = re.match(r"[A-Z]+", c.get("r") or "")
+            col = i
+            if ref:
+                col = 0
+                for ch in ref.group(0):
+                    col = col * 26 + ord(ch) - 64
+                col -= 1
+            tipo, v = c.get("t"), c.find(f"{m}v")
+            if tipo == "s":
+                x = condivise[int(v.text)]
+            elif tipo == "inlineStr":
+                x = "".join(t.text or "" for t in c.iter(f"{m}t"))
+            else:
+                x = v.text if v is not None and v.text else ""
+                if tipo in (None, "n") and re.fullmatch(r"-?\d+\.0+", x):
+                    x = x.split(".")[0]                  # 129801.0 -> 129801 (scostamenti, numeri)
+            valori[col] = x
+        tabella.append([valori.get(i, "") for i in range(max(valori) + 1)] if valori else [])
+    return tabella
+
+
+def file_compilato(d, base):
+    """Il file compilato più recente tra <base>.csv e <base>.xlsx (None se non c'è nessuno dei due)."""
+    presenti = [p for p in (d / f"{base}.csv", d / f"{base}.xlsx") if p.exists()]
+    return max(presenti, key=lambda p: p.stat().st_mtime) if presenti else None
 
 
 def wilson(k, n, z=1.96):
@@ -301,10 +379,12 @@ def giudizi(path, chiave):
 def importa(args, cfg):
     d = cartella(cfg, args.nome)
     fatto = False
-    if (d / "campione.csv").exists():
-        g, errori = giudizi(d / "campione.csv", ("ID", "ENTITA"))
+    f_campione, f_candidati = file_compilato(d, "campione"), file_compilato(d, "candidati")
+    if f_campione:
+        g, errori = giudizi(f_campione, ("ID", "ENTITA"))
         if errori:
-            print("campione.csv non è completo:\n  " + "\n  ".join(errori[:30]))
+            print(f"{f_campione.name} non è completo:\n  " + "\n  ".join(errori[:30])
+                  + (f"\n  ... e altre {len(errori) - 30} righe" if len(errori) > 30 else ""))
         else:
             nascosti = [json.loads(r) for r in (d / "campione_nascosto.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
             oggi = dt.date.today().isoformat()
@@ -315,10 +395,10 @@ def importa(args, cfg):
                     f.write(json.dumps(dict(c, riferimento=dict(x, importato_il=oggi)), ensure_ascii=False) + "\n")
             print(f"insieme.jsonl: {len(nascosti)} passaggi verificati ({dict(Counter(x['giudizio'] for x in g.values()))}).")
             fatto = True
-    if (d / "candidati.csv").exists():
-        g, errori = giudizi(d / "candidati.csv", ("FILE", "OFFSET"))
+    if f_candidati:
+        g, errori = giudizi(f_candidati, ("FILE", "OFFSET"))
         if errori:
-            print("candidati.csv non è completo:\n  " + "\n  ".join(errori[:30]))
+            print(f"{f_candidati.name} non è completo:\n  " + "\n  ".join(errori[:30]))
         else:
             info = json.loads((d / "candidati_info.json").read_text(encoding="utf-8"))
             info["mancate_confermate"] = sum(1 for x in g.values() if x["giudizio"] == "sì")
