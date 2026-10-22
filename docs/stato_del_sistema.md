@@ -63,6 +63,14 @@ Requisiti di sistema (da installare): Tesseract UB Mannheim con la lingua Albani
 
 Provato solo su una scansione sintetica: mancano prove su scansioni vere e una prova dei modelli sulla lettura dell'albanese.
 
+### Ambiente (verificato il 22/10/2026)
+
+- Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).
+- Librerie: il codice usa la libreria standard più PyMuPDF (1.28.0, MuPDF 1.29.0), solo in `importa.py`. SQLite 3.50.4 con FTS5 funzionante.
+- Tesseract 5.5.3 in `C:\Program Files\Tesseract-OCR` (non nel PATH: `importa.py` lo trova nella cartella consueta). Lingue: deu, eng, fra, ita, ita_old, osd, rus, spa, sqi. **Mancano chi_sim e chi_tra**: oggi non è possibile l'OCR del cinese con Tesseract.
+- FreeLLMAPI: app desktop installata (`%LOCALAPPDATA%\Programs\freellmapi-desktop`), chiave `FREELLMAPI_KEY` presente nelle variabili d'utente. Al momento della verifica il servizio **non era avviato** (nessuna risposta su 127.0.0.1:31415): le ricerche richiedono di aprire prima l'app.
+- Controllo di versione: git attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false` per conservare i fine riga). Esclusi: `data/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `pipeline/_backup/`.
+
 
 
 ## Metadati delle fonti
