@@ -155,3 +155,6 @@ Hongqi (JPRS),riviste/hongqi_1977-1988/RF1986-01.txt,data del rapporto JPRS asse
 Hongqi (JPRS),riviste/hongqi_1977-1988/RF1986-14.txt,data del fascicolo assente,;
 Hongqi (JPRS),riviste/hongqi_1977-1988/RF1986-15.txt,data del fascicolo assente,;
 Hongqi (JPRS),riviste/hongqi_1977-1988/RF1987-21.txt,data del fascicolo assente,;
+Peking Review,riviste/peking_review/PR1963-10-11.txt,numero doppio non dichiarato,"il nome del file indica i nn. 10-11, il campo ISSUE vale 10: da verificare sul fascicolo";
+Peking Review,riviste/peking_review/PR1969-51-52.txt,numero doppio non dichiarato,"il nome del file indica i nn. 51-52, il campo ISSUE vale 51: da verificare sul fascicolo";
+Hongqi (JPRS),riviste/hongqi_1977-1988/RF1988-05.txt,data del rapporto da verificare,"REPORT_DATE 1988-03-01 coincide con la data del fascicolo (No. 5, 1 marzo 1988); il frontespizio JPRS legge «) MAY 1988»";

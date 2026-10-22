@@ -27,6 +27,7 @@ RAG\
     _riferimenti\           letture di riferimento per valuta.py (nuova_unita, grippa)
     _sessioni_precedenti\   lavori delle sessioni con Claude (letture assistite, tabelle, rapporti)
     _prove\                 prove dei modelli (non entrano nell'archivio)
+    _valutazione\           insiemi di riferimento verificati a mano e misure (valutazione.py)
     <nome_entità>\          una cartella per ogni ricerca
   pipeline\
     mcp_server.py           il server che collega Jan alla pipeline
@@ -35,8 +36,11 @@ RAG\
     archivio.py, schede.py, varianti.py, llm.py   le parti del motore
     indice.py, esplora.py   indice delle fonti, esplorazione dei nomi nuovi e ricerca libera nel testo
     lavori.py               fa girare le ricerche come processi indipendenti dalla chat
-    importa.py, serie.ini   importazione di nuovo materiale (OCR) e schede delle serie di fonti
-    valuta.py               prova dei modelli
+    importa.py, serie.ini   importazione di nuovo materiale (OCR) e profili delle serie (anche citazioni)
+    citazioni.py            citazioni in stile Chicago dalle intestazioni e dai profili di serie
+    valuta.py               prova rapida dei modelli su una lettura di riferimento
+    valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
+    test\                   test automatici (python -m unittest discover -s pipeline/test)
     registra_analisi.py     usato dalla skill di Claude «ricerca-occorrenze-fonti»
     config.ini, entita.ini  configurazione e schede delle entità
     _backup\                copie precedenti di entita.ini
@@ -128,7 +132,7 @@ Strumenti a disposizione del modello della chat:
 | `correggi_passaggio` | registra una tua correzione: vale per tutte le ricerche successive |
 
 Ogni ricerca completa salva la risposta in `RAG\risposte\` con data e domanda nel nome del file. La
-risposta ha sette sezioni:
+risposta ha otto sezioni:
 1. Documenti
 2. Passaggi originali
 3. Dati espliciti
@@ -136,8 +140,14 @@ risposta ha sette sezioni:
 5. Limiti
 6. Copertura
 7. Risposta finale
+8. Dati tecnici per la verifica (file e righe, che non entrano nelle citazioni)
 
 In chat compaiono per prime le sezioni 3, 4 e 7; le altre si chiedono a parte.
+
+Le citazioni sono in stile Chicago e si fermano alla pagina, quando il file la indica. La citazione nasce
+dall'intestazione del file e dal profilo della serie in `serie.ini` (campo `chicago`). Sotto ogni passaggio
+la riga «Lettura» dice chi ha deciso la pertinenza e chi ha tradotto: un modello (quale), una sessione
+assistita, una regola. La sezione 6 riporta i conteggi.
 
 ### Ricerche lunghe e quote esaurite
 
@@ -166,9 +176,16 @@ note = ...
 ```
 Campi:
 - `varianti`: tutte le forme del nome che la ricerca deve trovare.
+- `tipo`: persona, organizzazione, testata, stato, altro.
 - `collegate`: entità da analizzare insieme nelle domande sull'evoluzione nel tempo, per esempio il partito o l'organo di stampa.
 - `forme_ambigue`: forme che possono indicare anche un'altra entità; per queste il passaggio viene sempre controllato dal modello.
 - `note`: indicazioni per il modello che legge i passaggi.
+
+Regole per unire o separare le schede, per dirigenti, organi di stampa e forme ambigue: `docs\schede_entita.md`.
+Controllo automatico (doppioni, forme in comune, forme brevi non dichiarate, letture sotto nomi senza scheda):
+```
+python schede.py controlla
+```
 
 ### Entità nuove
 
@@ -269,7 +286,16 @@ Le letture incomplete vengono completate alla prima ricerca che ritrova quei pas
 Se il modello di sintesi non risponde, la risposta salvata lo dice in testa e Jan lo riferisce: rifacendo la
 stessa domanda si rifà solo ciò che manca.
 
-`python archivio.py stato` mostra quante letture ci sono per entità.
+`python archivio.py stato` mostra quante letture ci sono per entità e chi le ha fatte. Ogni lettura registra
+la propria provenienza, separatamente per la decisione sulla pertinenza e per la traduzione:
+- letto da un modello (quale);
+- lettura assistita in sessione (in chat), non verificata a mano;
+- deciso per regola (quale regola: forma inequivocabile del nome, classificazione o esclusione in blocco in una
+  sessione, voce di sommario).
+
+`python archivio.py provenienza` registra la provenienza nelle letture vecchie che non l'hanno (`--prova`: solo
+conteggi). Per le esclusioni fatte in sessione vale una regola in più: se la stessa motivazione si ripete in almeno
+5 passaggi della stessa entità, l'esclusione conta come fatta in blocco, cioè per regola.
 
 ## Meno richieste al modello
 
@@ -293,6 +319,27 @@ python valuta.py "Nuova Unità"                                         (i model
 python valuta.py "Nuova Unità" --modelli "glm-4.7; nemotron-3-ultra"   (uno per uno, con tabella di confronto)
 ```
 Lo script confronta lo smistamento dei modelli con la lettura di riferimento in `risultati\_riferimenti\nuova_unita`. Quel riferimento è una lettura assistita da Claude, non verificata a mano. Le prove vanno in `risultati\_prove\` e non toccano l'archivio. Obiettivo: richiamo ≥ 95%. Un modello entra nella catena `ricerca` solo dopo questa prova.
+
+## Misure su un insieme verificato a mano
+
+`valutazione.py` costruisce un insieme di riferimento verificato da te e misura su quello sia l'estrazione sia le
+letture (per modello e per livello di provenienza). Funziona su qualsiasi corpus. Nella cartella `pipeline`:
+```
+python valutazione.py campione prova1 --n 100
+python valutazione.py candidati prova1 --entita "Franz Strobl" --file 60
+python valutazione.py importa prova1
+python valutazione.py misura prova1 --modelli "gemma4; nemotron-3-ultra"
+```
+1. `campione`: estrae un campione stratificato (serie, lingua, decisione, provenienza) dei passaggi già letti e
+   scrive `risultati\_valutazione\prova1\campione.csv`. Compila la colonna GIUDIZIO (sì / no / incerto) e
+   VERIFICATO_DA. La decisione attuale non compare nel file, così la verifica è alla cieca.
+2. `candidati`: cerca in un campione di file le forme più larghe del nome (cognome da solo, una lettera o un
+   carattere diversi, accenti) che l'estrazione non trova. In `candidati.csv` segna GIUDIZIO = sì per le vere
+   menzioni sfuggite.
+3. `importa`: controlla i due file compilati e salva l'insieme di riferimento.
+4. `misura`: calcola richiamo e precisione, con un intervallo di confidenza al 95%, e scrive `misure_<data>.md`.
+   Le misure riguardano le letture dell'archivio (per livello di provenienza), i modelli indicati (in
+   `risultati\_prove\`, senza archivio) e l'estrazione.
 
 ## Problemi frequenti
 

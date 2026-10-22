@@ -43,6 +43,14 @@ Il tool si usa attualmente dalla chat del programma Jan (assistente «Ricerca fo
 - La risposta salvata in `risposte\` ha 7 sezioni; Jan presenta «risposta_pronta» (presentazione della pipeline) senza ricostruirla.
 - Indice SQLite FTS5 (`indice\fonti.sqlite`, circa 870 MB): serve a `esplora_nome`, `cerca_testo` e a scegliere i file del Renmin Ribao da leggere. Si aggiorna da solo (solo file nuovi o modificati).
 
+### Provenienza, citazioni, valutazione (fase 1, 22/10/2026)
+
+- **Provenienza delle letture** (`archivio.py`): ogni lettura dichiara chi ha deciso la pertinenza e chi ha tradotto, su tre livelli (modello e quale, sessione assistita, regola e quale). Registrata il 22/10 in tutte le 10.840 letture dell'archivio e nelle cartelle dei risultati (copie precedenti in `pipeline\_backup\2026-10-22_provenienza`). Decisioni: 9.461 per regola (7.362 classificazioni per regola in sessione, 1.980 esclusioni in blocco, 64 forme inequivocabili, 55 riprese da letture per regola), 1.295 in sessione, 84 da un modello. Traduzioni: 9.500 passaggi non tradotti, 1.152 in sessione, 180 da un modello, 8 voci di sommario.
+- **Citazioni** (`citazioni.py`, campo `chicago` di `serie.ini`): stile Chicago, fino alla pagina (marcatore `[[p. N]]` o `pagina_regex`, oggi solo 第N版 del Renmin Ribao). Nelle risposte non compaiono più file e righe, che passano alla sezione 8. Le `FULL_CITATION` del corpus restano quelle di prima: le risposte non le usano più.
+- **Test automatici** in `pipeline\test` (36): estrazione, citazioni, provenienza, calcoli della valutazione.
+- **Strumento di valutazione** (`valutazione.py`): campione alla cieca, candidati sfuggiti all'estrazione, misure con IC 95%. Nessun insieme verificato a mano esiste ancora. In una prova, la ricerca larga ha trovato 施特罗伯尔 (Franz Strobl, solo cognome) in una raccolta del 1976: è una forma assente dalla scheda.
+- **Schede delle entità**: regole proposte in `docs\schede_entita.md`, controllo automatico `schede.py controlla`. Al 22/10: 10 errori (forme in comune tra «Altre organizzazioni m-l italiane» e PCd'I (m-l) / Linea rossa, tra Jacques Grippa e PCB-Grippa, tra MLPÖ (Austria) e Partito Marxista-Leninista d'Austria) e 80 avvisi. Tra gli avvisi: 176 letture sotto «PCd'I (m-l) (Italia)», 128 sotto «Dirigenti ORT/PTE/PT» e 223 sotto «PCF rifondato (CPP)», nomi che non hanno più una scheda.
+
 ### Strumenti MCP (18)
 
 elenca_entita, esplora_nome, crea_scheda, cerca_testo, avvia_ricerca, attendi_ricerca, ferma_ricerca, leggi_risposta, elenca_risposte, passaggi_archivio, copertura_fonti, apri_fonte, varianti, correggi_passaggio, importa_fonti, stato_importazione, elenca_serie, crea_serie.
@@ -91,7 +99,7 @@ Il piano dettagliato è in `docs/piano_di_lavoro.md`.
 
 Metadati ancora aperti (`problemi_residui.csv`): PR1974-15s (supplemento senza data né numero nel testo; discorso di Teng Hsiao-ping all'ONU del 10/04/1974, pubblicato anche in PR1974-16); PR1978-26-Index (data non verificabile); date del fascicolo o del rapporto JPRS mancanti in vari Hongqi 1977-1988; numeri mancanti; Renmin Ribao con giorni mancanti o numeri brevi.
 
-Rimandati: separare la scheda PCMLB (Vanderlinden) da PCB (m-l) «L'Exploité» (Trifaux); test automatici; un insieme di riferimento di 80-100 passaggi verificati a mano.
+Rimandati: separare la scheda PCMLB (Vanderlinden) da PCB (m-l) «L'Exploité» (Trifaux); correggere le schede segnalate da `schede.py controlla`, dopo la conferma delle regole di `docs/schede_entita.md`; verificare a mano il primo insieme di riferimento con `valutazione.py`.
 
 ### Verso un tool modulare e pubblicabile (obiettivo finale)
 
