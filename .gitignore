@@ -1,0 +1,20 @@
+# Corpus e dati generati (dimensioni e diritti delle fonti)
+data/
+indice/
+risultati/
+risposte/
+lavori/
+importazioni/
+
+# Copie di sicurezza e file temporanei
+pipeline/_backup/
+__pycache__/
+*.pyc
+*.bak
+*.bak[0-9]*
+.senza_archivio
+
+# Sistema
+Thumbs.db
+desktop.ini
+.claude/settings.local.json

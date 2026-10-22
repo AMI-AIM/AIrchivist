@@ -1,0 +1,42 @@
+# Ricerca nelle fonti — guida rapida
+
+Sistema per trovare **tutte** le occorrenze di una persona, un partito o una testata nelle fonti primarie
+(Renmin Ribao, Peking Review, Hongqi/Red Flag, raccolte di documenti, Selected Works) e rispondere con i
+passaggi originali, la traduzione e il riferimento esatto. Nuovo materiale (anche scansioni in PDF, con OCR)
+si aggiunge con `pipeline\importa.py` o chiedendo in Jan.
+
+## Come si usa
+
+1. Avvia **FreeLLMAPI** (fornisce i modelli gratuiti).
+2. Apri **Jan**, nuova chat con l'assistente «Ricerca fonti» e il modello `auto:chat`.
+3. Scrivi la domanda, per esempio «Cosa dicono le fonti di Jacques Grippa nel 1964?».
+
+Jan usa gli strumenti del server MCP «Pipeline» (`pipeline\mcp_server.py`). Con questi:
+- cerca la scheda dell'entità;
+- consulta i passaggi già letti oppure avvia la ricerca completa;
+- risponde con originali, traduzioni e riferimenti.
+
+## Dove sono le cose
+
+| Cartella | Contenuto |
+|---|---|
+| `data` | le fonti |
+| `audit_fonti` | registro delle correzioni fatte ai metadati delle fonti e lacune ancora aperte (giorni e numeri mancanti) |
+| `risposte` | tutte le risposte complete, una per domanda |
+| `indice` | indice di ricerca delle fonti |
+| `importazioni` | registro dei materiali importati e controlli delle intestazioni |
+| `lavori` | stato e registro di ogni ricerca avviata dalla chat |
+| `risultati\_archivio` | i passaggi già letti (non vengono mai riletti) |
+| `risultati\_riferimenti` | letture di riferimento per provare i modelli |
+| `risultati\_sessioni_precedenti` | lavori delle sessioni con Claude |
+| `risultati\_prove` | prove dei modelli |
+| `pipeline` | programmi, `config.ini`, `entita.ini` (schede delle entità), `serie.ini` (serie di fonti importabili) |
+
+## Per approfondire
+
+`pipeline\ISTRUZIONI.md` spiega:
+- la configurazione di FreeLLMAPI e di Jan;
+- le schede delle entità e le varianti dei nomi;
+- l'importazione di nuove fonti (OCR);
+- la valutazione dei modelli;
+- i problemi frequenti.
