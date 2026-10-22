@@ -52,7 +52,7 @@ def cartelle_risultati(risultati):
     ris = Path(risultati)
     out = []
     for d in sorted(ris.iterdir()) if ris.is_dir() else []:
-        if not d.is_dir() or d.name in (NOME, PROVE):
+        if not d.is_dir() or d.name in (NOME, PROVE, "_valutazione"):
             continue
         if d.name in SOTTOCARTELLE:
             out += [x for x in sorted(d.iterdir()) if x.is_dir()]
