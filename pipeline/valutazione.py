@@ -500,31 +500,12 @@ def misura(args, cfg):
                 "/ «sì». IC 95% con il metodo di Wilson: con pochi passaggi l'intervallo è largo.", ""]
         modelli = elenco_modelli(args, cfg)
         if modelli:
-            # i passaggi con l'entità corretta a mano in un nome equivalente si leggono con la scheda nuova
-            da_leggere = [dict(c, entita=c["riferimento"]["entita_verificata"]) if c in equivalenti else c
-                          for c in validi]
-            f_mod = d / f"modelli_{dt.datetime.now():%Y%m%d_%H%M}.jsonl"
-            out += ["## Modelli (smistamento dei passaggi verificati, senza archivio né regole)", "",
-                    f"Modelli provati: {len(modelli)}. Risultati man mano in `{f_mod.name}`.", "",
-                    "| modello richiesto | ha risposto | passaggi letti | richiamo (sì o incerto) | richiamo (solo sì) "
-                    "| precisione |", "|---|---|---|---|---|---|"]
-            for i, modello in enumerate(modelli, 1):
-                print(f"\n######## [{i}/{len(modelli)}] {modello or 'configurazione attuale'}")
-                m = prova_modello(args, cfg, da_leggere, modello)
-                riga = {"modello": modello or "configurazione attuale", "risposto": m[0] if m else "",
-                        "misure": m[1] if m else None}
-                with open(f_mod, "a", encoding="utf-8", newline="\n") as fm:
-                    fm.write(json.dumps(riga, ensure_ascii=False) + "\n")
-                if m:
-                    mm = m[1]
-                    out.append(f"| {riga['modello']} | {m[0]} | {mm['n']}/{len(da_leggere)} | "
-                               f"{proporzione(*mm['richiamo'])} | {proporzione(*mm['richiamo_stretto'])} | "
-                               f"{proporzione(*mm['precisione'])} |")
-                else:
-                    out.append(f"| {riga['modello']} | nessuna risposta | 0/{len(da_leggere)} | — | — | — |")
-            out += ["", "«Ha risposto»: il modello che il router ha usato davvero (se è diverso da quello richiesto, "
-                    "la riga non misura il modello richiesto). Passaggi letti: quelli con una scheda in entita.ini e "
-                    "a cui il modello ha risposto.", ""]
+            # i passaggi di un nome dichiarato equivalente si leggono con la scheda di destinazione
+            da_leggere = []
+            for c in validi[:args.limite or None]:
+                nuovo = c["riferimento"].get("entita_verificata") if c in equivalenti else eq.get(c["entita"], {}).get("nuovo")
+                da_leggere.append(dict(c, entita=nuovo) if nuovo else c)
+            out += prova_modelli(args, cfg, d, da_leggere, modelli)
     if (d / "estrazione.json").exists():
         e = json.loads((d / "estrazione.json").read_text(encoding="utf-8"))
         k, mancate = e["occorrenze_estrazione"], e["mancate_confermate"]
@@ -573,9 +554,121 @@ def elenco_modelli(args, cfg):
     return modelli
 
 
-def prova_modello(args, cfg, validi, modello):
-    """Smistamento dei passaggi dell'insieme con un modello (o con la configurazione attuale), senza archivio e
-    senza le regole che saltano il modello (forme inequivocabili): la misura è del solo modello."""
+def prova_modelli(args, cfg, d, da_leggere, modelli):
+    """Smistamento dei passaggi verificati con ogni modello, a giri: nel primo giro ogni modello legge finché il
+    servizio lo ferma (quote al minuto); nei giri successivi riprende da dove era, quando gli altri modelli hanno
+    lasciato passare il tempo. Un modello che per due giri di fila non legge nulla si considera fermo (quota del
+    giorno esaurita o modello non disponibile). Restituisce le righe della sezione «Modelli»."""
+    import time
+    from estrai_occorrenze import carica_entita
+    from llm import percorso
+    schede = carica_entita(percorso(cfg, "entita"))
+    leggibili = [c for c in da_leggere if c["entita"] in schede]
+    f_mod = d / f"modelli_{dt.datetime.now():%Y%m%d_%H%M}.jsonl"
+    stato = {m: {"cartella": prepara_prova(args, cfg, leggibili, m), "letti": 0, "senza_progressi": 0,
+                 "fine": "", "giri": 0} for m in modelli}
+    print(f"Passaggi da leggere per modello: {len(leggibili)} (su {len(da_leggere)}: gli altri non hanno una scheda).")
+    for giro in range(1, args.giri + 1):
+        attivi = [m for m in modelli if not stato[m]["fine"]]
+        if not attivi:
+            break
+        inizio = time.time()
+        print(f"\n================ Giro {giro} di {args.giri}: {len(attivi)} modelli da completare")
+        for i, m in enumerate(attivi, 1):
+            s = stato[m]
+            print(f"\n######## giro {giro}, [{i}/{len(attivi)}] {m or 'configurazione attuale'} "
+                  f"(letti finora {s['letti']}/{len(leggibili)})", flush=True)
+            esegui_prova(cfg, s["cartella"])
+            prima, s["letti"] = s["letti"], len(letture_prova(s["cartella"]))
+            s["giri"] = giro
+            if s["letti"] >= len(leggibili):
+                s["fine"] = "completo"
+            elif s["letti"] == prima:
+                s["senza_progressi"] += 1
+                if s["senza_progressi"] >= 2:
+                    s["fine"] = "fermo (nessuna lettura per due giri: quota esaurita o modello non disponibile)"
+            else:
+                s["senza_progressi"] = 0
+            salva_stato_modelli(f_mod, stato, leggibili)
+        resto = 70 - (time.time() - inizio)       # le quote dei servizi gratuiti si contano di solito al minuto
+        if giro < args.giri and any(not stato[m]["fine"] for m in modelli) and resto > 0:
+            print(f"\nAttendo {resto:.0f} s prima del giro successivo (quote al minuto).", flush=True)
+            time.sleep(resto)
+    for m in modelli:
+        if not stato[m]["fine"]:
+            stato[m]["fine"] = f"incompleto dopo {args.giri} giri"
+    salva_stato_modelli(f_mod, stato, leggibili)
+    out = ["## Modelli (smistamento dei passaggi verificati, senza archivio né regole)", "",
+           f"Modelli provati: {len(modelli)}, in {max(s['giri'] for s in stato.values())} giri; passaggi da leggere "
+           f"per modello: {len(leggibili)}. Stato dettagliato in `{f_mod.name}`.", "",
+           "| modello richiesto | ha risposto | passaggi letti | richiamo (sì o incerto) | richiamo (solo sì) "
+           "| precisione | stato |", "|---|---|---|---|---|---|---|"]
+    righe = []
+    for m in modelli:
+        risposto, mm = risultato_prova(stato[m]["cartella"], leggibili)
+        righe.append((-(mm["n"] if mm else 0), m or "configurazione attuale", risposto, mm, stato[m]["fine"]))
+    for _, nome, risposto, mm, fine in sorted(righe):
+        if mm and mm["n"]:
+            out.append(f"| {nome} | {risposto} | {mm['n']}/{len(leggibili)} | {proporzione(*mm['richiamo'])} | "
+                       f"{proporzione(*mm['richiamo_stretto'])} | {proporzione(*mm['precisione'])} | {fine} |")
+        else:
+            out.append(f"| {nome} | nessuna risposta | 0/{len(leggibili)} | — | — | — | {fine} |")
+    out += ["", "«Ha risposto»: il modello che il router ha usato davvero (se è diverso da quello richiesto, la riga "
+            "non misura il modello richiesto). Un modello che non ha letto tutti i passaggi è misurato solo su "
+            "quelli letti: i suoi valori non sono confrontabili con quelli dei modelli completi.", ""]
+    return out
+
+
+def salva_stato_modelli(f_mod, stato, leggibili):
+    righe = []
+    for m, s in stato.items():
+        risposto, mm = risultato_prova(s["cartella"], leggibili)
+        righe.append(json.dumps({"modello": m or "configurazione attuale", "risposto": risposto, "letti": s["letti"],
+                                 "da_leggere": len(leggibili), "giri": s["giri"], "stato": s["fine"] or "in corso",
+                                 "cartella": s["cartella"].name, "misure": mm}, ensure_ascii=False) + "\n")
+    tmp = f_mod.with_suffix(".tmp")
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.writelines(righe)
+    tmp.replace(f_mod)
+
+
+def letture_prova(cartella):
+    f = Path(cartella) / "classificati.jsonl"
+    pred = {}
+    if f.exists():
+        for riga in f.read_text(encoding="utf-8").splitlines():
+            if riga.strip():
+                c = json.loads(riga)
+                if not c["analisi"].get("assorbito_da"):
+                    pred[(c["id"], c["entita"])] = c["analisi"]
+    return pred
+
+
+def risultato_prova(cartella, leggibili):
+    """(modelli che hanno risposto davvero, misure sui passaggi letti) di una cartella di prova."""
+    pred = letture_prova(cartella)
+    if not pred:
+        return "", None
+    coppie = [(c["riferimento"]["giudizio"], pred[(c["id"], c["entita"])]["pertinente"])
+              for c in leggibili if (c["id"], c["entita"]) in pred]
+    usati = Counter(a.get("modello_smistamento", "?") for a in pred.values())
+    return ", ".join(m for m, _ in usati.most_common(3)), misure(coppie)
+
+
+def esegui_prova(cfg, cartella):
+    """Un passo di lettura: classifica.py riprende da dove era arrivato e si ferma quando il servizio lo ferma."""
+    import os
+    from llm import percorso
+    r = subprocess.run([sys.executable, "-u", str(CARTELLA / "classifica.py"), str(cartella),
+                        str(percorso(cfg, "entita")), "--solo-smistamento", "--config",
+                        str(Path(cartella) / "config_prova.ini")],
+                       cwd=CARTELLA, env=dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8"))
+    return r.returncode
+
+
+def prepara_prova(args, cfg, validi, modello):
+    """Cartella di prova per un modello (o per la configurazione attuale): i passaggi da leggere e una copia di
+    config.ini senza archivio e senza le regole che saltano il modello (forme inequivocabili)."""
     import configparser
     from llm import percorso
     from valuta import config_per_modello
@@ -585,7 +678,7 @@ def prova_modello(args, cfg, validi, modello):
     prova.mkdir(parents=True, exist_ok=True)
     (prova / ".senza_archivio").write_text("Cartella di prova: niente archivio unico.\n", encoding="utf-8")
     with open(prova / "passaggi.jsonl", "w", encoding="utf-8", newline="\n") as f:
-        for c in validi[:args.limite or None]:
+        for c in validi:
             f.write(json.dumps({k: v for k, v in c.items() if k != "riferimento"}, ensure_ascii=False) + "\n")
     cfg_base = Path(args.config) if args.config else CARTELLA / "config.ini"
     cfg_file = prova / "config_prova.ini"
@@ -603,21 +696,7 @@ def prova_modello(args, cfg, validi, modello):
     cp["estrazione"]["forme_sicure"] = "no"
     with open(cfg_file, "w", encoding="utf-8") as fc:
         cp.write(fc)
-    r = subprocess.run([sys.executable, str(CARTELLA / "classifica.py"), str(prova), str(percorso(cfg, "entita")),
-                        "--solo-smistamento", "--config", str(cfg_file)], cwd=CARTELLA)
-    f = prova / "classificati.jsonl"
-    if not f.exists():
-        print(f"Modello {modello or 'della configurazione'}: nessuna risposta (codice {r.returncode}).")
-        return None
-    pred = {}
-    for riga in f.read_text(encoding="utf-8").splitlines():
-        if riga.strip():
-            c = json.loads(riga)
-            pred[(c["id"], c["entita"])] = c["analisi"]
-    coppie = [(c["riferimento"]["giudizio"], pred[(c["id"], c["entita"])]["pertinente"])
-              for c in validi if (c["id"], c["entita"]) in pred]
-    usati = Counter(a.get("modello_smistamento", "?") for a in pred.values())
-    return ", ".join(m for m, _ in usati.most_common(3)), misure(coppie)
+    return prova
 
 
 def main():
@@ -643,6 +722,8 @@ def main():
     m.add_argument("--escludi", default="", help="con --modelli tutti: parti di nome da escludere, separate da ';'")
     m.add_argument("--solo-elenco", action="store_true", help="mostra i modelli che verrebbero provati ed esce")
     m.add_argument("--limite", type=int, default=None, help="solo i primi N passaggi (prova veloce)")
+    m.add_argument("--giri", type=int, default=8, help="giri di lettura al massimo (i modelli fermati dalle quote "
+                                                       "riprendono al giro successivo)")
     m.add_argument("--config-attuale", action="store_true", help="prova anche i modelli di config.ini")
     for p in (a, b, c, m):
         p.add_argument("--config", default=None)

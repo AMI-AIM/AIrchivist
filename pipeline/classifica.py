@@ -661,7 +661,7 @@ def main():
     n = Counter(c["analisi"]["pertinente"] for c in classificati)
     print(f"Classificati: {len(classificati)} | pertinenti {n.get('sì', 0)} | incerti {n.get('incerto', 0)} "
           f"| esclusi {n.get('no', 0)}")
-    if not args.solo_rapporto and not args.limite and not args.solo_smistamento:
+    if not args.solo_rapporto and not args.limite:
         resto = len(da_fare) - fatti_ora if da_fare else 0
         scrivi_non_letti(cart, resto)
         if resto:
