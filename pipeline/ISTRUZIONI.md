@@ -357,7 +357,20 @@ python valutazione.py misura prova1 --modelli "gemma4; nemotron-3-ultra"
    Le misure riguardano le letture dell'archivio (per livello di provenienza), i modelli indicati (in
    `risultati\_prove\`, senza archivio) e l'estrazione.
 
-Per provare tutti i modelli attivi in FreeLLMAPI (FreeLLMAPI deve essere acceso):
+Per confrontare rapidamente tutti i modelli attivi in FreeLLMAPI (pochi minuti):
+```
+python valutazione.py modelli riferimento_1 --solo-elenco
+python valutazione.py modelli riferimento_1
+```
+Il primo comando mostra i modelli scelti e quelli scartati con il motivo, usando i dati del router senza fare
+richieste: router e alias (gli «slot» Claude), quota esaurita, contesto sotto i 16.000 token, doppioni, modelli
+che non servono a leggere testi. Il secondo fa leggere a ogni modello 30 passaggi verificati (metà non
+pertinenti) e poi, ai 6 migliori, tutto l'insieme verificato. Le richieste contengono 10 passaggi di entità
+diverse e i modelli lavorano 8 alla volta. Il risultato è in `prova_rapida_<data>.md`. Opzioni: `--prima-fase`,
+`--migliori`, `--lotto`, `--paralleli`, `--escludi`. Nelle ricerche ogni lotto riguarda una sola entità: la prova
+rapida serve a confrontare i modelli tra loro.
+
+La misura completa, lenta, con lo stesso formato delle ricerche (FreeLLMAPI deve essere acceso):
 ```
 python valutazione.py misura riferimento_1 --modelli tutti --solo-elenco
 python valutazione.py misura riferimento_1 --modelli tutti

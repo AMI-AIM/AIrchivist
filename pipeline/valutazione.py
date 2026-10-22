@@ -699,6 +699,228 @@ def prepara_prova(args, cfg, validi, modello):
     return prova
 
 
+# ---------------------------------------------------------------- 6. prova rapida dei modelli
+SCHEMA_MISTO = {
+    "type": "object",
+    "properties": {"risultati": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"n": {"type": "integer"}, "pertinente": {"type": "string", "enum": ["sì", "no", "incerto"]}},
+        "required": ["n", "pertinente"]}}},
+    "required": ["risultati"],
+}
+
+
+def prompt_misto(gruppo, schede, n):
+    """Lotto di passaggi di entità diverse: per ciascuno l'entità, le sue forme e le note della scheda."""
+    from classifica import ritaglia
+    blocchi = []
+    for k, c in enumerate(gruppo, 1):
+        s = schede[c["entita"]]
+        blocchi.append(f"[{k}] Entità cercata: {c['entita']}\nAltre forme del nome: {'; '.join(s['varianti'][:10])}\n"
+                       f"Note: {(s['note'] or '-')[:500]}\nFonte: {c.get('citazione') or c.get('fonte', '')}\n"
+                       f"PASSAGGIO: {ritaglia(c, n)}")
+    return (f"Seguono {len(gruppo)} passaggi numerati, ciascuno con la sua entità cercata. In ogni passaggio le "
+            "occorrenze trovate dalla ricerca sono tra ⟦ e ⟧.\nPer OGNI passaggio decidi se le occorrenze si "
+            "riferiscono davvero all'entità cercata in quel passaggio:\n"
+            "- \"sì\": il passaggio parla dell'entità cercata (anche solo nominandola in un elenco).\n"
+            "- \"no\": è un omonimo, un'altra organizzazione, o un uso generico delle stesse parole.\n"
+            "- \"incerto\": il testo non basta per decidere.\nValuta ogni passaggio per conto suo.\n\n"
+            + "\n\n".join(blocchi)
+            + f"\n\nRispondi con JSON: {{\"risultati\": [{{\"n\": 1, \"pertinente\": \"sì\" | \"no\" | \"incerto\"}}, ...]}} "
+              f"con una voce per ciascuno dei {len(gruppo)} passaggi.")
+
+
+def catalogo_router(cfg):
+    """Modelli del router con i loro dati (nome, contesto, stato delle quote)."""
+    import urllib.request
+    from llm import LLM
+    llm = LLM(cfg, "smistamento")
+    base = llm.url.rsplit("/chat/completions", 1)[0]
+    req = urllib.request.Request(base + "/models?available=true",
+                                 headers={"Authorization": f"Bearer {llm.chiave}", "User-Agent": "ricerca-fonti/1.0"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r).get("data", [])
+
+
+def scegli_modelli(args, cfg):
+    """(da provare, scartati con il motivo) in base ai dati del router, senza nessuna richiesta ai modelli."""
+    if args.modelli and args.modelli.strip().lower() != "tutti":
+        return [x.strip() for x in args.modelli.split(";") if x.strip()], []
+    try:
+        cat = catalogo_router(cfg)
+    except Exception as e:
+        sys.exit(f"Non riesco a leggere i modelli dal router ({e}): FreeLLMAPI è acceso?")
+    escludi = [x.strip().lower() for x in (args.escludi or "").split(";") if x.strip()]
+    scelti, scartati, visti = [], [], {}
+    for m in cat:
+        mid, nome = m.get("id", ""), (m.get("name") or "")
+        ctx = m.get("context_window") or m.get("context_length")
+        motivo = ""
+        if NON_LETTORI.search(mid):
+            motivo = "non serve a leggere passaggi (router, sicurezza, codice, immagini, audio, strumenti)"
+        elif "slot" in nome.lower() or "auto-routed" in nome.lower() or "router" in nome.lower() or ":" in mid:
+            motivo = "alias instradato ad altri modelli"
+        elif m.get("execution_status") == "exhausted":
+            motivo = "quota esaurita adesso (exhausted)"
+        elif ctx and ctx < args.contesto_min:
+            motivo = f"contesto troppo piccolo ({ctx} token)"
+        elif any(x in mid.lower() for x in escludi):
+            motivo = "escluso con --escludi"
+        else:
+            chiave = re.sub(r"[^a-z0-9]", "", nome.lower()) or mid
+            if chiave in visti:
+                motivo = f"doppione di {visti[chiave]}"
+            else:
+                visti[chiave] = mid
+        (scartati.append((mid, motivo)) if motivo else scelti.append(mid))
+    return scelti, scartati
+
+
+def leggi_con_modello(cfg_file, modello, gruppi, schede, n, stampa):
+    """Smistamento dei lotti con un modello: {(id, entita): pertinente}, modelli che hanno risposto, errore finale."""
+    from llm import LLM, ErroreModello, leggi_config
+    from classifica import SISTEMA
+    llm = LLM(leggi_config(cfg_file), "smistamento")
+    esiti, usati, errore = {}, Counter(), ""
+    for k, gruppo in enumerate(gruppi, 1):
+        try:
+            r = llm.json(SISTEMA, prompt_misto(gruppo, schede, n), SCHEMA_MISTO)
+        except ErroreModello as e:
+            errore = str(e)[:300]
+            stampa(f"  {modello}: lotto {k}/{len(gruppi)} non letto ({errore[:120]})")
+            if re.search(r"errore (401|403|404|413)|non ammess|troppo|too large|not found", errore, re.IGNORECASE):
+                break                                 # non passa aspettando: il modello si ferma qui
+            continue
+        usati[llm.ultimo_modello] += 1
+        for voce in r.get("risultati") or []:
+            try:
+                i = int(voce.get("n"))
+            except (TypeError, ValueError):
+                continue
+            if 1 <= i <= len(gruppo) and voce.get("pertinente") in ("sì", "no", "incerto"):
+                c = gruppo[i - 1]
+                esiti[(c["id"], c["entita"])] = voce["pertinente"]
+        stampa(f"  {modello}: lotto {k}/{len(gruppi)} letto ({len(esiti)} risposte finora)")
+    return esiti, usati, errore
+
+
+def prova_rapida(args, cfg):
+    """Prova rapida di molti modelli sull'insieme verificato: lotti misti (passaggi di entità diverse nella stessa
+    richiesta), modelli in parallelo, una prima fase su pochi passaggi e la seconda solo per i migliori."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from estrai_occorrenze import carica_entita
+    from archivio import equivalenze
+    from llm import percorso
+    from valuta import config_per_modello
+    d = cartella(cfg, args.nome)
+    insieme = [json.loads(r) for r in (d / "insieme.jsonl").read_text(encoding="utf-8").splitlines() if r.strip()]
+    eq = equivalenze(percorso(cfg, "risultati"))
+    schede = carica_entita(percorso(cfg, "entita"))
+    passaggi = []
+    for c in insieme:
+        if c["riferimento"]["giudizio"] not in ("sì", "no"):
+            continue
+        nuovo = c["riferimento"].get("entita_verificata") or eq.get(c["entita"], {}).get("nuovo")
+        if nuovo and nuovo != c["entita"] and eq.get(c["entita"], {}).get("nuovo") != nuovo:
+            continue                                  # entità corretta in un'altra non equivalente
+        c = dict(c, entita=nuovo) if nuovo else c
+        if c["entita"] in schede:
+            passaggi.append(c)
+    # prima fase: un sottoinsieme bilanciato tra pertinenti e no, con il seme fisso
+    rnd = random.Random(args.seme)
+    si = [c for c in passaggi if c["riferimento"]["giudizio"] == "sì"]
+    no = [c for c in passaggi if c["riferimento"]["giudizio"] == "no"]
+    rnd.shuffle(si)
+    rnd.shuffle(no)
+    meta = min(len(no), args.prima_fase // 2)
+    prima = no[:meta] + si[:args.prima_fase - meta]
+    rnd.shuffle(prima)
+    modelli, scartati = scegli_modelli(args, cfg)
+    print(f"Passaggi verificati utilizzabili: {len(passaggi)}; prima fase: {len(prima)} "
+          f"({sum(1 for c in prima if c['riferimento']['giudizio'] == 'sì')} pertinenti).")
+    print(f"Modelli da provare: {len(modelli)}; scartati senza richieste: {len(scartati)}")
+    for m, motivo in scartati:
+        print(f"  - {m}: {motivo}")
+    if args.solo_elenco:
+        print("\n".join(modelli))
+        return
+    n = cfg.getint("estrazione", "finestra_modello", fallback=300)
+    ora = f"{dt.datetime.now():%Y%m%d_%H%M}"
+    prove = percorso(cfg, "risultati") / "_prove" / f"prova_rapida_{ora}"
+    prove.mkdir(parents=True, exist_ok=True)
+    (prove / ".senza_archivio").write_text("Prove dei modelli: niente archivio unico.\n", encoding="utf-8")
+    cfg_base = Path(args.config) if args.config else CARTELLA / "config.ini"
+    blocco = threading.Lock()
+
+    def stampa(t):
+        with blocco:
+            print(t, flush=True)
+
+    def fase(nome_fase, lista, insieme_fase):
+        gruppi = [insieme_fase[i:i + args.lotto] for i in range(0, len(insieme_fase), args.lotto)]
+        print(f"\n======== {nome_fase}: {len(lista)} modelli, {len(insieme_fase)} passaggi in {len(gruppi)} "
+              f"richieste per modello, {args.paralleli} modelli alla volta", flush=True)
+
+        def uno(m):
+            cf = prove / f"config_{re.sub(r'[^A-Za-z0-9]+', '-', m)[:50]}.ini"
+            config_per_modello(cfg_base, m, cf)
+            esiti, usati, errore = leggi_con_modello(cf, m, gruppi, schede, n, stampa)
+            coppie = [(c["riferimento"]["giudizio"], esiti[(c["id"], c["entita"])]) for c in insieme_fase
+                      if (c["id"], c["entita"]) in esiti]
+            return {"modello": m, "risposto": ", ".join(x for x, _ in usati.most_common(3)), "letti": len(coppie),
+                    "da_leggere": len(insieme_fase), "errore": errore, "misure": misure(coppie) if coppie else None}
+
+        with ThreadPoolExecutor(max_workers=args.paralleli) as ex:
+            risultati = list(ex.map(uno, lista))
+        with open(prove / f"{nome_fase.split()[0].lower()}.jsonl", "w", encoding="utf-8", newline="\n") as f:
+            for r in risultati:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        return risultati
+
+    def punteggio(r):
+        m = r["misure"]
+        if not m or r["letti"] < r["da_leggere"]:
+            return (0, 0, 0, 0)
+        ric = m["richiamo"][0] / m["richiamo"][1] if m["richiamo"][1] else 0
+        pre = m["precisione"][0] / m["precisione"][1] if m["precisione"][1] else 0
+        stretto = m["richiamo_stretto"][0] / m["richiamo_stretto"][1] if m["richiamo_stretto"][1] else 0
+        return (1, ric, stretto, pre)
+
+    r1 = fase("Prima fase", modelli, prima)
+    migliori = [r["modello"] for r in sorted(r1, key=punteggio, reverse=True) if punteggio(r)[0]][:args.migliori]
+    r2 = fase("Seconda fase", migliori, passaggi) if migliori and len(passaggi) > len(prima) else []
+
+    def tabella(risultati):
+        righe = ["| modello richiesto | ha risposto | passaggi letti | richiamo (sì o incerto) | richiamo (solo sì) "
+                 "| precisione | nota |", "|---|---|---|---|---|---|---|"]
+        for r in sorted(risultati, key=punteggio, reverse=True):
+            m = r["misure"]
+            if m:
+                righe.append(f"| {r['modello']} | {r['risposto']} | {r['letti']}/{r['da_leggere']} | "
+                             f"{proporzione(*m['richiamo'])} | {proporzione(*m['richiamo_stretto'])} | "
+                             f"{proporzione(*m['precisione'])} | {r['errore'][:80]} |")
+            else:
+                righe.append(f"| {r['modello']} | — | 0/{r['da_leggere']} | — | — | — | {r['errore'][:80]} |")
+        return righe
+
+    out = [f"# Prova rapida dei modelli: {args.nome}", "", f"*{dt.datetime.now():%Y-%m-%d %H:%M}*", "",
+           f"Smistamento (pertinente sì/no) dei passaggi verificati a mano, in lotti misti di {args.lotto} passaggi "
+           "di entità diverse, senza archivio né regole. Il formato dei lotti differisce da quello delle ricerche "
+           "(un'entità per lotto): la misura confronta i modelli tra loro.", "",
+           f"Modelli provati: {len(modelli)}; scartati senza richieste: {len(scartati)}.", "",
+           f"## Seconda fase: i {len(migliori)} migliori su {len(passaggi)} passaggi", ""]
+    out += tabella(r2) if r2 else ["*(nessun modello ha letto tutti i passaggi della prima fase)*"]
+    out += ["", f"## Prima fase: {len(prima)} passaggi", ""] + tabella(r1)
+    out += ["", "## Modelli scartati senza richieste", ""] + [f"- {m}: {motivo}" for m, motivo in scartati]
+    out += ["", "«Ha risposto»: il modello che il router ha usato davvero. Un modello che non ha letto tutti i "
+            "passaggi non passa alla seconda fase: i suoi valori riguardano solo i passaggi letti.", ""]
+    f = d / f"prova_rapida_{ora}.md"
+    f.write_bytes("\n".join(out).encode("utf-8"))
+    print("\n".join(out[:12 + len(r2)]))
+    print(f"\nScritto: {f}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="comando", required=True)
@@ -725,12 +947,24 @@ def main():
     m.add_argument("--giri", type=int, default=8, help="giri di lettura al massimo (i modelli fermati dalle quote "
                                                        "riprendono al giro successivo)")
     m.add_argument("--config-attuale", action="store_true", help="prova anche i modelli di config.ini")
-    for p in (a, b, c, m):
+    r = sub.add_parser("modelli", help="prova rapida di molti modelli (lotti misti, in parallelo, a due fasi)")
+    r.add_argument("nome")
+    r.add_argument("--modelli", default="tutti", help="«tutti» (i modelli attivi in FreeLLMAPI) o nomi separati da ';'")
+    r.add_argument("--escludi", default="", help="parti di nome da escludere, separate da ';'")
+    r.add_argument("--solo-elenco", action="store_true", help="mostra i modelli scelti e quelli scartati ed esce")
+    r.add_argument("--prima-fase", type=int, default=30, help="passaggi della prima fase (metà non pertinenti)")
+    r.add_argument("--migliori", type=int, default=6, help="modelli che passano alla seconda fase")
+    r.add_argument("--lotto", type=int, default=10, help="passaggi per richiesta")
+    r.add_argument("--paralleli", type=int, default=8, help="modelli provati contemporaneamente")
+    r.add_argument("--contesto-min", type=int, default=16000, help="contesto minimo dei modelli (token)")
+    r.add_argument("--seme", type=int, default=2026)
+    for p in (a, b, c, m, r):
         p.add_argument("--config", default=None)
     args = ap.parse_args()
     from llm import leggi_config
     cfg = leggi_config(args.config)
-    {"campione": campione, "candidati": candidati, "importa": importa, "misura": misura}[args.comando](args, cfg)
+    {"campione": campione, "candidati": candidati, "importa": importa, "misura": misura,
+     "modelli": prova_rapida}[args.comando](args, cfg)
 
 
 if __name__ == "__main__":
