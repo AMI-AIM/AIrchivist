@@ -14,11 +14,13 @@ Produce in <out>/:
   riepilogo.txt   - conteggi per entita, variante e anno
 """
 import argparse
+import bisect
 import configparser
 import csv
 import hashlib
 import json
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -40,6 +42,22 @@ EQUIVALENZE = {
 INIZIO_EVID, FINE_EVID = "⟦", "⟧"
 TRATTINI = r"[\-\u00ad\u2010\u2011¬]"          # trattino, trattino morbido (U+00AD), lineette, ¬
 SEP_PAROLE = r"[\s\-\u00ad\u2010\u2011¬]"
+
+# Vocali e consonanti con accento: in un testo OCR l'accento può cadere o cambiare
+ACCENTI = {"a": "aàáâäãå", "e": "eèéêë", "i": "iìíîï", "o": "oòóôöõø", "u": "uùúûü",
+           "c": "cç", "n": "nñ", "y": "yÿ"}
+
+
+def senza_accenti(s):
+    """Testo senza i segni diacritici: «Désiré» -> «Desire»."""
+    return "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+
+
+def _car_ignorando_accenti(ch):
+    k = ch.lower()
+    if ch in "'’‘`":
+        return "['’‘`]"
+    return f"[{ACCENTI[k]}]" if k in ACCENTI else re.escape(ch)
 
 
 def leggi_intestazione(testo):
@@ -108,14 +126,23 @@ def pattern_variante(variante):
             pezzi.append(EQUIVALENZE.get(ch, re.escape(ch)))
         # tollera spazi e a capo inseriti dall'OCR tra un carattere e l'altro
         return r"\s*".join(pezzi)
-    parti = [p for p in re.split(r"[\s\-]+", variante) if p]
+    # come pattern_latino di indice.py: senza badare agli accenti («Désiré» trova anche «Desire»),
+    # così l'estrazione e l'indice non divergono (un nome con l'accento caduto nell'OCR non sfugge)
+    base = senza_accenti(variante)
+    parti = [p for p in re.split(r"[\s\-]+", base) if p]
     # tollera la sillabazione a fine riga dentro la parola (Federa-\ntion), anche con il trattino morbido
     # (U+00AD), le lineette U+2010/U+2011 e il segno ¬ di alcuni OCR
-    corpo = (SEP_PAROLE + "*").join((r"(?:" + TRATTINI + r"\s*)?").join(re.escape(c) for c in p) for p in parti)
+    corpo = (SEP_PAROLE + "*").join((r"(?:" + TRATTINI + r"\s*)?").join(_car_ignorando_accenti(c) for c in p) for p in parti)
     if len("".join(parti)) < MIN_SENZA_CONFINE:
         return r"(?<![A-Za-zÀ-ÿ])" + corpo + r"(?![A-Za-zÀ-ÿ])"
     # niente confine di parola: l'OCR incolla spesso le parole ("byJacques", "Partyand")
     return corpo
+
+
+def pattern_latino(forma):
+    """Come pattern_variante, ma senza badare agli accenti: mantenuto per compatibilità con indice.py,
+    che ora importa direttamente pattern_variante."""
+    return pattern_variante(forma)
 
 
 def compila(entita):
@@ -154,13 +181,21 @@ def forma_trovata(t):
 
 
 def id_passaggio(rel, nome, inizio):
-    """Identificativo del passaggio: file, entità e posizione della prima occorrenza del gruppo."""
+    """Identificativo del passaggio: file, entità e posizione della prima occorrenza del gruppo.
+
+    Non dipende dalla 'finestra': cambiando quel parametro in config.ini i passaggi già letti
+    nell'archivio restano riconosciuti e non vengono rimandati al modello (le coordinate nel
+    testo - offset della prima occorrenza - non cambiano)."""
     return hashlib.sha1(f"{rel}|{nome}|{inizio}".encode("utf-8")).hexdigest()[:10]
 
 
 def passaggi_del_testo(testo, inizio_testo, rel, nome, info, finestra):
     """Passaggi di un'entità in un testo: [(record senza i metadati del file, gruppo di occorrenze)].
-    Le occorrenze vicine (entro due finestre) formano un solo passaggio."""
+    Le occorrenze vicine (entro due finestre) formano un solo passaggio.
+
+    L'identificativo del gruppo è la posizione della prima occorrenza, che non dipende dalla
+    finestra; il raggruppamento sì, quindi se cambia la finestra possono nascere gruppi nuovi
+    (con lo stesso id del gruppo da cui derivano: vale l'ultima lettura registrata)."""
     hits = [(m.start(), m.end(), m.group(0)) for m in info["rx"].finditer(testo, inizio_testo)]
     gruppi = []
     for s, e, t in hits:
@@ -170,6 +205,7 @@ def passaggi_del_testo(testo, inizio_testo, rel, nome, info, finestra):
         else:
             gruppi.append({"inizio": s, "fine": e, "hits": [(s, e, t)]})
     out = []
+    righe_inizio = [0] + [k + 1 for k, ch in enumerate(testo) if ch == "\n"]   # una volta sola, non per gruppo
     for g in gruppi:
         a = max(inizio_testo, g["inizio"] - finestra)
         b = min(len(testo), g["fine"] + finestra)
@@ -189,7 +225,7 @@ def passaggi_del_testo(testo, inizio_testo, rel, nome, info, finestra):
             "id": id_passaggio(rel, nome, g["inizio"]),
             "entita": nome,
             "file": rel,
-            "riga": testo.count("\n", 0, g["inizio"]) + 1,
+            "riga": bisect.bisect_right(righe_inizio, g["inizio"]),
             "offset": g["inizio"],
             "n_occorrenze": len(g["hits"]),
             "varianti_trovate": sorted({forma_trovata(t) for _, _, t in g["hits"]}),

@@ -240,10 +240,38 @@ def estrai_json(testo):
     try:
         return json.loads(testo)
     except Exception:
-        m = re.search(r"\{.*\}", testo, re.DOTALL)
-        if not m:
-            raise ErroreModello("La risposta del modello non contiene JSON.")
-        try:
-            return json.loads(m.group(0))
-        except Exception:
-            raise ErroreModello("La risposta del modello contiene JSON non valido (forse troncato).")
+        pass
+    # il modello a volte aggiunge parole attorno al JSON ("Ecco:", note finali, due oggetti in fila):
+    # si prende il primo blocco {..} o [..] con parentesi bilanciate, ignorando le stringhe fra virgolette
+    inizio = min((i for i in (testo.find("{"), testo.find("[")) if i >= 0), default=-1)
+    if inizio >= 0:
+        apri_chiuso = {"{": "}", "[": "]"}
+        chiudi = apri_chiuso[testo[inizio]]
+        depth, in_str, scapp = 0, False, False
+        for i in range(inizio, len(testo)):
+            ch = testo[i]
+            if in_str:
+                if scapp:
+                    scapp = False
+                elif ch == "\\":
+                    scapp = True
+                elif ch == '"':
+                    in_str = False
+            elif ch == '"':
+                in_str = True
+            elif ch == testo[inizio]:
+                depth += 1
+            elif ch == chiudi:
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(testo[inizio:i + 1])
+                    except Exception:
+                        break
+    m = re.search(r"\{.*\}", testo, re.DOTALL)   # ultima prova: dal primo { all'ultimo }
+    if not m:
+        raise ErroreModello("La risposta del modello non contiene JSON.")
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        raise ErroreModello("La risposta del modello contiene JSON non valido (forse troncato).")

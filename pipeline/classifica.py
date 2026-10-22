@@ -28,7 +28,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from estrai_occorrenze import carica_entita, is_cjk
 from glossario import blocco, carica_glossario
 from llm import ErroreModello, ModelloNonAmmesso
-from archivio import apri, escluso, provenienza
+from archivio import append_jsonl, apri, escluso, provenienza
+
+
+def riga_json(rec):
+    """Una lettura in una riga di classificati.jsonl (formato comune a tutti i file JSONL della pipeline)."""
+    return json.dumps(rec, ensure_ascii=False)
 
 TIPI = ["delegazione/visita", "citazione o sintesi di un articolo", "messaggio/telegramma",
         "notizia", "elenco", "altro"]
@@ -489,17 +494,16 @@ def main():
         # correzioni manuali registrate nell'archivio (dall'interfaccia di chat): prevalgono sulle letture già
         # presenti in questa cartella; la riga aggiunta in fondo a classificati.jsonl sostituisce la precedente
         if arch is not None:
-            corrette = 0
-            with open(p_out, "a", encoding="utf-8") as f:
-                for pid, rec in list(fatti.items()):
-                    a, _ = arch.cerca(rec)
-                    if a and a.get("corretto_a_mano") and not rec["analisi"].get("corretto_a_mano"):
-                        nuovo = dict(rec, analisi=da_archivio(rec, a))
-                        f.write(json.dumps(nuovo, ensure_ascii=False) + "\n")
-                        fatti[pid] = nuovo
-                        corrette += 1
+            corrette = []
+            for pid, rec in list(fatti.items()):
+                a, _ = arch.cerca(rec)
+                if a and a.get("corretto_a_mano") and not rec["analisi"].get("corretto_a_mano"):
+                    nuovo = dict(rec, analisi=da_archivio(rec, a))
+                    corrette.append(riga_json(nuovo))
+                    fatti[pid] = nuovo
             if corrette:
-                print(f"Correzioni manuali applicate: {corrette}")
+                append_jsonl(p_out, corrette)   # blocco inter-processo + fsync (archivio.append_jsonl)
+                print(f"Correzioni manuali applicate: {len(corrette)}")
         # letture incomplete (pertinenti mai tradotti, incerti solo per regola): tornano al modello
         gia_pertinenti = {}
         decisione_prec = {}      # provenienza della decisione ripresa da una lettura precedente
@@ -514,22 +518,21 @@ def main():
                     da_fare.append(correnti[pid])    # la lettura vecchia resta finché non c'è la nuova
         if arch is not None and not args.senza_archivio:
             resto = []
-            with open(p_out, "a", encoding="utf-8") as f:
-                for p in da_fare:
-                    a, come = arch.cerca(p)
-                    k = None if args.solo_smistamento else da_completare(a)
-                    if k == "analisi":
-                        gia_pertinenti[p["id"]] = a.get("motivazione") or "pertinente (lettura precedente)"
-                        decisione_prec[p["id"]] = provenienza(a)["decisione"]
-                    if a is None or k:
-                        resto.append(p)
-                        continue
-                    a = da_archivio(p, a)
-                    a["dall_archivio"] = come
-                    rec = dict(p, analisi=a)
-                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                    fatti[p["id"]] = rec
-                    dall_archivio += 1
+            for p in da_fare:
+                a, come = arch.cerca(p)
+                k = None if args.solo_smistamento else da_completare(a)
+                if k == "analisi":
+                    gia_pertinenti[p["id"]] = a.get("motivazione") or "pertinente (lettura precedente)"
+                    decisione_prec[p["id"]] = provenienza(a)["decisione"]
+                if a is None or k:
+                    resto.append(p)
+                    continue
+                a = da_archivio(p, a)
+                a["dall_archivio"] = come
+                rec = dict(p, analisi=a)
+                append_jsonl(p_out, [riga_json(rec)])   # subito: la lettura non si perde se il job muore
+                fatti[p["id"]] = rec
+                dall_archivio += 1
             da_fare = resto
             if dall_archivio:
                 print(f"Dall'archivio unico (già letti in ricerche precedenti): {dall_archivio} passaggi")
@@ -596,55 +599,56 @@ def main():
                 return True
             return False
 
-        with open(p_out, "a", encoding="utf-8") as f:
-            i = 0
-            while i < len(da_fare) and not interrotto:
-                p = da_fare[i]
-                if p["id"] in gia_pertinenti:
-                    gruppo = [p]
-                    esiti = {p["id"]: ("sì", gia_pertinenti[p["id"]], "lettura precedente")}
-                    i += 1
-                elif sicuro(p):
-                    gruppo = [p]
-                    forma = next(v for v in p["varianti_trovate"] if forma_sicura(v))
-                    esiti = {p["id"]: ("sì", f"forma inequivocabile del nome: {forma}", "regola (forma inequivocabile)")}
-                    i += 1
-                else:
-                    gruppo, j = [p], i + 1
-                    while (j < len(da_fare) and len(gruppo) < lotto and not sicuro(da_fare[j])
-                           and da_fare[j]["id"] not in gia_pertinenti and da_fare[j]["entita"] == p["entita"]):
-                        gruppo.append(da_fare[j])
-                        j += 1
-                    i = j
-                    try:
-                        esiti = smista_lotto(gruppo, schede[p["entita"]], llm_s, n_mod)
-                    except ErroreModello as e:
-                        interrotto = errore(e, p)
-                        continue
-                for q in gruppo:
-                    try:
-                        a = analizza(q, schede[q["entita"]], esiti[q["id"]],
-                                     None if args.solo_smistamento else llm_a, n_mod, glossario)
-                    except ErroreModello as e:
-                        interrotto = errore(e, q)
-                        if interrotto:
-                            break
-                        continue
-                    errori_di_fila = 0
-                    if q["id"] in decisione_prec:
-                        a["provenienza"]["decisione"] = decisione_prec[q["id"]]
-                    rec = dict(q, analisi=a)
-                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                    f.flush()
-                    fatti[q["id"]] = rec
-                    if arch is not None and not args.solo_smistamento:
-                        arch.aggiungi(q, a, origine=cart.name)
-                    fatti_ora += 1
-                    media = (time.time() - t_inizio) / fatti_ora
-                    resto_min = media * (len(da_fare) - fatti_ora) / 60
-                    mod = a.get("modello_analisi") or a.get("modello_smistamento", "")
-                    print(f"  [{fatti_ora}/{len(da_fare)}] {q['data']} {q['file']} -> {a['pertinente']} "
-                          f"({a['secondi']}s, {mod}, fine stimata tra {resto_min:.0f} min)")
+        i = 0
+        while i < len(da_fare) and not interrotto:
+            p = da_fare[i]
+            if p["id"] in gia_pertinenti:
+                gruppo = [p]
+                esiti = {p["id"]: ("sì", gia_pertinenti[p["id"]], "lettura precedente")}
+                i += 1
+            elif sicuro(p):
+                gruppo = [p]
+                forma = next(v for v in p["varianti_trovate"] if forma_sicura(v))
+                esiti = {p["id"]: ("sì", f"forma inequivocabile del nome: {forma}", "regola (forma inequivocabile)")}
+                i += 1
+            else:
+                gruppo, j = [p], i + 1
+                while (j < len(da_fare) and len(gruppo) < lotto and not sicuro(da_fare[j])
+                       and da_fare[j]["id"] not in gia_pertinenti and da_fare[j]["entita"] == p["entita"]):
+                    gruppo.append(da_fare[j])
+                    j += 1
+                i = j
+                try:
+                    esiti = smista_lotto(gruppo, schede[p["entita"]], llm_s, n_mod)
+                except ErroreModello as e:
+                    interrotto = errore(e, p)
+                    continue
+            for q in gruppo:
+                try:
+                    a = analizza(q, schede[q["entita"]], esiti[q["id"]],
+                                 None if args.solo_smistamento else llm_a, n_mod, glossario)
+                except ErroreModello as e:
+                    interrotto = errore(e, q)
+                    if interrotto:
+                        break
+                    continue
+                errori_di_fila = 0
+                if q["id"] in decisione_prec:
+                    a["provenienza"]["decisione"] = decisione_prec[q["id"]]
+                rec = dict(q, analisi=a)
+                # append_jsonl: blocco inter-processo + fsync a ogni lettura. Il costo è trascurabile
+                # rispetto ai secondi della chiamata al modello, e una riga corrotta o persa vale quanto
+                # la quota API spesa per quella lettura.
+                append_jsonl(p_out, [riga_json(rec)])
+                fatti[q["id"]] = rec
+                if arch is not None and not args.solo_smistamento:
+                    arch.aggiungi(q, a, origine=cart.name)
+                fatti_ora += 1
+                media = (time.time() - t_inizio) / fatti_ora
+                resto_min = media * (len(da_fare) - fatti_ora) / 60
+                mod = a.get("modello_analisi") or a.get("modello_smistamento", "")
+                print(f"  [{fatti_ora}/{len(da_fare)}] {q['data']} {q['file']} -> {a['pertinente']} "
+                      f"({a['secondi']}s, {mod}, fine stimata tra {resto_min:.0f} min)")
 
     # passaggi contenuti in un altro passaggio: stessa valutazione di quello, senza nuova analisi
     for p in passaggi:

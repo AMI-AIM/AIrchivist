@@ -24,7 +24,9 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
-from estrai_occorrenze import is_cjk, leggi_intestazione, metadati, pattern_variante   # noqa: E402
+# pattern_variante è ora unico per estrazione e indice: ignora gli accenti (come faceva pattern_latino),
+# così una forma con l'accento caduto nell'OCR non può sfuggire all'estrazione pur essendo nell'indice
+from estrai_occorrenze import is_cjk, leggi_intestazione, metadati, pattern_variante, senza_accenti   # noqa: E402
 
 RIGHE_PER_FILE = 10_000_000          # rowid = id del file * RIGHE_PER_FILE + numero di riga
 CJK = re.compile(r"([㐀-鿿豈-﫿])")
@@ -44,29 +46,10 @@ def prepara(testo):
     return CJK.sub(r" \1 ", testo)
 
 
-ACCENTI = {"a": "aàáâäã", "e": "eèéêë", "i": "iìíîï", "o": "oòóôöõ", "u": "uùúûü", "c": "cç", "n": "nñ", "y": "yÿ"}
-
-
 def pattern_latino(forma):
-    """Come pattern_variante (spezzature e sillabazione dell'OCR), ma senza badare agli accenti:
-    «Désiré» trova anche «Desire», «L'Exploité» anche «L'Exploite»."""
-    import unicodedata
-    base = "".join(ch for ch in unicodedata.normalize("NFKD", forma) if not unicodedata.combining(ch))
-    def car(ch):
-        k = ch.lower()
-        if ch in "'’‘`":
-            return "['’‘`]"
-        return f"[{ACCENTI[k]}]" if k in ACCENTI else re.escape(ch)
-    parti = [p for p in re.split(r"[\s\-]+", base) if p]
-    corpo = r"[\s\-]*".join(r"(?:-\s*)?".join(car(c) for c in p) for p in parti)
-    if len("".join(parti)) < 5:
-        return r"(?<![A-Za-zÀ-ÿ])" + corpo + r"(?![A-Za-zÀ-ÿ])"
-    return corpo
-
-
-def senza_accenti(s):
-    import unicodedata
-    return "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+    """Delegata a pattern_variante (unica per estrazione e indice): ora tollera anche sillabazione con
+    trattini morbidi/lineette, spazi e a capo spezzati dall'OCR dentro i nomi in caratteri latini."""
+    return pattern_variante(forma)
 
 
 def lingua_testo(meta, inizio):
