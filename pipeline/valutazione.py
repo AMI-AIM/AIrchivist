@@ -398,10 +398,33 @@ def importa(args, cfg):
         else:
             oggi = dt.date.today().isoformat()
             righe, cambiate = [], []
+            # correzioni fatte dopo la verifica alla cieca (per esempio dopo il confronto con i modelli): sono
+            # registrate in correzioni.csv con il motivo e restano visibili nell'insieme e nelle misure
+            correzioni = {}
+            if (d / "correzioni.csv").exists():
+                for r in leggi_csv(d / "correzioni.csv"):
+                    v = GIUDIZI.get((r.get("GIUDIZIO") or "").strip().lower())
+                    if v and r.get("ID", "").strip() in ids:
+                        correzioni[r["ID"].strip()] = {"giudizio": v, "motivo": (r.get("MOTIVO") or "").strip(),
+                                                       "il": (r.get("CORRETTO_IL") or "").strip(),
+                                                       "da": (r.get("CORRETTO_DA") or "").strip()}
+            precedenti = {}                                # giudizi dell'importazione precedente, alla cieca
+            if (d / "insieme.jsonl").exists():
+                for r in (d / "insieme.jsonl").read_text(encoding="utf-8").splitlines():
+                    if r.strip():
+                        v = json.loads(r)
+                        rif = v["riferimento"]
+                        precedenti[v["id"]] = (rif.get("correzione") or {}).get("prima") or rif["giudizio"]
             for c in nascosti:
                 x = dict(g[c["id"]], importato_il=oggi)
                 nel_file = x.pop("entita_nel_file")
                 x.pop("n")
+                if c["id"] in correzioni:
+                    corr = correzioni[c["id"]]
+                    prima = precedenti.get(c["id"], x["giudizio"])
+                    x["giudizio"] = corr["giudizio"]
+                    x["correzione"] = dict(corr, prima=prima, dopo=corr["giudizio"])
+                    del x["correzione"]["giudizio"]
                 if nel_file and nel_file != c["entita"]:
                     # entità corretta da chi verifica: il giudizio vale per l'entità indicata nel file
                     x["entita_verificata"] = nel_file
@@ -415,7 +438,12 @@ def importa(args, cfg):
             if cambiate:
                 print("Entità corrette a mano (contate nelle misure solo se i due nomi sono dichiarati equivalenti "
                       "con «archivio.py equivalenza», altrimenti escluse):\n  " + "\n  ".join(cambiate))
-            print(f"insieme.jsonl: {len(nascosti)} passaggi verificati ({dict(Counter(x['giudizio'] for x in g.values()))}).")
+            if correzioni:
+                print(f"Giudizi corretti dopo la verifica alla cieca (correzioni.csv): {len(correzioni)}")
+                for i, corr in correzioni.items():
+                    print(f"  {i}: {precedenti.get(i, '?')} -> {corr['giudizio']} ({corr['motivo'][:90]})")
+            finali = Counter(json.loads(r)["riferimento"]["giudizio"] for r in righe)
+            print(f"insieme.jsonl: {len(nascosti)} passaggi verificati ({dict(finali)}).")
             fatto = True
     if f_candidati:
         g, errori = giudizi(f_candidati, ("FILE", "OFFSET"))
@@ -472,6 +500,12 @@ def misura(args, cfg):
         incerti = sum(1 for c in insieme if c["riferimento"]["giudizio"] == "incerto" and c not in corrette)
         out += [f"Insieme di riferimento: {len(insieme)} passaggi verificati a mano ({incerti} «incerti» e "
                 f"{len(corrette)} con l'entità corretta a mano esclusi dalle misure).", ""]
+        corretti = [c for c in insieme if c["riferimento"].get("correzione")]
+        if corretti:
+            out += [f"Giudizi corretti dopo la verifica alla cieca (correzioni.csv): {len(corretti)}. Queste "
+                    "correzioni non sono alla cieca: possono avvicinare il riferimento alle risposte dei modelli.", ""] + [
+                f"- {c['id']} ({c['entita']}): {c['riferimento']['correzione']['prima']} -> "
+                f"{c['riferimento']['giudizio']}: {c['riferimento']['correzione']['motivo']}" for c in corretti] + [""]
         if equivalenti:
             out += ["Entità corrette a mano con un nome equivalente (contate, sulla lettura fatta sotto il nome "
                     "originale):", ""] + [
@@ -994,9 +1028,25 @@ def errori_comuni(args, cfg):
         if len(sbagliati) * 2 > len(dec):
             casi.append((len(sbagliati) == len(dec), c, ent, g, dec))
     casi.sort(key=lambda x: (not x[0], x[3], x[2]))
+    # misure dei modelli ricalcolate dalle decisioni salvate sui giudizi attuali (dopo eventuali correzioni)
+    tab = ["| modello | passaggi | richiamo (sì o incerto) | richiamo (solo sì) | precisione |", "|---|---|---|---|---|"]
+    for r in risultati:
+        coppie = []
+        for c in insieme:
+            g = c["riferimento"]["giudizio"]
+            ent = c["riferimento"].get("entita_verificata") or eq.get(c["entita"], {}).get("nuovo") or c["entita"]
+            v = r["decisioni"].get(f"{c['id']}|{ent}")
+            if g in ("sì", "no") and v:
+                coppie.append((g, v))
+        mm = misure(coppie)
+        tab.append(f"| {r['modello']} | {mm['n']} | {proporzione(*mm['richiamo'])} | "
+                   f"{proporzione(*mm['richiamo_stretto'])} | {proporzione(*mm['precisione'])} |")
+    corretti = sum(1 for c in insieme if c["riferimento"].get("correzione"))
     out = [f"# Errori comuni dei modelli: {args.nome}", "", f"*{dt.datetime.now():%Y-%m-%d %H:%M}* — prova {prova.name}, "
            f"modelli: {', '.join(r['modello'] for r in risultati)}.", "",
-           f"Passaggi sbagliati da tutti i modelli: {sum(1 for x in casi if x[0])}; dalla maggioranza: "
+           "## Misure sui giudizi attuali", ""] + tab + [""] + (
+           [f"Giudizi corretti dopo la verifica alla cieca: {corretti} (correzioni.csv)."] if corretti else []) + [
+           "", f"Passaggi sbagliati da tutti i modelli: {sum(1 for x in casi if x[0])}; dalla maggioranza: "
            f"{sum(1 for x in casi if not x[0])}. Un «incerto» su un passaggio pertinente non conta come errore.", ""]
     for n_caso, (tutti, c, ent, g, dec) in enumerate(casi, 1):
         v = arch.per_id.get((c["id"], c["entita"]))
