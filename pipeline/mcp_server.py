@@ -134,14 +134,15 @@ def t_elenca_entita(filtro=""):
         if f and f not in testo and s not in trovate:
             continue
         nota = cp.get(s, "note", fallback="").strip()
-        out.append({"scheda": s, "nome_italiano": cp.get(s, "forma_italiana", fallback="") or s,
+        out.append({"scheda": s, "forma_estesa": schede.forma_estesa(cp, s),
                     "varianti": var[:6], "collegate": schede.dividi(cp.get(s, "collegate", fallback="")),
                     "nota": re.split(r"(?<=[.;])\s", nota)[0][:150] if nota else ""})
     return {"schede": out, "totale": len(out),
             "nota": "Per un'entità senza scheda usa crea_scheda (dopo aver chiesto conferma all'utente)."}
 
 
-def t_crea_scheda(nome, varianti, descrizione="", contesto=None, forme_ambigue=None, collegate=None):
+def t_crea_scheda(nome, varianti, descrizione="", contesto=None, forme_ambigue=None, collegate=None, tipo="",
+                  forma_estesa=""):
     f = percorso(cfg(), "entita")
     sezioni = schede.leggi_schede(f).sections()
     if nome in sezioni:
@@ -150,7 +151,7 @@ def t_crea_scheda(nome, varianti, descrizione="", contesto=None, forme_ambigue=N
     if sbagliate:
         return {"errore": f"Schede collegate inesistenti: {', '.join(sbagliate)}"}
     return {"scheda": schede.aggiungi_scheda(f, nome, varianti or [nome], descrizione or "", contesto,
-                                             forme_ambigue, collegate),
+                                             forme_ambigue, collegate, tipo, forma_estesa),
             "nota": "Scheda creata in entita.ini. Ora puoi avviare la ricerca."}
 
 
@@ -702,7 +703,10 @@ STRUMENTI = {
                      ["nome"]),
     "crea_scheda": (t_crea_scheda, "Crea la scheda con le forme confermate dall'utente.",
                     {"nome": _S, "varianti": _L, "contesto": _L, "forme_ambigue": _L, "collegate": _L,
-                     "descrizione": _S}, ["nome", "varianti"]),
+                     "descrizione": _S,
+                     "tipo": {"type": "string", "enum": list(schede.TIPI)},
+                     "forma_estesa": dict(_S, description="nome per esteso, se il nome della scheda è una sigla")},
+                    ["nome", "varianti"]),
     "cerca_testo": (t_cerca_testo, "Ricerca libera di parole in tutte le fonti (senza valutazione di pertinenza).",
                     {"testo": _S, "dal": _I, "al": _I, "fonti": _F, "massimo": _I, "da": _I}, ["testo"]),
     "avvia_ricerca": (t_avvia_ricerca, "Ricerca completa nelle fonti (processo indipendente); poi attendi_ricerca.",

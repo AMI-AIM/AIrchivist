@@ -45,6 +45,7 @@ Riferimenti per il posizionamento (fonti secondarie):
 | Collegamento alle IA | Server MCP come adattatore di un motore indipendente. |
 | Motori di testo | Intercambiabili: OCR proprio (predefinito), importazione da Transkribus, eScriptorium e altri strumenti (PAGE XML, ALTO XML), API di servizi esterni come modulo facoltativo. |
 | Sviluppo | Codice e prove in Claude Code, nella cartella RAG; progettazione e ricerca nel progetto «Archivio interattivo». |
+| Schede delle entità | Una scheda per soggetto storico (persona, organizzazione, testata): si uniscono i nomi diversi dello stesso soggetto, si separano scissioni, rifondazioni e omonimi. Dirigenti e organi di stampa hanno schede proprie, legate con `collegate`. Le forme brevi, i cognomi soli, i nomi generici e le forme condivise vanno in `forme_ambigue`. Gli enti indicati da sigle hanno `forma_estesa`. Regole complete in `docs/schede_entita.md`. |
 
 
 

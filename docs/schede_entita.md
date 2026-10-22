@@ -2,7 +2,7 @@
 
 Formato e regole delle schede in `pipeline/entita.ini` (22/10/2026). Le regole valgono per qualsiasi corpus. Il controllo automatico è `python schede.py controlla` (dalla cartella `pipeline`); `--solo-errori` mostra solo i problemi che falsano le ricerche.
 
-Le regole sono una proposta di Claude, da confermare da parte di Ivan. Una volta confermate, vanno riportate in `progettazione_del_sistema.md`, sezione 2.
+Regole confermate da Ivan il 22/10/2026 (riassunte in `progettazione_del_sistema.md`, sezione 2).
 
 
 
@@ -28,7 +28,7 @@ note = Segretario generale del PCd'I (m-l). Non confondere con Manlio Dinucci (s
 | `forme_ambigue` | se servono | Varianti che da sole possono indicare altro: non decidono mai la pertinenza per regola, il passaggio va sempre letto. Devono comparire anche tra le `varianti`. |
 | `contesto` | facoltativo | Parole che rendono più probabile la pertinenza. Non filtrano nulla. |
 | `collegate` | facoltativo | Schede di entità legate a questa (dirigenti, organi di stampa, predecessori). Le ricerche sull'evoluzione le includono. |
-| `forma_italiana` | facoltativo | Nome per esteso in italiano, se il nome canonico è una sigla. |
+| `forma_estesa` | per le sigle | Nome per esteso dell'ente, quando il nome canonico è una sigla (PCdoB → Partido Comunista do Brasil). |
 
 
 
@@ -100,5 +100,5 @@ Il legame si dichiara in tutte e due le schede, quando vale in tutte e due le di
 | Gravità | Problema |
 |---|---|
 | errore | stessa forma in più schede; due schede con gli stessi passaggi nell'archivio; collegata senza scheda; tipo non previsto; scheda senza varianti |
-| avviso | forme brevi o generiche non dichiarate ambigue; forma ambigua assente dalle varianti; note vuote; nome di scheda che indica un gruppo; letture dell'archivio sotto un nome senza scheda; campi sconosciuti |
-| info | una forma contenuta nelle forme di un'altra scheda, senza `collegate`; campo `tipo` mancante |
+| avviso | forme brevi o generiche non dichiarate ambigue; forma ambigua assente dalle varianti; note vuote; nome di scheda che indica un gruppo; letture dell'archivio sotto un nome senza scheda; campi sconosciuti o col nome vecchio (`forma_italiana`) |
+| info | una forma contenuta nelle forme di un'altra scheda, senza `collegate`; campo `tipo` mancante; sigla senza `forma_estesa`; letture sotto un nome dichiarato equivalente |

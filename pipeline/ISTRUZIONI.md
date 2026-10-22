@@ -168,7 +168,7 @@ domanda riprende da dove era. Il registro completo di ogni ricerca è in `RAG\la
 Le ricerche funzionano solo su entità che hanno una scheda in `entita.ini`. Esempio:
 ```
 [PCd'I (m-l)]
-forma_italiana = Partito comunista d'Italia (marxista-leninista)
+forma_estesa = Partito comunista d'Italia (marxista-leninista)
 varianti = 意大利共产党（马克思列宁主义）; ...
 collegate = ...
 forme_ambigue = ...
@@ -177,6 +177,7 @@ note = ...
 Campi:
 - `varianti`: tutte le forme del nome che la ricerca deve trovare.
 - `tipo`: persona, organizzazione, testata, stato, altro.
+- `forma_estesa`: il nome per esteso, per gli enti indicati da una sigla.
 - `collegate`: entità da analizzare insieme nelle domande sull'evoluzione nel tempo, per esempio il partito o l'organo di stampa.
 - `forme_ambigue`: forme che possono indicare anche un'altra entità; per queste il passaggio viene sempre controllato dal modello.
 - `note`: indicazioni per il modello che legge i passaggi.

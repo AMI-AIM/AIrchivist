@@ -1,7 +1,8 @@
 """
 Glossario dei nomi ricavato da entita.ini.
 
-Per ogni scheda: nome di riferimento = campo "forma_italiana" se presente, altrimenti il titolo della scheda.
+Per ogni scheda: nome di riferimento = titolo della scheda, con il nome per esteso (campo "forma_estesa") per gli
+enti indicati da una sigla.
 Al modello vengono passate solo le varianti inequivocabili che compaiono nel testo in esame:
   - cinese: forme con punto centrale (nomi di persona), con 《》 (testate), con parentesi (sigle di partito)
             oppure lunghe almeno 6 caratteri;
@@ -12,6 +13,7 @@ import configparser
 import re
 
 from estrai_occorrenze import is_cjk, normalizza
+from schede import forma_estesa
 
 
 def _univoca(v):
@@ -26,7 +28,8 @@ def carica_glossario(path):
     cp.read(path, encoding="utf-8")
     voci = []
     for sez in cp.sections():
-        nome = cp.get(sez, "forma_italiana", fallback="").strip() or sez
+        estesa = forma_estesa(cp, sez)
+        nome = f"{sez} ({estesa})" if estesa and estesa not in sez else sez
         nota = cp.get(sez, "note", fallback="").strip()
         nota = re.split(r"(?<=[.;])\s", nota)[0][:180] if nota else ""
         for v in re.split(r"[;；]", cp.get(sez, "varianti", fallback="")):

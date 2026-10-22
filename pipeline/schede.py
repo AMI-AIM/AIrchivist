@@ -23,6 +23,11 @@ def cjk(s):
     return any("㐀" <= ch <= "鿿" for ch in s)
 
 
+def forma_estesa(cp, s):
+    """Nome per esteso di un ente indicato da una sigla (campo forma_estesa; forma_italiana è il nome vecchio)."""
+    return (cp.get(s, "forma_estesa", fallback="") or cp.get(s, "forma_italiana", fallback="")).strip()
+
+
 def trova_nel_testo(testo, cp):
     """Schede il cui nome o una variante compare letteralmente nel testo, nell'ordine in cui compaiono.
     Una scheda trovata solo grazie a una forma già usata da un'altra (es. "Grippa" dentro "PCB-Grippa")
@@ -30,7 +35,7 @@ def trova_nel_testo(testo, cp):
     d = testo.lower()
     trovate = []
     for s in cp.sections():
-        forme = [s, cp.get(s, "forma_italiana", fallback="")] + dividi(cp.get(s, "varianti", fallback=""))
+        forme = [s, forma_estesa(cp, s)] + dividi(cp.get(s, "varianti", fallback=""))
         usate, pos = set(), None
         for f in forme:
             f = f.strip()
@@ -64,13 +69,19 @@ def aggiungi_collegate_scheda(i, cp):
     return i
 
 
-def aggiungi_scheda(f_entita, nome, varianti, descrizione="", contesto=None, forme_ambigue=None, collegate=None):
+def aggiungi_scheda(f_entita, nome, varianti, descrizione="", contesto=None, forme_ambigue=None, collegate=None,
+                    tipo="", estesa=""):
     """Aggiunge in fondo a entita.ini una scheda con le forme confermate dall'utente."""
     def pulisci(xs):
         return [re.sub(r"[;\n]", "", x).strip() for x in (xs or []) if x and x.strip()]
     nome = re.sub(r"[\[\]\n]", "", nome).strip()
     varianti = pulisci(varianti) or [nome]
-    righe = [f"[{nome}]", f"varianti = {'; '.join(varianti)}", f"contesto = {'; '.join(pulisci(contesto))}"]
+    righe = [f"[{nome}]"]
+    if tipo in TIPI:
+        righe.append(f"tipo = {tipo}")
+    if estesa and estesa.strip():
+        righe.append("forma_estesa = " + re.sub(r"[;\n]", "", estesa).strip())
+    righe += [f"varianti = {'; '.join(varianti)}", f"contesto = {'; '.join(pulisci(contesto))}"]
     if forme_ambigue:
         righe.append(f"forme_ambigue = {'; '.join(pulisci(forme_ambigue))}")
     if collegate:
@@ -85,7 +96,7 @@ def aggiungi_scheda(f_entita, nome, varianti, descrizione="", contesto=None, for
 
 # ---------------------------------------------------------------- controllo delle schede
 TIPI = ("persona", "organizzazione", "testata", "stato", "altro")
-CAMPI = {"varianti", "contesto", "note", "tipo", "forma_italiana", "forme_ambigue", "collegate"}
+CAMPI = {"varianti", "contesto", "note", "tipo", "forma_estesa", "forme_ambigue", "collegate"}
 
 
 def forma_breve(v):
@@ -95,6 +106,15 @@ def forma_breve(v):
     if cjk(v):
         return len(nucleo) <= 2
     return len(nucleo) < 5 or (" " not in v.strip() and "-" not in v and not v.isupper() and len(nucleo) < 8)
+
+
+def sigla(nome):
+    """Nome canonico che comincia con una sigla (PCdoB, MLPÖ (Austria), PCd'I (m-l), CPA(ML) (Australia)), senza
+    il nome per esteso nel titolo stesso («PTE - Partito del Lavoro di Spagna»)."""
+    primo = re.split(r"[\s(\-/]", nome.strip(), maxsplit=1)[0]
+    if sum(1 for ch in primo if ch.isupper()) < 2:
+        return False
+    return not re.search(r"\s-\s+\w+\s+\w+", nome)
 
 
 def norm(v):
@@ -109,8 +129,12 @@ def controlla(f_entita, risultati=None):
     for s in cp.sections():
         x = cp[s]
         for campo in x:
-            if campo not in CAMPI:
+            if campo == "forma_italiana":
+                out.append(("avviso", s, "campo forma_italiana: si chiama ora forma_estesa"))
+            elif campo not in CAMPI:
                 out.append(("avviso", s, f"campo sconosciuto «{campo}»"))
+        if sigla(s) and not forma_estesa(cp, s) and x.get("tipo", "").strip() != "persona":
+            out.append(("info", s, "il nome è una sigla: manca forma_estesa (il nome per esteso dell'ente)"))
         var = dividi(x.get("varianti", ""))
         if not var:
             out.append(("errore", s, "nessuna variante"))
