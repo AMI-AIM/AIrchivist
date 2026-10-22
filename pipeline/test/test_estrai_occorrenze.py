@@ -153,5 +153,95 @@ class Estrazione(unittest.TestCase):
             self.assertEqual(pas[1]["varianti_trovate"], ["FranzStrobl"])
 
 
+class Accenti(unittest.TestCase):
+    """L'estrazione e l'indice usano lo stesso pattern: un accento caduto o cambiato nell'OCR
+    non deve far sfuggire un'occorrenza (era il punto della revisione 23/10)."""
+
+    def test_accento_caduto(self):
+        self.assertTrue(trova("the speech of Desire Grippa", "Désiré Grippa"))
+        self.assertTrue(trova("L'Exploite n. 4", "L'Exploité"))
+
+    def test_accento_diverso(self):
+        self.assertTrue(trova("Strobl and Ströbl met the delegation", "Ströbl"))
+
+    def test_senza_accenti_uguale_a_pattern_latino(self):
+        # indice.py delega a pattern_variante: i due pattern devono restare identici
+        import indice as I
+        for f in ("Enver Hoxha", "Désiré Grippa", "Linea Rossa"):
+            self.assertEqual(I.pattern_latino(f), E.pattern_variante(f))
+
+
+class IdPassaggio(unittest.TestCase):
+    """L'id del passaggio non dipende dalla finestra: cambiando quel parametro in config.ini le
+    letture già pagate nell'archivio restano riconosciute."""
+
+    def _gruppi(self, finestra):
+        info = {"x": {"varianti": ["Franz Strobl"], "contesto": []}}
+        E.compila(info)
+        testo = "intro Franz Strobl middle text more words here and Franz Strobl tail"
+        return E.passaggi_del_testo(testo, 0, "a.txt", "x", info["x"], finestra)
+
+    def test_stesso_id_con_finestre_diverse(self):
+        stretti = self._gruppi(5)      # due passaggi distinti
+        larghi = self._gruppi(500)     # occorrenze vicine: un solo passaggio
+        self.assertEqual(len(stretti), 2)
+        self.assertEqual(len(larghi), 1)
+        self.assertEqual(larghi[0]["id"], stretti[0]["id"])   # id dalla prima occorrenza, stabile
+
+    def test_riga_calcolata_corretta(self):
+        info = {"x": {"varianti": ["Strobl"], "contesto": []}}
+        E.compila(info)
+        testo = "riga uno\nriga due\nStrobl e basta\nquarta riga"
+        pas, _ = E.passaggi_del_testo(testo, 0, "a.txt", "x", info["x"], 10)[0]
+        self.assertEqual(pas["riga"], 3)
+
+
+class ArchiviJsonl(unittest.TestCase):
+    """append_jsonl: newline puro, più processi concorrenti non corrompono le righe."""
+
+    def test_append_e_concorrenza(self):
+        import json as _json
+        from concurrent.futures import ThreadPoolExecutor
+        from archivio import append_jsonl
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "letture.jsonl"
+            def scrivi(k):
+                append_jsonl(f, [_json.dumps({"n": k})])
+                return k
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(scrivi, range(60)))
+            raw = f.read_bytes()
+            self.assertNotIn(b"\r\n", raw)                     # "\n" non diventa "\r\n" su Windows
+            righe = [x for x in raw.decode("utf-8").splitlines() if x]
+            self.assertEqual(len(righe), 60)
+            for x in righe:                                    # ogni riga è JSON integro
+                _json.loads(x)
+
+
+class JsonRobusto(unittest.TestCase):
+    """estrai_json tollera parole attorno al JSON e risposte con più oggetti in fila."""
+
+    def setUp(self):
+        from llm import estrai_json
+        self.estrai = estrai_json
+
+    def test_preamble_e_postfazione(self):
+        r = self.estrai('Ecco la risposta:\n{"pertinente": "sì", "nota": "a { b"}\nSpero sia utile.')
+        self.assertEqual(r["pertinente"], "sì")
+
+    def test_primo_di_due_oggetti(self):
+        r = self.estrai('[{"id": 1}, {"id": 2}] not another json')
+        self.assertEqual(r, [{"id": 1}, {"id": 2}])
+
+    def test_graffe_dentro_le_stringhe(self):
+        r = self.estrai('noise {"citazione": "Il «manifesto» {1967} dice"} noise')
+        self.assertIn("{1967}", r["citazione"])
+
+    def test_ancora_un_json_invalido_segna_errore(self):
+        from llm import ErroreModello
+        with self.assertRaises(ErroreModello):
+            self.estrai("nessun json qui dentro")
+
+
 if __name__ == "__main__":
     unittest.main()

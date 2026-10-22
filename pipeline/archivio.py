@@ -23,12 +23,68 @@ Uso da riga di comando:
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import sys
 from collections import Counter
 from pathlib import Path
 
 NOME = "_archivio"
+
+
+class _blocco:
+    """Lucchetto inter-processo basato su file (msvcrt su Windows, fcntl altrove).
+
+    Serve quando più processi possono scrivere sullo stesso JSONL (job paralleli, correzioni
+    manuali dall'interfaccia di chat): senza blocco, due scritture in coda possono mescolarsi e
+    generare righe corrotte. Se la libreria di blocco non è disponibile il file viene aperto lo
+    stesso in append: su POSIX le scritture brevi sono atomiche in pratica, e il rischio residuo
+    è preferito a un blocco duro che impedirebbe di lavorare."""
+    def __init__(self, path):
+        self.file = str(path) + ".lock"
+        self.fd = None
+
+    def __enter__(self):
+        try:
+            import msvcrt   # Windows
+            self.fd = os.open(self.file, os.O_RDWR | os.O_CREAT)
+            msvcrt.locking(self.fd, msvcrt.LK_LOCK, 1)
+        except ImportError:
+            try:
+                import fcntl  # Linux/macOS
+                self.fd = os.open(self.file, os.O_RDWR | os.O_CREAT)
+                fcntl.flock(self.fd, fcntl.LOCK_EX)
+            except ImportError:
+                self.fd = None
+        return self
+
+    def __exit__(self, *eccezione):
+        if self.fd is None:
+            return False
+        try:
+            import msvcrt
+            msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
+        except ImportError:
+            try:
+                import fcntl
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            except ImportError:
+                pass
+        os.close(self.fd)
+        self.fd = None
+        return False
+
+
+def append_jsonl(path, righe):
+    """Aggiunge righe JSON a un file in modalità testo puro ("\n" non diventa "\r\n" su Windows),
+    sotto blocco inter-processo e con fsync prima di restituire il controllo: una lettura già
+    pagata al modello non si perde se il PC si spegne e due processi concorrenti non scrivono
+    sopra la stessa riga."""
+    with _blocco(path), open(path, "a", encoding="utf-8", newline="\n") as f:
+        for riga in righe:
+            f.write(riga if riga.endswith("\n") else riga + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def normalizza_testo(s):
@@ -108,8 +164,8 @@ class Archivio:
         self.dir.mkdir(parents=True, exist_ok=True)
         voce = {"id": rec["id"], "entita": rec["entita"], "file": rec.get("file", ""), "impronta": impronta(rec),
                 "origine": origine, "letto_il": dt.date.today().isoformat(), "analisi": analisi}
-        with open(self.file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(voce, ensure_ascii=False) + "\n")
+        # append_jsonl: scrittura singola + fsync (vedi la sua documentazione)
+        append_jsonl(self.file, [json.dumps(voce, ensure_ascii=False)])
         self._indicizza(voce)
 
     def importa(self, risultati):
@@ -462,9 +518,7 @@ def riattribuisci(cfg, vecchio, nuovo, applica=False):
         dest.mkdir(parents=True, exist_ok=True)
         import shutil
         shutil.copy2(arch.file, dest / f"letture_{dt.datetime.now():%H%M%S}.jsonl")
-        with open(arch.file, "a", encoding="utf-8", newline="\n") as f:
-            for v in voci:
-                f.write(json.dumps(v, ensure_ascii=False) + "\n")
+        append_jsonl(arch.file, [json.dumps(v, ensure_ascii=False) for v in voci])
         print(f"Aggiunte {len(voci)} letture (copia dell'archivio in {dest}). Le letture sotto «{vecchio}» restano "
               "nell'archivio come storia; le ricerche usano quelle nuove.")
     else:
