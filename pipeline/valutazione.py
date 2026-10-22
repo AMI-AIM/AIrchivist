@@ -786,11 +786,11 @@ def leggi_con_modello(cfg_file, modello, gruppi, schede, n, stampa):
         try:
             r = llm.json(SISTEMA, prompt_misto(gruppo, schede, n), SCHEMA_MISTO)
         except ErroreModello as e:
+            # llm.py ha già atteso e ritentato: quota esaurita, modello assente o richiesta troppo grande non
+            # passano con altri tentativi, quindi il modello si ferma qui invece di riprovare a ogni lotto
             errore = str(e)[:300]
-            stampa(f"  {modello}: lotto {k}/{len(gruppi)} non letto ({errore[:120]})")
-            if re.search(r"errore (401|403|404|413)|non ammess|troppo|too large|not found", errore, re.IGNORECASE):
-                break                                 # non passa aspettando: il modello si ferma qui
-            continue
+            stampa(f"  {modello}: lotto {k}/{len(gruppi)} non letto, mi fermo ({errore[:120]})")
+            break
         usati[llm.ultimo_modello] += 1
         for voce in r.get("risultati") or []:
             try:
@@ -836,20 +836,31 @@ def prova_rapida(args, cfg):
     meta = min(len(no), args.prima_fase // 2)
     prima = no[:meta] + si[:args.prima_fase - meta]
     rnd.shuffle(prima)
-    modelli, scartati = scegli_modelli(args, cfg)
-    print(f"Passaggi verificati utilizzabili: {len(passaggi)}; prima fase: {len(prima)} "
-          f"({sum(1 for c in prima if c['riferimento']['giudizio'] == 'sì')} pertinenti).")
-    print(f"Modelli da provare: {len(modelli)}; scartati senza richieste: {len(scartati)}")
-    for m, motivo in scartati:
-        print(f"  - {m}: {motivo}")
-    if args.solo_elenco:
-        print("\n".join(modelli))
-        return
     n = cfg.getint("estrazione", "finestra_modello", fallback=300)
-    ora = f"{dt.datetime.now():%Y%m%d_%H%M}"
-    prove = percorso(cfg, "risultati") / "_prove" / f"prova_rapida_{ora}"
-    prove.mkdir(parents=True, exist_ok=True)
-    (prove / ".senza_archivio").write_text("Prove dei modelli: niente archivio unico.\n", encoding="utf-8")
+    if args.riprendi:
+        # seconda fase di una prova già fatta: la prima fase si legge da prima.jsonl
+        prove = Path(args.riprendi)
+        if not prove.is_absolute():
+            prove = percorso(cfg, "risultati") / "_prove" / prove
+        if not (prove / "prima.jsonl").exists():
+            sys.exit(f"Nella cartella {prove} non c'è prima.jsonl.")
+        modelli, scartati = [], []
+        ora = prove.name.replace("prova_rapida_", "")
+    else:
+        modelli, scartati = scegli_modelli(args, cfg)
+        print(f"Passaggi verificati utilizzabili: {len(passaggi)}; prima fase: {len(prima)} "
+              f"({sum(1 for c in prima if c['riferimento']['giudizio'] == 'sì')} pertinenti).")
+        print(f"Modelli da provare: {len(modelli)}; scartati senza richieste: {len(scartati)}")
+        for m, motivo in scartati:
+            print(f"  - {m}: {motivo}")
+        if args.solo_elenco:
+            print("\n".join(modelli))
+            return
+        ora = f"{dt.datetime.now():%Y%m%d_%H%M}"
+        prove = percorso(cfg, "risultati") / "_prove" / f"prova_rapida_{ora}"
+        prove.mkdir(parents=True, exist_ok=True)
+        (prove / ".senza_archivio").write_text("Prove dei modelli: niente archivio unico.\n", encoding="utf-8")
+        (prove / "scartati.json").write_bytes(json.dumps(scartati, ensure_ascii=False, indent=1).encode("utf-8"))
     cfg_base = Path(args.config) if args.config else CARTELLA / "config.ini"
     blocco = threading.Lock()
 
@@ -887,10 +898,6 @@ def prova_rapida(args, cfg):
         stretto = m["richiamo_stretto"][0] / m["richiamo_stretto"][1] if m["richiamo_stretto"][1] else 0
         return (1, ric, stretto, pre)
 
-    r1 = fase("Prima fase", modelli, prima)
-    migliori = [r["modello"] for r in sorted(r1, key=punteggio, reverse=True) if punteggio(r)[0]][:args.migliori]
-    r2 = fase("Seconda fase", migliori, passaggi) if migliori and len(passaggi) > len(prima) else []
-
     def tabella(risultati):
         righe = ["| modello richiesto | ha risposto | passaggi letti | richiamo (sì o incerto) | richiamo (solo sì) "
                  "| precisione | nota |", "|---|---|---|---|---|---|---|"]
@@ -904,19 +911,42 @@ def prova_rapida(args, cfg):
                 righe.append(f"| {r['modello']} | — | 0/{r['da_leggere']} | — | — | — | {r['errore'][:80]} |")
         return righe
 
-    out = [f"# Prova rapida dei modelli: {args.nome}", "", f"*{dt.datetime.now():%Y-%m-%d %H:%M}*", "",
-           f"Smistamento (pertinente sì/no) dei passaggi verificati a mano, in lotti misti di {args.lotto} passaggi "
-           "di entità diverse, senza archivio né regole. Il formato dei lotti differisce da quello delle ricerche "
-           "(un'entità per lotto): la misura confronta i modelli tra loro.", "",
-           f"Modelli provati: {len(modelli)}; scartati senza richieste: {len(scartati)}.", "",
-           f"## Seconda fase: i {len(migliori)} migliori su {len(passaggi)} passaggi", ""]
-    out += tabella(r2) if r2 else ["*(nessun modello ha letto tutti i passaggi della prima fase)*"]
-    out += ["", f"## Prima fase: {len(prima)} passaggi", ""] + tabella(r1)
-    out += ["", "## Modelli scartati senza richieste", ""] + [f"- {m}: {motivo}" for m, motivo in scartati]
-    out += ["", "«Ha risposto»: il modello che il router ha usato davvero. Un modello che non ha letto tutti i "
-            "passaggi non passa alla seconda fase: i suoi valori riguardano solo i passaggi letti.", ""]
     f = d / f"prova_rapida_{ora}.md"
-    f.write_bytes("\n".join(out).encode("utf-8"))
+
+    def rapporto(r1, r2, migliori, finita):
+        out = [f"# Prova rapida dei modelli: {args.nome}", "", f"*{dt.datetime.now():%Y-%m-%d %H:%M}*", "",
+               f"Smistamento (pertinente sì/no) dei passaggi verificati a mano, in lotti misti di {args.lotto} "
+               "passaggi di entità diverse, senza archivio né regole. Il formato dei lotti differisce da quello delle "
+               "ricerche (un'entità per lotto): la misura confronta i modelli tra loro.", "",
+               f"Modelli provati: {len(r1)}; scartati senza richieste: {len(scartati)}.", "",
+               f"## Seconda fase: i {len(migliori)} migliori su {len(passaggi)} passaggi", ""]
+        if r2:
+            out += tabella(r2)
+        elif not finita:
+            out += [f"*(non ancora fatta: python valutazione.py modelli {args.nome} --riprendi {prove.name})*"]
+        else:
+            out += ["*(nessun modello ha letto tutti i passaggi della prima fase)*"]
+        out += ["", f"## Prima fase: {len(prima)} passaggi", ""] + tabella(r1)
+        out += ["", "## Modelli scartati senza richieste", ""] + [f"- {m}: {motivo}" for m, motivo in scartati]
+        out += ["", "«Ha risposto»: il modello che il router ha usato davvero. Un modello che non ha letto tutti i "
+                "passaggi non passa alla seconda fase: i suoi valori riguardano solo i passaggi letti.", ""]
+        f.write_bytes("\n".join(out).encode("utf-8"))
+        return out
+
+    if args.riprendi:
+        r1 = [json.loads(x) for x in (prove / "prima.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+        if (prove / "scartati.json").exists():
+            scartati = json.loads((prove / "scartati.json").read_text(encoding="utf-8"))
+        else:                                   # prove fatte prima che gli scarti si salvassero: si ricalcolano
+            scartati = scegli_modelli(args, cfg)[1]
+        print(f"Prima fase ripresa da {prove.name}: {len(r1)} modelli, "
+              f"{sum(1 for r in r1 if punteggio(r)[0])} con tutti i passaggi letti.")
+    else:
+        r1 = fase("Prima fase", modelli, prima)
+    migliori = [r["modello"] for r in sorted(r1, key=punteggio, reverse=True) if punteggio(r)[0]][:args.migliori]
+    rapporto(r1, [], migliori, finita=False)                 # la prima fase resta anche se la seconda si interrompe
+    r2 = fase("Seconda fase", migliori, passaggi) if migliori and len(passaggi) > len(prima) else []
+    out = rapporto(r1, r2, migliori, finita=True)
     print("\n".join(out[:12 + len(r2)]))
     print(f"\nScritto: {f}")
 
@@ -958,6 +988,8 @@ def main():
     r.add_argument("--paralleli", type=int, default=8, help="modelli provati contemporaneamente")
     r.add_argument("--contesto-min", type=int, default=16000, help="contesto minimo dei modelli (token)")
     r.add_argument("--seme", type=int, default=2026)
+    r.add_argument("--riprendi", default="", help="cartella di una prova rapida (in risultati/_prove): rifà solo la "
+                                                  "seconda fase, partendo dalla prima già fatta")
     for p in (a, b, c, m, r):
         p.add_argument("--config", default=None)
     args = ap.parse_args()
