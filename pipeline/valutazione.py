@@ -183,10 +183,14 @@ def campione(args, cfg):
     rnd.shuffle(scelti)
 
     from citazioni import per_passaggio
+    from estrai_occorrenze import carica_entita
+    schede = carica_entita(percorso(cfg, "entita"))
     d = cartella(cfg, args.nome)
     righe = []
     for i, c in enumerate(scelti, 1):
-        righe.append({"N": i, "ID": c["id"], "ENTITA": c["entita"], "SERIE": c.get("fonte", ""),
+        scheda = schede.get(c["entita"])
+        descrizione = scheda["note"] if scheda else "(nessuna scheda con questo nome in entita.ini)"
+        righe.append({"N": i, "ID": c["id"], "ENTITA": c["entita"], "SCHEDA": descrizione, "SERIE": c.get("fonte", ""),
                       "LINGUA": lingua_di(c, dati), "CITAZIONE": per_passaggio(c, dati)[0],
                       "PASSAGGIO": c.get("passaggio_evidenziato") or c["passaggio"],
                       "GIUDIZIO": "", "NOTE": "", "VERIFICATO_DA": ""})
