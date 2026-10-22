@@ -159,6 +159,10 @@ def config_per_modello(cfg_path, modello, dest):
     for k in ("modello_smistamento", "modello_analisi", "modello_sintesi"):
         cp["router"][k] = modello
     cp["router"]["modelli_ammessi"] = ""
+    # la prova misura il modello: niente decisioni per regola sulle forme inequivocabili del nome
+    if not cp.has_section("estrazione"):
+        cp.add_section("estrazione")
+    cp["estrazione"]["forme_sicure"] = "no"
     # i percorsi relativi di config.ini si riferiscono alla cartella pipeline: li rendo assoluti
     from llm import leggi_config, percorso
     base = leggi_config(cfg_path)
