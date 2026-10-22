@@ -38,6 +38,8 @@ EQUIVALENZE = {
 }
 
 INIZIO_EVID, FINE_EVID = "⟦", "⟧"
+TRATTINI = r"[\-\u00ad\u2010\u2011¬]"          # trattino, trattino morbido (U+00AD), lineette, ¬
+SEP_PAROLE = r"[\s\-\u00ad\u2010\u2011¬]"
 
 
 def leggi_intestazione(testo):
@@ -107,8 +109,9 @@ def pattern_variante(variante):
         # tollera spazi e a capo inseriti dall'OCR tra un carattere e l'altro
         return r"\s*".join(pezzi)
     parti = [p for p in re.split(r"[\s\-]+", variante) if p]
-    # tollera la sillabazione a fine riga dentro la parola (Federa-\ntion)
-    corpo = r"[\s\-]*".join(r"(?:-\s*)?".join(re.escape(c) for c in p) for p in parti)
+    # tollera la sillabazione a fine riga dentro la parola (Federa-\ntion), anche con il trattino morbido
+    # (U+00AD), le lineette U+2010/U+2011 e il segno ¬ di alcuni OCR
+    corpo = (SEP_PAROLE + "*").join((r"(?:" + TRATTINI + r"\s*)?").join(re.escape(c) for c in p) for p in parti)
     if len("".join(parti)) < MIN_SENZA_CONFINE:
         return r"(?<![A-Za-zÀ-ÿ])" + corpo + r"(?![A-Za-zÀ-ÿ])"
     # niente confine di parola: l'OCR incolla spesso le parole ("byJacques", "Partyand")
