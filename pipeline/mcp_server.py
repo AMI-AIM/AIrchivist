@@ -59,9 +59,9 @@ Procedura:
    un passaggio o a verificare un punto quando l'utente lo chiede.
 
 Regole:
-- Ogni affermazione viene da un passaggio degli strumenti, citato con il "riferimento" così com'è (es.
-  "Renmin Ribao, 20 aprile 1963, p. 4"): la citazione si ferma alla pagina, e la pagina si indica solo se il
-  riferimento la contiene. Non indicare mai file né righe nella risposta ("file_e_riga" serve solo per
+- Ogni affermazione viene da un passaggio degli strumenti, citato con il "riferimento" così com'è, in stile
+  Chicago (es. "*Renmin ribao* 人民日报, 20 aprile 1963, 4", "*Peking Review* 10, no. 11 (10 marzo 1967)"):
+  la citazione si ferma alla pagina, e la pagina si indica solo se il riferimento la contiene. Non indicare mai file né righe nella risposta ("file_e_riga" serve solo per
   apri_fonte). Mai rimandi tipo [12].
 - Per i fatti principali: testo originale invariato, poi «Traduzione:» (senza dire chi l'ha fatta).
 - Nessun fatto né cifra che non venga dagli strumenti, anche se lo conosci (semmai a parte, come ipotesi da
@@ -501,7 +501,8 @@ def t_leggi_risposta(file="", sezioni=None, dal=None, al=None, da=0, testo_filtr
         extra["continua_da"] = fine
     return {**extra, "file": f.name, "percorso": str(f), "testo": testo[da:fine],
             "troncato": tronca, "sezioni_mostrate": sezioni,
-            "nota": ("Altre sezioni su richiesta: 1 Documenti, 2 Passaggi originali, 5 Limiti, 6 Copertura. "
+            "nota": ("Altre sezioni su richiesta: 1 Documenti, 2 Passaggi originali, 5 Limiti, 6 Copertura, "
+                     "8 Dati tecnici (file e righe, solo per apri_fonte). "
                      + (f"Testo NON finito: richiama con da={fine}, oppure chiedi la sezione 2 un periodo alla "
                         "volta con dal/al. Non trarre conclusioni sugli anni che non hai letto." if tronca else ""))}
 
@@ -677,6 +678,10 @@ def t_correggi_passaggio(id, entita, pertinente=None, traduzione=None, nota=""):
     a["corretto_a_mano"] = True
     a["classificato_da"] = "correzione manuale"
     a["corretto_il"] = dt.date.today().isoformat()
+    from archivio import livello, provenienza
+    prima = provenienza(v["analisi"])
+    a["provenienza"] = {"decisione": livello("sessione", "correzione dalla chat"),
+                        "lettura": livello("sessione", "correzione dalla chat") if traduzione else prima.get("lettura")}
     arch.aggiungi(p, a, origine="correzione manuale")
     return {"corretto": True, "nota": "La correzione vale per tutte le ricerche successive che ritrovano il passaggio."}
 
@@ -685,7 +690,7 @@ _S, _I, _B = {"type": "string"}, {"type": "integer"}, {"type": "boolean"}
 _L = {"type": "array", "items": _S}
 _F = {"type": "array", "items": {"type": "string", "enum": FONTI_SCELTE}}
 _SEZ = {"type": "array", "items": _I, "description": "1 Documenti 2 Passaggi 3 Dati 4 Inferenze 5 Limiti "
-                                                     "6 Copertura 7 Risposta finale"}
+                                                     "6 Copertura 7 Risposta finale 8 Dati tecnici"}
 
 STRUMENTI = {
     "elenca_entita": (t_elenca_entita, "Nome esatto della scheda di una persona, partito o testata.",

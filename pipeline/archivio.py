@@ -12,7 +12,9 @@ che contengono il file ".senza_archivio" (lo crea valuta.py prepara), così le p
 
 Uso da riga di comando:
   python archivio.py importa      (aggiunge all'archivio le letture già presenti nelle cartelle dei risultati)
-  python archivio.py stato        (quante letture per entità)
+  python archivio.py stato        (quante letture per entità e per livello di provenienza)
+  python archivio.py provenienza [--prova]
+                                  (registra la provenienza nelle letture che non l'hanno; --prova: solo conteggi)
 """
 import datetime as dt
 import hashlib
@@ -166,6 +168,153 @@ def etichetta_lettore(nome):
     return nome
 
 
+# ---------------------------------------------------------------- provenienza delle letture
+# Ogni lettura dichiara, separatamente per la decisione sulla pertinenza e per la lettura vera e propria
+# (citazione, traduzione, sintesi), uno di tre livelli:
+#   modello   letto da un modello (campo "da": quale)
+#   sessione  lettura assistita in una sessione di lavoro (in chat), non verificata a mano
+#   regola    deciso per regola, senza leggere il passaggio (campo "da": quale regola)
+# analisi["provenienza"] = {"decisione": {"livello": ..., "da": ...}, "lettura": {...} oppure None}
+# "lettura" è None quando il passaggio non è stato tradotto né analizzato.
+LIVELLI = {"modello": "letto da un modello", "sessione": "lettura assistita in sessione",
+           "regola": "deciso per regola"}
+
+
+def livello(liv, da=""):
+    return {"livello": liv, "da": da}
+
+
+def provenienza(a):
+    """Provenienza di una lettura: quella registrata, altrimenti dedotta dai campi delle letture precedenti
+    (classificato_da, modello_smistamento, modello_analisi, tipo_menzione)."""
+    a = a or {}
+    if a.get("provenienza"):
+        return a["provenienza"]
+    manuale = a.get("classificato_da") in ("lettura manuale", "correzione manuale") or \
+        not (a.get("modello_smistamento") or a.get("modello_analisi"))
+    mod_s = a.get("modello_smistamento") or ""
+    if a.get("corretto_a_mano"):
+        dec = livello("sessione", "correzione dalla chat")
+    elif "per regola" in (a.get("tipo_menzione") or ""):
+        dec = livello("regola", "classificazione per regola in una sessione assistita")
+    elif manuale:
+        dec = livello("sessione")
+    elif mod_s.startswith("regola"):
+        dec = livello("regola", mod_s[mod_s.find("(") + 1:].rstrip(")") if "(" in mod_s else mod_s)
+    elif mod_s == "lettura precedente":
+        dec = livello("sessione", "lettura precedente")
+    else:
+        dec = livello("modello", mod_s)
+    mod_a = a.get("modello_analisi") or ""
+    if a.get("sommario") or mod_a.startswith("nessuno (voce di sommario"):
+        let = livello("regola", "voce di sommario o di elenco, non tradotta")
+    elif not (a.get("traduzione_it") or "").strip():
+        let = None
+    elif mod_a and not mod_a.startswith("nessuno"):
+        let = livello("modello", mod_a)
+    else:
+        let = livello("sessione")
+    return {"decisione": dec, "lettura": let}
+
+
+def descrivi_provenienza(prov):
+    """Frase per le risposte: «pertinenza decisa per regola (forma inequivocabile); traduzione del modello X»."""
+    def parte(p, cosa):
+        if not p:
+            return ""
+        liv, da = p.get("livello"), p.get("da") or ""
+        if liv == "modello":
+            prep = "dal" if cosa.startswith("pertinenza") else "del"
+            return f"{cosa} {prep} modello {da}" if da else f"{cosa} {prep[:2]} un modello"
+        if liv == "regola":
+            return f"{cosa} per regola" + (f" ({da})" if da else "")
+        return f"{cosa} in una sessione assistita" + (f" ({da})" if da else "") + ", non verificata a mano"
+    d_, l_ = prov.get("decisione") or {}, prov.get("lettura") or {}
+    if d_.get("livello") == l_.get("livello") == "sessione" and d_.get("da") == l_.get("da"):
+        return "pertinenza e traduzione in una sessione assistita" + (f" ({d_['da']})" if d_.get("da") else "") +             ", non verificate a mano"
+    if d_.get("livello") == l_.get("livello") == "modello" and d_.get("da") == l_.get("da") and d_.get("da"):
+        return f"pertinenza e traduzione del modello {d_['da']}"
+    dec = parte(prov.get("decisione"), "pertinenza decisa")
+    let = parte(prov.get("lettura"), "traduzione")
+    if not prov.get("lettura"):
+        let = "passaggio non tradotto"
+    return "; ".join(x for x in (dec, let) if x)
+
+
+def conta_provenienza(voci):
+    """Conteggi per livello di decisione e di lettura: {'decisione': Counter, 'lettura': Counter}."""
+    dec, let = Counter(), Counter()
+    for c in voci:
+        a = c.get("analisi") or {}
+        if a.get("assorbito_da"):
+            continue
+        p = provenienza(a)
+        d = p["decisione"]
+        dec[(d["livello"], d.get("da") or "")] += 1
+        l_ = p.get("lettura")
+        let[(l_["livello"], l_.get("da") or "") if l_ else ("non tradotto", "")] += 1
+    return {"decisione": dec, "lettura": let}
+
+
+def migra_provenienza(risultati, soglia_blocco=5, prova=False):
+    """Scrive analisi["provenienza"] nelle letture che non l'hanno (archivio e cartelle dei risultati).
+    In più rispetto a provenienza(): le esclusioni in sessione con la stessa motivazione ripetuta in almeno
+    'soglia_blocco' passaggi della stessa entità valgono come esclusioni per regola (in blocco); le decisioni
+    riprese da una «lettura precedente» ereditano il livello di quella lettura, se è nell'archivio."""
+    ris = Path(risultati)
+    f_arch = ris / NOME / "letture.jsonl"
+    righe = [json.loads(r) for r in f_arch.read_text(encoding="utf-8").splitlines() if r.strip()]
+    ripetute = Counter((v["entita"], (v["analisi"].get("motivazione") or "").strip()) for v in righe
+                       if v["analisi"].get("pertinente") == "no" and v["analisi"].get("classificato_da") == "lettura manuale")
+    precedenti = {}
+
+    def calcola(chiave, a):
+        if a.get("provenienza"):
+            return a["provenienza"]
+        p = provenienza(a)
+        mot = (a.get("motivazione") or "").strip()
+        if (a.get("pertinente") == "no" and a.get("classificato_da") == "lettura manuale"
+                and ripetute[(chiave[1], mot)] >= soglia_blocco):
+            p["decisione"] = livello("regola", "esclusione in blocco in una sessione assistita")
+        if p["decisione"].get("da") == "lettura precedente" and chiave in precedenti:
+            p["decisione"] = dict(precedenti[chiave], da=(precedenti[chiave].get("da") or "") + " (lettura precedente)")
+        return p
+
+    conta = Counter()
+    for v in righe:                                   # in ordine: una lettura precedente viene prima
+        k = (v["id"], v["entita"])
+        if not v["analisi"].get("provenienza"):
+            v["analisi"]["provenienza"] = calcola(k, v["analisi"])
+            conta["archivio"] += 1
+        precedenti[k] = v["analisi"]["provenienza"]["decisione"]
+    finali = {(v["id"], v["entita"]): v["analisi"]["provenienza"] for v in righe}
+    if not prova:
+        _riscrivi(f_arch, righe)
+    for f in file_risultati(ris, "classificati.jsonl"):
+        recs = [json.loads(r) for r in f.read_text(encoding="utf-8").splitlines() if r.strip()]
+        cambiati = 0
+        for r in recs:
+            a = r.get("analisi") or {}
+            if a.get("provenienza") or a.get("assorbito_da"):
+                continue
+            k = (r["id"], r["entita"])
+            a["provenienza"] = finali.get(k) or calcola(k, a)
+            cambiati += 1
+        if cambiati:
+            conta[str(f.parent.relative_to(ris))] += cambiati
+            if not prova:
+                _riscrivi(f, recs)
+    return conta
+
+
+def _riscrivi(f, voci):
+    tmp = f.with_suffix(f.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as out:
+        for v in voci:
+            out.write(json.dumps(v, ensure_ascii=False) + "\n")
+    tmp.replace(f)
+
+
 def apri(cfg):
     from llm import percorso
     return Archivio(percorso(cfg, "risultati"))
@@ -183,11 +332,22 @@ def main():
         for k, n in agg.most_common():
             print(f"  {k}: {n} letture aggiunte")
         print(f"Archivio: {len(arch)} letture ({arch.file})")
+    elif azione == "provenienza":
+        prova = "--prova" in sys.argv
+        conta = migra_provenienza(ris, prova=prova)
+        print(("Da aggiornare" if prova else "Aggiornate") + f": {sum(conta.values())} letture")
+        for k, n in conta.most_common():
+            print(f"  {k}: {n}")
     else:
         conta = Counter(e for (_, e) in arch.per_id)
         print(f"Archivio: {len(arch)} letture ({arch.file})")
         for e, n in conta.most_common():
             print(f"  {e}: {n}")
+        prov = conta_provenienza([{"analisi": v["analisi"]} for v in arch.per_id.values()])
+        for parte, titolo in (("decisione", "Decisione sulla pertinenza"), ("lettura", "Traduzione e analisi")):
+            print(f"{titolo}:")
+            for (liv, da), n in prov[parte].most_common():
+                print(f"  {LIVELLI.get(liv, liv)}{' (' + da + ')' if da else ''}: {n}")
 
 
 if __name__ == "__main__":

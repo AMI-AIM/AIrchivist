@@ -445,7 +445,16 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
     if not v.get("anno") and data[:4].isdigit():
         v["anno"] = data[:4]
     v["data"] = data_it(data) if data else ("" if scheda.get("tipo") == "volume" else "s.d.")
-    v["citazione"] = componi(scheda.get("citazione") or "{serie}, {data}", v)
+    # FULL_CITATION in stile Chicago, se la serie ha il modello "chicago" (senza pagina: vale per il file)
+    if scheda.get("chicago"):
+        from citazioni import valori_da_intestazione, componi as componi_chicago
+        meta = {"SERIES": serie, "TITLE": v.get("titolo", ""), "AUTHOR": v.get("autore", ""),
+                "VOLUME": v.get("volume", ""), "ISSUE": v.get("numero", ""), "YEAR": v.get("anno", ""),
+                "DATE": data if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) else "",
+                "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", "")}
+        v["citazione"] = componi_chicago(scheda["chicago"], dict(valori_da_intestazione(meta, scheda), pagina=""))
+    else:
+        v["citazione"] = componi(scheda.get("citazione") or "{serie}, {data}", v)
     return v
 
 
@@ -650,6 +659,8 @@ def cmd_prepara(args, stampa=print):
         stampa("Tesseract manca: winget install -e --id UB-Mannheim.TesseractOCR (poi riapri il Prompt dei comandi)")
     lingue = set()
     for s in leggi_serie().sections():
+        if leggi_serie()[s].get("ocr", "").strip().lower() == "no":      # serie già nel corpus, senza OCR
+            continue
         lingue.update(lingue_ocr(dict(leggi_serie()[s])).split("+"))
     lingue.update((args.lingue or "").split("+"))
     lingue.discard("")

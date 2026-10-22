@@ -25,7 +25,7 @@ from cronologia import PERIODICI, calcola, data_piena, fatti, tabella
 from estrai_occorrenze import carica_entita
 from glossario import blocco, carica_glossario
 from sintesi import (SISTEMA, avviso_non_letti, avviso_sintesi, elenco_modelli, filtra_rif, raggruppa,
-                     sez_copertura, sez_documenti, sez_limiti, sez_passaggi)
+                     sez_copertura, sez_documenti, sez_limiti, sez_passaggi, sez_tecnica)
 
 SCHEMA_ANNO = {
     "type": "object",
@@ -195,7 +195,7 @@ def main():
     cr = calcola(pertinenti, args.principale, args.soglia_mesi, percorso(cfg, "problemi"), args.collegate_fino_a,
                  fino_a=args.al)
     cr_fatti = fatti(cr)
-    m_analisi = elenco_modelli(pertinenti, "modello_analisi") or "modello"
+    m_analisi = elenco_modelli(pertinenti, "modello_analisi") or "nessuno"
 
     dati_anno, fasi, inferenze, problemi_mod, finale, scartati, m_sintesi = {}, [], [], [], "", 0, ""
     errore_sintesi = ""
@@ -260,6 +260,7 @@ def main():
     modelli = ", ".join(x for x in (f"analisi {m_analisi}", f"sintesi {m_sintesi}" if m_sintesi else "") if x)
     out += sez_copertura(scheda_tutte, cart, classificati, modelli)
     out += ["## 7. Risposta finale", "", finale or ("*(non generata: vedi l'avviso in testa)*" if errore_sintesi else "*(non generata)*"), ""]
+    out += sez_tecnica(docs, incerti)
     (cart / "risposta.md").write_text("\n".join(out), encoding="utf-8")
     print(f"Risposta: {(cart / 'risposta.md').resolve()}")
 

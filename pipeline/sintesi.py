@@ -3,8 +3,11 @@
 FASE 3 - Risposta finale nel formato:
  1. Documenti rilevanti  2. Passaggi rilevanti  3. Dati espliciti  4. Inferenze
  5. Limiti e problemi interpretativi  6. Grado di copertura  7. Risposta finale
+ 8. Dati tecnici per la verifica (file e righe; non fanno parte delle citazioni)
 
-Le sezioni 1, 2, 5, 6 sono costruite da Python con i dati verificati (nessun modello).
+Le sezioni 1, 2, 5, 6, 8 sono costruite da Python con i dati verificati (nessun modello). Le citazioni sono in
+stile Chicago standard (citazioni.py, profili in serie.ini) e si fermano alla pagina, quando c'è; ogni passaggio
+dichiara la provenienza della lettura (modello, sessione assistita, regola: archivio.py).
 Le sezioni 3, 4, 7 sono scritte dal modello leggendo SOLO i passaggi pertinenti; ogni affermazione deve
 rimandare a un documento [n]: quelle senza rimando valido vengono scartate.
 
@@ -72,16 +75,12 @@ def data_it(iso):
         return iso
 
 
-def riferimento(c):
-    a = c["analisi"]
-    cit = c.get("citazione") or c["fonte"]
-    if c["fonte"] == "Renmin Ribao" and len(c.get("data", "")) == 10:
-        cit = f"Renmin Ribao, {data_it(c['data'])}"
-    elif c["fonte"] == "Peking Review" and c.get("data_affidabile") and len(c.get("data", "")) == 10:
-        cit = f"{cit}, {data_it(c['data'])}"
-    if a.get("pagina"):
-        cit += f", p. {a['pagina']}"
-    return cit
+def riferimento(c, con_pagina=True):
+    """Citazione in stile Chicago del passaggio (con la pagina, se nota) o del suo documento (con_pagina=False)."""
+    from citazioni import per_passaggio
+    if con_pagina:
+        return per_passaggio(c, DATI)[0]
+    return per_passaggio(dict(c, offset=0, analisi={}), DATI)[0]
 
 
 def raggruppa(pertinenti):
@@ -90,7 +89,7 @@ def raggruppa(pertinenti):
     for c in pertinenti:
         per_file[c["file"]].append(c)
     docs = sorted(per_file.values(), key=lambda v: (v[0]["data"], v[0]["file"]))
-    return [{"n": i, "voci": sorted(v, key=lambda c: c["riga"]), "rif": riferimento(v[0])}
+    return [{"n": i, "voci": sorted(v, key=lambda c: c["riga"]), "rif": riferimento(v[0], con_pagina=False)}
             for i, v in enumerate(docs, 1)]
 
 
@@ -98,21 +97,48 @@ def raggruppa(pertinenti):
 def sez_documenti(docs):
     righe = ["## 1. Documenti rilevanti", ""]
     for d in docs:
-        v = d["voci"][0]
         tipi = ", ".join(sorted({c["analisi"].get("tipo_menzione", "") for c in d["voci"]} - {""}))
-        righe.append(f"[{d['n']}] {d['rif']} (`{v['file']}`, riga {v['riga']}){' — ' + tipi if tipi else ''}")
+        righe.append(f"[{d['n']}] {d['rif']}{' — ' + tipi if tipi else ''}")
+    return righe + [""]
+
+
+def sez_tecnica(docs, incerti=()):
+    """File e righe dei passaggi, per ritrovarli nelle fonti: non fanno parte delle citazioni."""
+    from archivio import riga_citazione
+    righe = ["## 8. Dati tecnici per la verifica", "",
+             "File del corpus e righe dei passaggi citati, per controllarli nelle fonti. Non vanno riportati "
+             "nelle citazioni.", ""]
+    for d in docs:
+        posti = []
+        for c in d["voci"]:
+            a = c["analisi"]
+            if a.get("assorbito_da"):
+                continue
+            r = riga_citazione(DATI, c["file"], c["riga"], a.get("citazione_testuale", "")) \
+                if a.get("citazione_verificata") else c["riga"]
+            posti.append(str(r))
+        posti = list(dict.fromkeys(posti))
+        righe.append(f"- [{d['n']}] `{d['voci'][0]['file']}`, {'righe' if len(posti) > 1 else 'riga'} {', '.join(posti)}")
+    if incerti:
+        righe += ["", "Passaggi incerti:"] + [f"- {riferimento(c)}: `{c['file']}`, riga {c['riga']}" for c in incerti]
     return righe + [""]
 
 
 def elenco_modelli(voci, campo):
-    """'modello A (n passaggi); modello B (m passaggi)': con un router i modelli possono essere più d'uno."""
-    conta = Counter(c["analisi"].get(campo) or c["analisi"].get("classificato_da") for c in voci
-                    if not c["analisi"].get("assorbito_da")
-                    and (c["analisi"].get(campo) or c["analisi"].get("classificato_da")))
-    from archivio import etichetta_lettore
+    """'modello A (n passaggi); modello B (m passaggi)': solo i modelli, dalla provenienza delle letture
+    (le letture in sessione e le decisioni per regola sono contate a parte, nella sezione 6)."""
+    from archivio import provenienza
+    parte = "decisione" if campo == "modello_smistamento" else "lettura"
+    conta = Counter()
+    for c in voci:
+        if c["analisi"].get("assorbito_da"):
+            continue
+        p = provenienza(c["analisi"]).get(parte)
+        if p and p.get("livello") == "modello" and p.get("da"):
+            conta[p["da"]] += 1
     if len(conta) == 1:
-        return etichetta_lettore(next(iter(conta)))
-    return "; ".join(f"{etichetta_lettore(m)} ({n} passaggi)" for m, n in conta.most_common())
+        return next(iter(conta))
+    return "; ".join(f"{m} ({n} passaggi)" for m, n in conta.most_common())
 
 
 DATI = None          # cartella delle fonti, impostata in main(): serve a indicare la riga esatta delle citazioni
@@ -128,14 +154,15 @@ def sez_passaggi(docs, modello):
             if a.get("assorbito_da"):
                 continue
             if not a.get("citazione_verificata"):
-                righe += [f"*(passaggio alla riga {c['riga']}: citazione non verificata, omessa)*", ""]
+                righe += ["*(un passaggio con citazione non verificata, omesso: vedi la sezione 8)*", ""]
                 continue
-            from archivio import riga_citazione
-            r_cit = riga_citazione(DATI, c["file"], c["riga"], a["citazione_testuale"])
-            righe += [f"> {a['citazione_testuale']}", "", f"(`{c['file']}`, riga {r_cit})", "",
-                      f"Traduzione: {a.get('traduzione_it', '')}", ""]
+            from archivio import descrivi_provenienza, provenienza
+            righe += [f"> {a['citazione_testuale']}", "", f"— {riferimento(c)}", ""]
+            if (a.get("traduzione_it") or "").strip():
+                righe += [f"Traduzione: {a['traduzione_it']}", ""]
             if a.get("sintesi_it"):
                 righe += [f"Nel passaggio: {a['sintesi_it']}", ""]
+            righe += [f"*Lettura: {descrivi_provenienza(provenienza(a))}.*", ""]
     return righe
 
 
@@ -213,7 +240,8 @@ def note_limiti_serie():
         cp.read(Path(__file__).resolve().parent / "serie.ini", encoding="utf-8")
     except configparser.Error:
         return {}
-    return {s: cp.get(s, "nota_limiti", fallback="").strip() for s in cp.sections()}
+    return {s: [x.strip() for x in cp.get(s, "nota_limiti", fallback="").split(" | ") if x.strip()]
+            for s in cp.sections()}
 
 
 def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None):
@@ -222,18 +250,16 @@ def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None):
         righe.append(f"- *Problema interpretativo:* {p['testo']} {''.join(f'[{r}]' for r in p['rif'])}")
     if incerti:
         righe.append(f"- {len(incerti)} passaggi classificati come **incerti**, da controllare a mano: "
-                     + "; ".join(f"{riferimento(c)} (`{c['file']}` r. {c['riga']})" for c in incerti[:30]))
+                     + "; ".join(riferimento(c) for c in incerti[:30]) + " (file e righe nella sezione 8)")
     fonti = {d["voci"][0]["fonte"] for d in docs}
-    if any("Red Flag" in f for f in fonti):
-        righe.append("- I documenti di Hongqi 1977-1988 sono traduzioni inglesi del Joint Publications "
-                     "Research Service (JPRS), non l'originale cinese.")
     if any(("资料" in f or "文件" in f) for f in fonti):
         righe.append("- Per le raccolte di documenti l'anno indicato è quello della raccolta, non dei documenti.")
     note_serie = note_limiti_serie()
     note = []
     for f in sorted(fonti):
-        if note_serie.get(f) and note_serie[f] not in note:
-            note.append(note_serie[f])
+        for frase in note_serie.get(f, []):
+            if frase not in note:
+                note.append(frase)
     if any(f not in note_serie for f in fonti):          # fonti cinesi (quelle non importate con importa.py)
         note.insert(0, "La stampa cinese registra ciò che Pechino sceglieva di pubblicare: l'assenza in queste "
                        "fonti non prova l'assenza dei fatti.")
@@ -264,7 +290,26 @@ def sez_copertura(scheda, cart, classificati, modelli):
     righe.append(f"- Passaggi esaminati: {len(classificati)} — pertinenti {n['sì']}, incerti {n['incerto']}, "
                  f"esclusi {n['no']}")
     righe.append(f"- Modelli: {modelli}")
+    righe += righe_provenienza(classificati)
     return righe + [""]
+
+
+def righe_provenienza(classificati):
+    """Quanti passaggi sono stati decisi e letti da un modello, in sessione o per regola."""
+    from archivio import LIVELLI, conta_provenienza
+
+    def elenco(cnt):
+        return "; ".join(f"{LIVELLI.get(l_, l_)}{' (' + d + ')' if d else ''} {n}" for (l_, d), n in cnt.most_common())
+    righe = []
+    for etichetta, gruppo in (("pertinenti", [c for c in classificati if c["analisi"]["pertinente"] == "sì"]),
+                              ("esclusi", [c for c in classificati if c["analisi"]["pertinente"] == "no"])):
+        if not gruppo:
+            continue
+        conta = conta_provenienza(gruppo)
+        righe.append(f"- Provenienza della decisione, passaggi {etichetta}: {elenco(conta['decisione'])}")
+        if etichetta == "pertinenti":
+            righe.append(f"- Provenienza della traduzione, passaggi pertinenti: {elenco(conta['lettura'])}")
+    return righe
 
 
 # ---------------------------------------------------------------- sezioni scritte dal modello
@@ -401,16 +446,16 @@ def main():
     nome = classificati[0]["entita"]
     scheda = schede.get(nome, {"varianti": [nome], "note": ""})
 
-    pertinenti = [c for c in classificati if c["analisi"]["pertinente"] == "sì"]
-    incerti = [c for c in classificati if c["analisi"]["pertinente"] == "incerto"]
-    docs = raggruppa(pertinenti)
-    m_analisi = elenco_modelli(pertinenti, "modello_analisi") or "modello"
-    m_smista = elenco_modelli(classificati, "modello_smistamento")
-
     from llm import leggi_config, percorso
     cfg = leggi_config(args.config)
     global DATI
     DATI = percorso(cfg, "dati")
+
+    pertinenti = [c for c in classificati if c["analisi"]["pertinente"] == "sì"]
+    incerti = [c for c in classificati if c["analisi"]["pertinente"] == "incerto"]
+    docs = raggruppa(pertinenti)
+    m_analisi = elenco_modelli(pertinenti, "modello_analisi") or "nessuno"
+    m_smista = elenco_modelli(classificati, "modello_smistamento")
     dati, inferenze, problemi_mod, finale, scartati, m_sintesi = [], [], [], "", 0, ""
     errore_sintesi = ""
     if not args.senza_modello and docs:
@@ -454,6 +499,7 @@ def main():
                                      f"analisi {m_analisi}", f"sintesi {m_sintesi}" if m_sintesi else "") if x)
     out += sez_copertura(scheda, cart, classificati, modelli)
     out += ["## 7. Risposta finale", "", finale or ("*(non generata: vedi l'avviso in testa)*" if errore_sintesi else "*(non generata)*"), ""]
+    out += sez_tecnica(docs, incerti)
     (cart / "risposta.md").write_text("\n".join(out), encoding="utf-8")
     print(f"Risposta: {(cart / 'risposta.md').resolve()}")
 

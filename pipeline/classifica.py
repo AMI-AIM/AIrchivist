@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from estrai_occorrenze import carica_entita, is_cjk
 from glossario import blocco, carica_glossario
 from llm import ErroreModello, ModelloNonAmmesso
-from archivio import apri, escluso
+from archivio import apri, escluso, provenienza
 
 TIPI = ["delegazione/visita", "citazione o sintesi di un articolo", "messaggio/telegramma",
         "notizia", "elenco", "altro"]
@@ -321,6 +321,7 @@ def analizza(rec, scheda, esito, llm_a, n=0, glossario=None):
             "modello_analisi": llm_a.ultimo_modello,
         })
     a["citazione_verificata"] = verifica(rec, a) if pert != "no" else False
+    a["provenienza"] = provenienza(a)
     a["secondi"] = round(time.time() - t0, 1)
     return a
 
@@ -501,6 +502,7 @@ def main():
                 print(f"Correzioni manuali applicate: {corrette}")
         # letture incomplete (pertinenti mai tradotti, incerti solo per regola): tornano al modello
         gia_pertinenti = {}
+        decisione_prec = {}      # provenienza della decisione ripresa da una lettura precedente
         if not args.solo_smistamento:
             correnti = {p["id"]: p for p in passaggi if p["entita"] in schede and not p.get("assorbito_da")}
             for pid, rec in list(fatti.items()):
@@ -508,6 +510,7 @@ def main():
                 if k and pid in correnti:
                     if k == "analisi":
                         gia_pertinenti[pid] = rec["analisi"].get("motivazione") or "pertinente (lettura precedente)"
+                        decisione_prec[pid] = provenienza(rec["analisi"])["decisione"]
                     da_fare.append(correnti[pid])    # la lettura vecchia resta finché non c'è la nuova
         if arch is not None and not args.senza_archivio:
             resto = []
@@ -517,6 +520,7 @@ def main():
                     k = None if args.solo_smistamento else da_completare(a)
                     if k == "analisi":
                         gia_pertinenti[p["id"]] = a.get("motivazione") or "pertinente (lettura precedente)"
+                        decisione_prec[p["id"]] = provenienza(a)["decisione"]
                     if a is None or k:
                         resto.append(p)
                         continue
@@ -627,6 +631,8 @@ def main():
                             break
                         continue
                     errori_di_fila = 0
+                    if q["id"] in decisione_prec:
+                        a["provenienza"]["decisione"] = decisione_prec[q["id"]]
                     rec = dict(q, analisi=a)
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                     f.flush()

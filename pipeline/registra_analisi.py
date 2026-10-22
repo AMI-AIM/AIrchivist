@@ -14,6 +14,7 @@ Produce: classificati.jsonl, classificati.csv, rapporto.md. Stampa le citazioni 
 import json, re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from archivio import livello
 from classifica import verifica, carica_jsonl, scrivi_csv, scrivi_rapporto
 
 def main():
@@ -36,6 +37,14 @@ def main():
             a = dict(pertinente="no", tipo_menzione="altro", citazione_testuale="", traduzione_it="",
                      sintesi_it="", nuove_varianti=[], motivazione="Non pertinente (uso generico, omonimo o altro).")
         a["classificato_da"] = "lettura manuale"
+        if p["id"] in A:
+            per_regola = "per regola" in (a["tipo_menzione"] or "")
+            a["provenienza"] = {"decisione": livello("regola", "classificazione per regola in una sessione assistita")
+                                if per_regola else livello("sessione"),
+                                "lettura": livello("sessione") if (a["traduzione_it"] or "").strip() else None}
+        else:
+            a["provenienza"] = {"decisione": livello("regola", "non elencato nella lettura in sessione: escluso"),
+                                "lettura": None}
         a["citazione_verificata"] = verifica(p, a) if a["pertinente"] in ("sì", "incerto") else False
         if a["pertinente"] in ("sì", "incerto") and not a["citazione_verificata"]:
             non_verificate.append((p["id"], p.get("citazione") or p["file"], a["citazione_testuale"][:60]))
