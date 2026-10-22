@@ -59,6 +59,17 @@ elenca_entita, esplora_nome, crea_scheda, cerca_testo, avvia_ricerca, attendi_ri
 
 Profilo «ricerca» attivo, strategia custom (affidabilità 0,3, velocità 0,2, intelligenza 0,5). Catena «ricerca» 26 modelli, «chat» 17. Provati con la prova rapida (21 passaggi Nuova Unità, 21/10): Nemotron Ultra (NVIDIA) 21/21, GPT-OSS 120B (Ollama) 21/21, Gemma 4 31B (Ollama) 21/21, Nemotron 3 Super (Ollama) 15/15, Muse Glimmer 30B (NVIDIA) 15/15, Ministral 14B (Mistral) 20/21; scartato Nemotron 3.5 Lightning (0/15). Regola: stesso modello su un nuovo fornitore non va riprovato; modello nuovo -> prova rapida; `valuta.py` completo solo nei casi dubbi. Risultati in `risultati\_prove\prova_rapida_2026-10-21.md`. `config.ini`: max_token 4000 (sintesi 8000).
 
+Prova rapida del 22/10 (`valutazione.py modelli`) sui 97 passaggi verificati a mano. La prima fase ha provato 50 modelli su 30 passaggi; 13 li hanno letti tutti, gli altri sono stati fermati da quote o errori del servizio. Seconda fase sui 97 passaggi (pertinenti riconosciuti; «sì» giusti):
+
+| Modello | Pertinenti riconosciuti | «Sì» giusti |
+|---|---|---|
+| gpt-oss-20b | 66/70 | 65/69 |
+| gemma-4-31b | 65/70 | 65/66 |
+| gpt-oss-120b | 65/70 | 61/65 |
+| nemotron-3-super | 64/70 | 61/68 |
+
+`modelli_ammessi` contiene ora gpt-oss-20b, gemma-4-31b e gpt-oss-120b, sia nella forma con i due punti sia in quella con il trattino. La catena «ricerca» di FreeLLMAPI contiene però anche altri modelli: se risponde uno di questi, la lettura si ferma. La catena va quindi ridotta ai tre modelli ammessi. Il filtro vale anche per la sintesi, i cui modelli non sono ancora stati misurati.
+
 ### Importazione di nuove fonti
 
 `pipeline\importa.py` + `pipeline\serie.ini` (schede delle serie: Zëri i Popullit, Rruga e Partisë). Testo del PDF se c'è, altrimenti OCR con Tesseract (TSV con confidenza); intestazione standard; registro in `importazioni\registro.csv`; cache delle pagine per riprendere; aggiornamento dell'indice. Comandi: prepara, serie, importa (--prova N, --data, --metadati csv, --unisci, --sovrascrivi), controlla.
