@@ -179,7 +179,7 @@ class IdPassaggio(unittest.TestCase):
         info = {"x": {"varianti": ["Franz Strobl"], "contesto": []}}
         E.compila(info)
         testo = "intro Franz Strobl middle text more words here and Franz Strobl tail"
-        return E.passaggi_del_testo(testo, 0, "a.txt", "x", info["x"], finestra)
+        return [p for p, g in E.passaggi_del_testo(testo, 0, "a.txt", "x", info["x"], finestra)]
 
     def test_stesso_id_con_finestre_diverse(self):
         stretti = self._gruppi(5)      # due passaggi distinti
