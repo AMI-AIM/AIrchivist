@@ -175,8 +175,8 @@ class StatiDeiCampi(unittest.TestCase):
             vecchio = d / "dati" / "PR1967-11.txt"
             vecchio.parent.mkdir()
             vecchio.write_text("[SERIES: Peking Review]\n[DATE: 1967-03-10]\n"
-                               "[DATE_STATUS: dal nome del file]\n[FULL_CITATION: Peking Review]\n\n" + "x " * 200,
-                               encoding="utf-8")
+                               "[DATE_STATUS: dal nome del file]\n[FULL_CITATION: Peking Review]\n\n"
+                               "testo con [DATE_STATUS: finto] nel corpo\n" + "x " * 200, encoding="utf-8")
             nuovo = d / "dati" / "RR1966-07-15.txt"
             nuovo.write_text("[SERIES: Renmin Ribao]\n[DATE: 1966-07-15]\n[DATE_STATUS: dedotto]\n"
                              "[DATE_NOTE: dal nome del file]\n[FULL_CITATION: Renmin Ribao]\n\n" + "y " * 200,
@@ -191,6 +191,8 @@ class StatiDeiCampi(unittest.TestCase):
             self.assertEqual(meta["DATE_NOTE"], "dal nome del file")
             self.assertEqual(E.leggi_intestazione(nuovo.read_text(encoding="utf-8"))[0].get("DATE_NOTE"),
                              "dal nome del file")       # il file già conforme resta invariato
+            self.assertIn("[DATE_STATUS: finto] nel corpo", vecchio.read_text(encoding="utf-8"))
+            # la migrazione tocca solo l'intestazione, mai il testo del documento
 
 
 class Estrazione(unittest.TestCase):
