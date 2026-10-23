@@ -21,7 +21,17 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 HDR = re.compile(r"^\[([A-Za-z_]+):\s*(.*?)\]\s*$")
-MARCATORE_PAGINA = re.compile(r"^\[\[p\.\s*([^\]|]+?)\s*(?:\|[^\]]*)?\]\]\s*$", re.MULTILINE)
+# Marcatore di pagina (sintassi fissata nel lavoro 8, fase 2): su una riga propria, prima del testo della pagina.
+#   [[p. 12]]             pagina numerata (N: cifre arabe o romane, maiuscolo e spaziatura liberi)
+#   [[pagina 12]]         forma estesa tollerata
+#   [[p. 12b]] / [[p. II]] prefissi/suffissi: es. «23b», pagine romane iniziali, intervallo «I-IV»
+#   [[p. s.n.]]           pagina non numerata -> vale come assenza di pagina
+#   [[p. 12 | pdf 17]]    forma estesa, con la pagina del file originale (dopo | è annotazione)
+# Il doppio [[ iniziale distingue il marcatore dall'intestazione [CAMPO: valore] e lo rende improbabile nel testo.
+PAGINA_NON_NUMERATA = {"s.n.", "sn", "s. n.", "senza pagina", "n.p.", "np"}
+MARCATORE_PAGINA = re.compile(
+    r"^\[\[\s*(?:p(?:age|agina)?\.?|pag\.)\s*[:]?\s*([A-Za-z0-9][A-Za-z0-9 .+\-/]*?)\s*(?:\|\s*[^\]]*)?\]\]\s*$",
+    re.IGNORECASE | re.MULTILINE)
 MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
            "settembre", "ottobre", "novembre", "dicembre"]
 ROMANI = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
@@ -115,7 +125,9 @@ def contenitore(meta):
 
 
 def data_affidabile(meta):
-    return not (meta.get("METADATA_SOURCE") in DATE_INATTENDIBILI or meta.get("DATE_STATUS") == "da verificare")
+    """False se la data è dichiarata inattendibile (METADATA_SOURCE) o non verificata (<CAMPO>_STATUS, lavoro 8)."""
+    from estrai_occorrenze import stato_attivo          # vocabolario degli stati: modulo unico (estrai_occorrenze)
+    return not (meta.get("METADATA_SOURCE") in DATE_INATTENDIBILI or stato_attivo(meta, "DATE"))
 
 
 def valori_da_intestazione(meta, profilo=None):
@@ -202,6 +214,12 @@ def citazione(meta, file="", pagina=""):
 
 
 # ---------------------------------------------------------------- pagina
+def normalizza_pagina(m):
+    """Pagina leggibile dal marcatore: '' se non numerata ('s.n.' e simili), altrimenti il valore ripulito."""
+    p = (m.group(1) if isinstance(m, re.Match) else m or "").strip()
+    return "" if p.lower().replace(" ", "") in {x.replace(" ", "") for x in PAGINA_NON_NUMERATA} else p
+
+
 def pagina_nel_testo(testo, offset, profilo=None, inizio=0):
     """Pagina dell'ultimo marcatore che precede 'offset' ("" se non c'è o se la pagina non è numerata)."""
     prima = testo[inizio:offset] if offset else ""
@@ -209,14 +227,19 @@ def pagina_nel_testo(testo, offset, profilo=None, inizio=0):
     for m in MARCATORE_PAGINA.finditer(prima):
         pass
     if m:
-        p = m.group(1).strip()
-        return "" if p.lower() in ("s.n.", "sn", "s. n.") else p
+        return normalizza_pagina(m)
     rx = (profilo or {}).get("pagina_regex", "").strip()
     if rx:
         trovate = list(re.finditer(rx, prima))
         if trovate:
             return trovate[-1].group(1)
     return ""
+
+
+def marcatori_pagina(testo, inizio=0):
+    """Elenco di (offset del marcatore, pagina) per tutti i marcatori del testo dalla posizione 'inizio'.
+    Pagina '' per i marcatori di pagina non numerata. Usato anche da importa.py per validare i marcatori."""
+    return [(m.start() + inizio, normalizza_pagina(m)) for m in MARCATORE_PAGINA.finditer(testo, inizio)]
 
 
 _CACHE = {}

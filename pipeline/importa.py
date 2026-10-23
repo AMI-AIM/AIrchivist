@@ -44,7 +44,7 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
-from estrai_occorrenze import HDR, leggi_intestazione   # noqa: E402
+from estrai_occorrenze import HDR, leggi_intestazione, stato_attivo, stato_del_valore, nota_del_campo   # noqa: E402
 
 PDF = {".pdf"}
 IMMAGINI = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".jp2"}
@@ -406,6 +406,7 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("VOLUME", valori.get("volume", "")),
         ("DATE", data if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) else ""),
         ("DATE_STATUS", valori.get("stato_data", "")),
+        ("DATE_NOTE", valori.get("nota_data", "") if valori.get("stato_data") else ""),
         ("AUTHOR", valori.get("autore", "")),
         ("TITLE", valori.get("titolo", "") if scheda.get("tipo") == "volume" else ""),
         ("PUBLISHER", valori.get("editore", "")),
@@ -416,6 +417,10 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("OCR_CONFIDENCE", "" if rapporto["confidenza"] is None else str(rapporto["confidenza"])),
         ("FULL_CITATION", valori["citazione"]),
     ]
+    # ISSUE_STATUS/ISSUE_NOTE solo se il numero è stato dedotto dal nome del file (lavoro 8, punto 4);
+    # un campo senza _STATUS vale «verificato», quindi i campi dell'operatore non ricevono stati espliciti
+    if valori.get("stato_numero"):
+        righe += [("ISSUE_STATUS", valori["stato_numero"]), ("ISSUE_NOTE", valori.get("nota_numero", ""))]
     return "".join(f"[{k}: {v}]\n" for k, v in righe if v != "" or k in ("FULL_CITATION", "SERIES")) + "\n"
 
 
@@ -428,20 +433,32 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
             v[k] = getattr(args, k)
         if riga_csv.get(k):
             v[k] = riga_csv[k].strip()
-    data, stato = "", ""
+    data, provenienza = "", ""
     if riga_csv.get("data"):
-        data, stato = data_da_testo(riga_csv["data"]) or riga_csv["data"].strip(), "dal file dei metadati"
+        data, provenienza = data_da_testo(riga_csv["data"]) or riga_csv["data"].strip(), "dal file dei metadati"
     elif args.data:
-        data, stato = data_da_testo(args.data) or args.data, "indicata all'importazione"
+        data, provenienza = data_da_testo(args.data) or args.data, "indicata all'importazione"
     elif scheda.get("tipo", "periodico") == "periodico":
         data = data_da_testo(Path(origine).stem)
-        stato = "dal nome del file" if data else ""
-        if not data:
+        if data:
+            provenienza = "dal nome del file"
+        else:
             data = data_da_testo(testo[:1500])
-            stato = "letta nella prima pagina (OCR): da controllare" if data else ""
+            if data:
+                provenienza = "letta nella prima pagina (OCR): da controllare"
+    # stato ricavato dal metodo di rilevamento (lavoro 8, punto 4): --data e il file dei metadati sono scelte
+    # dell'operatore -> campo verificato (senza _STATUS); gli altri metodi no
+    if provenienza == "dal nome del file":
+        stato = "dedotto"
+    elif "controllare" in provenienza:
+        stato = "da verificare"
+    else:
+        stato = ""
     if scheda.get("tipo", "periodico") == "periodico" and not v.get("numero"):
         v["numero"] = numero_da_nome(Path(origine).stem)
-    v["data_iso"], v["stato_data"] = data, stato
+        if v["numero"]:
+            v["stato_numero"], v["nota_numero"] = "dedotto", "ricavato dal nome del file"
+    v["data_iso"], v["stato_data"], v["nota_data"] = data, stato, provenienza
     if not v.get("anno") and data[:4].isdigit():
         v["anno"] = data[:4]
     v["data"] = data_it(data) if data else ("" if scheda.get("tipo") == "volume" else "s.d.")
@@ -554,8 +571,8 @@ def cmd_importa(args, stampa=print):
             avvisi.append(f"{len(rap['pagine_deboli'])} pagine con OCR debole")
         if not v["data_iso"] and scheda.get("tipo", "periodico") == "periodico":
             avvisi.append("data non trovata: aggiungila con --data o --metadati")
-        elif "da controllare" in v["stato_data"]:
-            avvisi.append("data letta dall'OCR: da controllare")
+        elif v["stato_data"]:
+            avvisi.append(f"data con stato «{v['stato_data']}» ({v['nota_data']})")
         tmp = out.with_suffix(".parziale")
         tmp.write_text(intestazione(args.serie, scheda, v, rap, origine, nome) + testo + "\n", encoding="utf-8")
         tmp.replace(out)
@@ -585,13 +602,15 @@ def cmd_importa(args, stampa=print):
     return 4 if problemi and not scritti else 0
 
 
-def cmd_controlla(args, stampa=print):
-    """Controlla le intestazioni: errori (da correggere) e avvisi (da guardare)."""
-    cfg = leggi_config()
+def cmd_controlla(args, stampa=print, cfg=None):
+    """Controlla le intestazioni: errori (da correggere) e avvisi (da guardare).
+    'cfg' è facoltativo (config.ini di default); la radice per il CSV di controllo è il genitore di 'dati'."""
+    cfg = cfg or leggi_config()
     from llm import percorso
+    from citazioni import MARCATORE_PAGINA, marcatori_pagina   # validazione dei marcatori (lavoro 8)
     dati = percorso(cfg, "dati").resolve()
     base = (dati / args.cartella).resolve() if args.cartella else dati
-    righe, doc_id = [], {}
+    righe, doc_id, migrazioni = [], {}, []
     file = sorted(base.rglob("*.txt"))
     for f in file:
         rel = f.relative_to(dati).as_posix()
@@ -619,8 +638,27 @@ def cmd_controlla(args, stampa=print):
             if meta["DOC_ID"] in doc_id:
                 righe.append((rel, "avviso", f"[DOC_ID] uguale a {doc_id[meta['DOC_ID']]}"))
             doc_id.setdefault(meta["DOC_ID"], rel)
-        if meta.get("DATE_STATUS") == "da verificare" or "da controllare" in meta.get("DATE_STATUS", ""):
-            righe.append((rel, "avviso", f"data da controllare ({meta.get('DATE_STATUS')})"))
+        # stati dei campi <CAMPO>_STATUS (lavoro 8): vocabolario chiuso; i valori storici sono tollerati come provenienza
+        for campo, valore in meta.items():
+            if campo.endswith("_STATUS"):
+                s, noto = stato_del_valore(valore)
+                if not noto:
+                    righe.append((rel, "avviso", f"[{campo}] fuori dal vocabolario ({valore}): stato normalizzato «{s}»"))
+        if args.migra_stati and meta.get("DATE_STATUS") and not stato_del_valore(meta["DATE_STATUS"])[1]:
+            migrazioni.append((f, meta))
+        if stato_attivo(meta, "DATE") or meta.get("METADATA_SOURCE") == "filename+local_header":
+            righe.append((rel, "avviso", f"data da controllare ({nota_del_campo(meta, 'DATE') or meta.get('DATE_STATUS', '')})"))
+        # marcatori di pagina (lavoro 8): ogni riga che inizia con [[ deve essere un marcatore riconosciuto;
+        # le pagine numerate devono seguire l'ordine del documento
+        for riga in t[pos:].splitlines():
+            r = riga.strip()
+            if r.startswith("[[") and not MARCATORE_PAGINA.match(r):
+                righe.append((rel, "errore", f"marcatore di pagina non riconosciuto: {r[:60]}"))
+        numeri = [int(p) for _, p in marcatori_pagina(t, pos) if p.isdigit()]
+        inversioni = [(a, b) for a, b in zip(numeri, numeri[1:]) if b <= a]
+        if inversioni:
+            a, b = inversioni[0]
+            righe.append((rel, "avviso", f"pagine dei marcatori non in ordine crescente: {a} -> {b}"))
         try:
             if meta.get("OCR_CONFIDENCE") and float(meta["OCR_CONFIDENCE"]) < 70:
                 righe.append((rel, "avviso", f"OCR di qualità bassa ({meta['OCR_CONFIDENCE']})"))
@@ -628,7 +666,34 @@ def cmd_controlla(args, stampa=print):
             pass
         if args.lingua and not meta.get("LANG"):
             righe.append((rel, "avviso", "manca [LANG]"))
-    out = radice(cfg) / "importazioni" / f"controllo_{dt.date.today().isoformat()}.csv"
+    # --migra-stati (lavoro 8, punto 5): i valori storici di DATE_STATUS diventano lo stato del vocabolario
+    # chiuso e la provenienza passa in DATE_NOTE; gli altri campi non vengono toccati
+    if args.migra_stati:
+        for f, meta in migrazioni:
+            testo = f.read_text(encoding="utf-8")
+            s, _ = stato_del_valore(meta["DATE_STATUS"])
+            nota = meta["DATE_STATUS"].strip()
+
+            def sostituisci(m, nuovo_status=s, nuova_nota=nota):
+                riga = m.group(0)
+                if re.match(r"^\[DATE_STATUS:", riga):
+                    return f"[DATE_STATUS: {nuovo_status}]"
+                if re.match(r"^\[DATE_NOTE:", riga):
+                    return f"[DATE_NOTE: {nuova_nota}]"
+                return riga
+
+            nuovo_testo = re.sub(r"^\[(?:DATE_STATUS|DATE_NOTE):[^\]]*\]", sostituisci, testo, count=2, flags=re.MULTILINE)
+            if "[DATE_NOTE:" not in nuovo_testo:
+                nuovo_testo = re.sub(r"^\[DATE_STATUS:[^\]]*\]",
+                                     lambda m: m.group(0) + f"\n[DATE_NOTE: {nota}]",
+                                     nuovo_testo, count=1, flags=re.MULTILINE)
+            tmp = f.with_suffix(".txt.tmp")
+            tmp.write_text(nuovo_testo, encoding="utf-8")
+            tmp.replace(f)
+        if migrazioni:
+            stampa(f"Migrati {len(migrazioni)} file: DATE_STATUS normalizzato sul vocabolario chiuso, "
+                   f"provenienza spostata in DATE_NOTE")
+    out = (dati.parent / "importazioni" / f"controllo_{dt.date.today().isoformat()}.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8-sig", newline="") as fo:
         w = csv.writer(fo)
@@ -703,6 +768,8 @@ def main(argv=None):
     c = sub.add_parser("controlla")
     c.add_argument("cartella", nargs="?")
     c.add_argument("--lingua", action="store_true", help="segnala anche i file senza [LANG]")
+    c.add_argument("--migra-stati", action="store_true", dest="migra_stati",
+                   help="porta i DATE_STATUS storici sul vocabolario chiuso (la provenienza va in DATE_NOTE)")
     p = sub.add_parser("prepara")
     p.add_argument("--lingue")
     sub.add_parser("serie")

@@ -5,6 +5,7 @@ I testi di prova sono brevi frammenti nella forma in cui compaiono nel corpus (P
 più qualche caso costruito per i limiti noti. Si eseguono senza corpus né modelli:
   python -m unittest discover -s pipeline/test -v
 """
+import configparser
 import json
 import subprocess
 import sys
@@ -127,9 +128,72 @@ class Intestazione(unittest.TestCase):
         self.assertEqual(E.metadati(p, corpus, {"SERIES": "Renmin Ribao"})[3], "1971-07-09")
 
 
-class Estrazione(unittest.TestCase):
-    """Prova completa di estrai_occorrenze.py su un piccolo corpus temporaneo."""
+class StatiDeiCampi(unittest.TestCase):
+    """Vocabolario chiuso degli stati (lavoro 8): assenza di _STATUS = verificato, «verificato» esplicito
+    equivale all'assenza, i valori storici sono tollerati e migrabili in DATE_NOTE."""
 
+    def test_assenza_vale_verificato(self):
+        self.assertEqual(E.stato_attivo({"DATE": "1966-07-15"}, "DATE"), "")
+        self.assertTrue(E.metadati(Path("/c/riviste/pr/PR1966-07.txt"), Path("/c"),
+                                   {"SERIES": "Peking Review", "DATE": "1966-07-15"})[4])
+
+    def test_verificato_esplicito_equivale_all_assenza(self):
+        meta = {"DATE": "1966-07-15", "DATE_STATUS": "verificato"}
+        self.assertEqual(E.stato_attivo(meta, "DATE"), "")
+        self.assertTrue(E.metadati(Path("/c/riviste/pr/PR1966-07.txt"), Path("/c"), meta)[4])
+
+    def test_stati_del_vocabolario(self):
+        for stato in ("dedotto", "da verificare"):
+            meta = {"DATE": "1966-07-15", "DATE_STATUS": stato}
+            self.assertEqual(E.stato_attivo(meta, "DATE"), stato)
+            self.assertFalse(E.metadati(Path("/c/riviste/pr/PR1966-07.txt"), Path("/c"), meta)[4])
+
+    def test_valori_storici_tollerati(self):
+        s, noto = E.stato_del_valore("dal nome del file")
+        self.assertEqual((s, noto), ("dedotto", False))
+        s, noto = E.stato_del_valore("letta nella prima pagina (OCR): da controllare")
+        self.assertEqual((s, noto), ("da verificare", False))
+        s, noto = E.stato_del_valore("invenzione libera")
+        self.assertEqual((s, noto), ("invenzione libera", False))
+
+    def test_provenienza_nei_file_storici(self):
+        # nei file vecchi la provenienza è dentro DATE_STATUS: nota_del_campo la recupera
+        self.assertEqual(E.nota_del_campo({"DATE_STATUS": "dal nome del file"}, "DATE"), "dal nome del file")
+        # nei file nuovi è separata in DATE_NOTE
+        self.assertEqual(E.nota_del_campo({"DATE_STATUS": "dedotto", "DATE_NOTE": "dal nome del file"}, "DATE"),
+                         "dal nome del file")
+        # un campo verificato non ha provenienza
+        self.assertEqual(E.nota_del_campo({"DATE": "1966-07-15"}, "DATE"), "")
+
+    def test_migrazione_dei_valori_storici(self):
+        # come 'importa.py controlla --migra-stati' (lavoro 8, punto 5): lo stato storico diventa quello del
+        # vocabolario chiuso e la provenienza passa in DATE_NOTE; i file già conformi non vengono toccati
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            cfg = configparser.ConfigParser(interpolation=None)
+            cfg.read_string(f"[percorsi]\ndati = {d / 'dati'}\n")   # radice di prova, fuori dal repository
+            vecchio = d / "dati" / "PR1967-11.txt"
+            vecchio.parent.mkdir()
+            vecchio.write_text("[SERIES: Peking Review]\n[DATE: 1967-03-10]\n"
+                               "[DATE_STATUS: dal nome del file]\n[FULL_CITATION: Peking Review]\n\n" + "x " * 200,
+                               encoding="utf-8")
+            nuovo = d / "dati" / "RR1966-07-15.txt"
+            nuovo.write_text("[SERIES: Renmin Ribao]\n[DATE: 1966-07-15]\n[DATE_STATUS: dedotto]\n"
+                             "[DATE_NOTE: dal nome del file]\n[FULL_CITATION: Renmin Ribao]\n\n" + "y " * 200,
+                             encoding="utf-8")
+            import importa
+            log = []
+            r = importa.cmd_controlla(type("A", (), {"cartella": "", "lingua": False,
+                                                     "migra_stati": True})(), stampa=log.append, cfg=cfg)
+            self.assertEqual(r, 0, log)
+            meta, _ = E.leggi_intestazione(vecchio.read_text(encoding="utf-8"))
+            self.assertEqual(meta["DATE_STATUS"], "dedotto")
+            self.assertEqual(meta["DATE_NOTE"], "dal nome del file")
+            self.assertEqual(E.leggi_intestazione(nuovo.read_text(encoding="utf-8"))[0].get("DATE_NOTE"),
+                             "dal nome del file")       # il file già conforme resta invariato
+
+
+class Estrazione(unittest.TestCase):
     def test_passaggi_raggruppati_e_righe(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)

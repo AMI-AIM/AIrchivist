@@ -28,6 +28,54 @@ from pathlib import Path
 HDR = re.compile(r"^\[([A-Za-z_]+):\s*(.*?)\]\s*$")
 # Date estratte dal testo stesso (non dal frontespizio): nel corpus di Peking Review sono inattendibili
 FONTI_DATA_INATTENDIBILI = {"filename+local_header"}
+
+# ---------------------------------------------------------------- stati dei campi dell'intestazione (lavoro 8, fase 2)
+# Regole decise:
+#   1. ASSENZA di <CAMPO>_STATUS = campo verificato (default implicito). Il valore esplicito «verificato» è
+#      ammesso ed equivale all'assenza; così i campi derivati automaticamente possono essere marcati «dedotto»
+#      o «da verificare» senza obbligo di scrivere lo stato per i campi controllati a mano.
+#   2. Vocabolario chiuso: gli unici valori ammessi sono quelli di STATI_CAMPO.
+#   3. Provenienza separata dallo stato: dalle nuove importazioni (punto 4) <CAMPO>_STATUS contiene solo lo stato e
+#      <CAMPO>_NOTE la provenienza; i valori storici del corpus («dal nome del file», ...) sono tollerati in
+#      lettura, con stato ricavato da PROVENIENZE_TOLLERATE e un avviso di importa.py controlla fino alla
+#      migrazione del corpus (punto 5).
+STATI_CAMPO = ("dedotto", "da verificare", "verificato")
+PROVENIENZE_TOLLERATE = {   # valori storici del corpus -> stato equivalente (tollerati in lettura)
+    "dal nome del file": "dedotto",
+    "dal file dei metadati": "dedotto",
+    "indicata all'importazione": "dedotto",
+    "letta nella prima pagina (OCR): da controllare": "da verificare",
+}
+
+
+def stato_del_valore(valore):
+    """(stato normalizzato, noto) per il valore di un <CAMPO>_STATUS: noto se appartiene al vocabolario chiuso."""
+    v = (valore or "").strip().lower()
+    if not v:
+        return "", True
+    if v in STATI_CAMPO:
+        return v, True
+    storico = next((s for p, s in PROVENIENZE_TOLLERATE.items() if p.lower() == v), None)
+    if storico:
+        return storico, False
+    return v, False
+
+
+def stato_attivo(meta, prefisso):
+    """Stato effettivo di un campo: '' (verificato) senza <prefisso>_STATUS, 'da verificare'/'dedotto' se dichiarato.
+    Un campo esplicitamente marcato «verificato» equivale a senza _STATUS (regola 1)."""
+    s, _ = stato_del_valore(meta.get(prefisso + "_STATUS", ""))
+    return "" if s in ("", "verificato") else s
+
+
+def nota_del_campo(meta, prefisso):
+    """Provenienza dichiarata per un campo: <prefisso>_NOTE, o (nei file storici) il valore stesso di
+    <prefisso>_STATUS quando contiene una provenienza tollerata; '' se non c'è."""
+    nota = meta.get(prefisso + "_NOTE", "")
+    if nota:
+        return nota
+    status = (meta.get(prefisso + "_STATUS") or "").strip()
+    return status if status.lower() in {p.lower() for p in PROVENIENZE_TOLLERATE} else ""
 # Varianti in caratteri latini piu corte di cosi mantengono il confine di parola (Mao, Lin...)
 MIN_SENZA_CONFINE = 5
 
@@ -81,8 +129,8 @@ def metadati(path, corpus, meta):
     fonte = meta.get("SERIES") or (rel_path.parts[-2] if len(rel_path.parts) > 1 else path.stem)
     citazione = meta.get("FULL_CITATION", "")
 
-    data, data_affidabile = meta.get("DATE", ""), True
-    if meta.get("METADATA_SOURCE") in FONTI_DATA_INATTENDIBILI or meta.get("DATE_STATUS") == "da verificare":
+    data, data_affidabile = meta.get("DATE", ""), stato_attivo(meta, "DATE") == ""
+    if meta.get("METADATA_SOURCE") in FONTI_DATA_INATTENDIBILI:
         data, data_affidabile = "", False
     if not data and re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.stem):   # es. Renmin Ribao 1966-07-15.txt
         data = path.stem
