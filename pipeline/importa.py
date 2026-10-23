@@ -645,7 +645,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
                 if not noto:
                     righe.append((rel, "avviso", f"[{campo}] fuori dal vocabolario ({valore}): stato normalizzato «{s}»"))
         if args.migra_stati and meta.get("DATE_STATUS") and not stato_del_valore(meta["DATE_STATUS"])[1]:
-            migrazioni.append((f, meta))
+            migrazioni.append((f, meta, t, pos))
         if stato_attivo(meta, "DATE") or meta.get("METADATA_SOURCE") == "filename+local_header":
             righe.append((rel, "avviso", f"data da controllare ({nota_del_campo(meta, 'DATE') or meta.get('DATE_STATUS', '')})"))
         # marcatori di pagina (lavoro 8): ogni riga che inizia con [[ deve essere un marcatore riconosciuto;
@@ -669,8 +669,9 @@ def cmd_controlla(args, stampa=print, cfg=None):
     # --migra-stati (lavoro 8, punto 5): i valori storici di DATE_STATUS diventano lo stato del vocabolario
     # chiuso e la provenienza passa in DATE_NOTE; gli altri campi non vengono toccati
     if args.migra_stati:
-        for f, meta in migrazioni:
-            testo = f.read_text(encoding="utf-8")
+        for f, meta, testo, pos in migrazioni:
+            # la migrazione riguarda solo le righe dell'intestazione (fino a pos), non il testo del documento
+            intestazione_t, corpo = testo[:pos], testo[pos:]
             s, _ = stato_del_valore(meta["DATE_STATUS"])
             nota = meta["DATE_STATUS"].strip()
 
@@ -682,11 +683,12 @@ def cmd_controlla(args, stampa=print, cfg=None):
                     return f"[DATE_NOTE: {nuova_nota}]"
                 return riga
 
-            nuovo_testo = re.sub(r"^\[(?:DATE_STATUS|DATE_NOTE):[^\]]*\]", sostituisci, testo, count=2, flags=re.MULTILINE)
-            if "[DATE_NOTE:" not in nuovo_testo:
-                nuovo_testo = re.sub(r"^\[DATE_STATUS:[^\]]*\]",
-                                     lambda m: m.group(0) + f"\n[DATE_NOTE: {nota}]",
-                                     nuovo_testo, count=1, flags=re.MULTILINE)
+            nuovo_int = re.sub(r"^\[(?:DATE_STATUS|DATE_NOTE):[^\]]*\]", sostituisci, intestazione_t, flags=re.MULTILINE)
+            if "[DATE_NOTE:" not in nuovo_int:
+                nuovo_int = re.sub(r"^\[DATE_STATUS:[^\]]*\]",
+                                   lambda m: m.group(0) + f"\n[DATE_NOTE: {nota}]",
+                                   nuovo_int, count=1, flags=re.MULTILINE)
+            nuovo_testo = nuovo_int + corpo
             tmp = f.with_suffix(".txt.tmp")
             tmp.write_text(nuovo_testo, encoding="utf-8")
             tmp.replace(f)

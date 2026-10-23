@@ -263,7 +263,15 @@ python importa.py importa "C:\scansioni\ZP 1967" --serie "Zëri i Popullit"
 
 **Controllo delle intestazioni**: `python importa.py controlla` (o una sottocartella: `controlla
 riviste\zeri_i_popullit`) segnala errori (citazione mancante, data non valida, testo vuoto) e avvisi
-(numeri di documento ripetuti, date da controllare, OCR debole) in `importazioni\controllo_<data>.csv`.
+(numeri di documento ripetuti, date da controllare, OCR debole, `DATE_STATUS` fuori dal vocabolario dei
+campi, marcatori di pagina non riconosciuti o non in ordine) in `importazioni\controllo_<data>.csv`.
+
+**Migrazione degli stati (lavoro 8)**: i file storici con un `DATE_STATUS` che contiene una provenienza
+(«dal nome del file», «letta nella prima pagina (OCR): da controllare»...) si portano sul vocabolario chiuso
+con `python importa.py controlla --migra-stati`: lo stato diventa `dedotto`/`da verificare`, la provenienza
+passa in `DATE_NOTE`. Solo le righe dell'intestazione vengono riscritte, mai il testo. Conviene eseguire il
+comando con il corpus committato e pulito (`git status` senza modifiche), così il diff mostra cosa è cambiato;
+per una verifica preliminare su una copia: `controlla <sottocartella> --migra-stati`.
 
 **Nomi nelle fonti albanesi.** La stampa albanese scrive i nomi stranieri come si pronunciano e li declina
 (Grippa: «Gripa», «Gripës», «Gripën»). Le forme già nelle schede non bastano: per ogni entità chiedi a Jan
