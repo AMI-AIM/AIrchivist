@@ -44,7 +44,8 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
-from estrai_occorrenze import HDR, leggi_intestazione, stato_attivo, stato_del_valore, nota_del_campo   # noqa: E402
+from estrai_occorrenze import (HDR, STATI_CAMPO, leggi_intestazione, stato_attivo,
+                           stato_del_valore, nota_del_campo)   # noqa: E402
 
 PDF = {".pdf"}
 IMMAGINI = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".jp2"}
@@ -644,8 +645,14 @@ def cmd_controlla(args, stampa=print, cfg=None):
                 s, noto = stato_del_valore(valore)
                 if not noto:
                     righe.append((rel, "avviso", f"[{campo}] fuori dal vocabolario ({valore}): stato normalizzato «{s}»"))
-        if args.migra_stati and meta.get("DATE_STATUS") and not stato_del_valore(meta["DATE_STATUS"])[1]:
-            migrazioni.append((f, meta, t, pos))
+        # la migrazione riguarda i valori storici: lo stato è riconosciuto ma il valore non è «noto»
+        # (stato_del_valore restituisce noto=False); i valori fuori vocabolario restano un avviso e non si toccano
+        prefs = [pref for pref in ("DATE", "ISSUE")
+                 if meta.get(pref + "_STATUS")
+                 and not stato_del_valore(meta[pref + "_STATUS"])[1]
+                 and stato_del_valore(meta[pref + "_STATUS"])[0] in STATI_CAMPO]
+        if args.migra_stati and prefs:
+            migrazioni.append((f, meta, t, pos, prefs))
         if stato_attivo(meta, "DATE") or meta.get("METADATA_SOURCE") == "filename+local_header":
             righe.append((rel, "avviso", f"data da controllare ({nota_del_campo(meta, 'DATE') or meta.get('DATE_STATUS', '')})"))
         # marcatori di pagina (lavoro 8): ogni riga che inizia con [[ deve essere un marcatore riconosciuto;
@@ -666,35 +673,36 @@ def cmd_controlla(args, stampa=print, cfg=None):
             pass
         if args.lingua and not meta.get("LANG"):
             righe.append((rel, "avviso", "manca [LANG]"))
-    # --migra-stati (lavoro 8, punto 5): i valori storici di DATE_STATUS diventano lo stato del vocabolario
-    # chiuso e la provenienza passa in DATE_NOTE; gli altri campi non vengono toccati
-    if args.migra_stati:
-        for f, meta, testo, pos in migrazioni:
+    # --migra-stati (lavoro 8, punto 5): i valori storici di <CAMPO>_STATUS diventano lo stato del vocabolario
+    # chiuso e la provenienza passa in <CAMPO>_NOTE; gli altri campi non vengono toccati
+    if migrazioni:
+        for f, meta, testo, pos, prefs in migrazioni:
             # la migrazione riguarda solo le righe dell'intestazione (fino a pos), non il testo del documento
             intestazione_t, corpo = testo[:pos], testo[pos:]
-            s, _ = stato_del_valore(meta["DATE_STATUS"])
-            nota = meta["DATE_STATUS"].strip()
+            stati = {p: stato_del_valore(meta[f"{p}_STATUS"])[0] for p in prefs}
+            note = {p: meta[f"{p}_STATUS"].strip() for p in prefs}   # la provenienza storica è dentro il valore
 
-            def sostituisci(m, nuovo_status=s, nuova_nota=nota):
+            def sostituisci(m, stati=stati, note=note):
                 riga = m.group(0)
-                if re.match(r"^\[DATE_STATUS:", riga):
-                    return f"[DATE_STATUS: {nuovo_status}]"
-                if re.match(r"^\[DATE_NOTE:", riga):
-                    return f"[DATE_NOTE: {nuova_nota}]"
+                for p in prefs:
+                    if re.match(rf"^\[{p}_STATUS:", riga):
+                        return f"[{p}_STATUS: {stati[p]}]"
+                    if re.match(rf"^\[{p}_NOTE:", riga):
+                        return f"[{p}_NOTE: {note[p]}]"
                 return riga
 
-            nuovo_int = re.sub(r"^\[(?:DATE_STATUS|DATE_NOTE):[^\]]*\]", sostituisci, intestazione_t, flags=re.MULTILINE)
-            if "[DATE_NOTE:" not in nuovo_int:
-                nuovo_int = re.sub(r"^\[DATE_STATUS:[^\]]*\]",
-                                   lambda m: m.group(0) + f"\n[DATE_NOTE: {nota}]",
-                                   nuovo_int, count=1, flags=re.MULTILINE)
-            nuovo_testo = nuovo_int + corpo
+            modello = r"^\[(?:%s)_(?:STATUS|NOTE):[^\]]*\]" % "|".join(prefs)
+            nuovo_int = re.sub(modello, sostituisci, intestazione_t, flags=re.MULTILINE)
+            for p in prefs:
+                if f"[{p}_NOTE:" not in nuovo_int:
+                    nuovo_int = re.sub(rf"^\[{p}_STATUS:[^\]]*\]",
+                                       lambda m, n=note[p]: m.group(0) + f"\n[{p}_NOTE: {n}]",
+                                       nuovo_int, count=1, flags=re.MULTILINE)
             tmp = f.with_suffix(".txt.tmp")
-            tmp.write_text(nuovo_testo, encoding="utf-8")
+            tmp.write_text(nuovo_int + corpo, encoding="utf-8")
             tmp.replace(f)
-        if migrazioni:
-            stampa(f"Migrati {len(migrazioni)} file: DATE_STATUS normalizzato sul vocabolario chiuso, "
-                   f"provenienza spostata in DATE_NOTE")
+        stampa(f"Migrati {len(migrazioni)} file: stati normalizzati sul vocabolario chiuso, "
+               f"provenienza spostata in <CAMPO>_NOTE")
     out = (dati.parent / "importazioni" / f"controllo_{dt.date.today().isoformat()}.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8-sig", newline="") as fo:
