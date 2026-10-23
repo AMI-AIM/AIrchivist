@@ -2,10 +2,6 @@
 
 Formato e regole delle schede in `pipeline/entita.ini` (22/10/2026). Le regole valgono per qualsiasi corpus. Il controllo automatico è `python schede.py controlla` (dalla cartella `pipeline`); `--solo-errori` mostra solo i problemi che falsano le ricerche.
 
-Regole confermate da Ivan il 22/10/2026 (riassunte in `progettazione_del_sistema.md`, sezione 2).
-
-
-
 ## 1. Formato
 
 Una sezione per entità: il nome della sezione è il nome canonico, quello che compare nelle risposte.
@@ -13,7 +9,7 @@ Una sezione per entità: il nome della sezione è il nome canonico, quello che c
 ```ini
 [Fosco Dinucci]
 tipo = persona
-varianti = 福斯科·迪努齐; 迪努齐; Fosco Dinucci; Dinucci
+varianti = 福斯科·迪努齐; 迪努齐; Fosco Dinucci; F. Dinucci
 forme_ambigue = 迪努齐; Dinucci
 contesto = 意大利; 新团结
 collegate = PCd'I (m-l)
@@ -25,12 +21,10 @@ note = Segretario generale del PCd'I (m-l). Non confondere con Manlio Dinucci (s
 | `varianti` | sì | Tutte le forme del nome attestate nel corpus, separate da `;`: scritture, trascrizioni, sigle, epiteti. Spazi e a capo dell'OCR, punto centrale, parentesi piene o mezze e sillabazione sono già tollerati: non vanno scritti come varianti. |
 | `tipo` | consigliato | `persona`, `organizzazione`, `testata`, `stato`, `altro`. |
 | `note` | consigliato | Chi è, periodo, omonimi da escludere, provenienza delle forme. È il testo che il modello legge per decidere la pertinenza. Le forme non ancora verificate nel corpus si segnano come «ipotesi». |
-| `forme_ambigue` | se servono | Varianti che da sole possono indicare altro: non decidono mai la pertinenza per regola, il passaggio va sempre letto. Devono comparire anche tra le `varianti`. |
+| `forme_ambigue` | consigliato | Varianti che da sole possono indicare altro: non decidono mai la pertinenza per regola, il passaggio va sempre letto. Devono comparire anche tra le `varianti`. |
 | `contesto` | facoltativo | Parole che rendono più probabile la pertinenza. Non filtrano nulla. |
 | `collegate` | facoltativo | Schede di entità legate a questa (dirigenti, organi di stampa, predecessori). Le ricerche sull'evoluzione le includono. |
 | `forma_estesa` | per le sigle | Nome per esteso dell'ente, quando il nome canonico è una sigla (PCdoB → Partido Comunista do Brasil). |
-
-
 
 ## 2. Una scheda per soggetto storico
 
@@ -52,15 +46,11 @@ Nei casi separati, la forma condivisa resta in tutte e due le schede, ma va dich
 
 **Rinominare** una scheda lascia nell'archivio le letture sotto il nome vecchio. Il controllo le segnala («passaggi nell'archivio sotto un nome senza scheda»). Vanno riattribuite al nome nuovo prima di rifare le ricerche, così non si rileggono passaggi già letti.
 
-
-
 ## 3. Dirigenti e organi di stampa
 
 - **Dirigenti.** Scheda propria di tipo `persona`. `collegate` indica l'organizzazione e l'organizzazione indica i suoi dirigenti principali. Cariche e titoli («segretario generale», «compagno») non sono varianti: vanno nelle `note`, con il periodo e la fonte che li attesta. Il nome dell'organizzazione non entra tra le varianti della persona.
 - **Organi di stampa.** Scheda propria di tipo `testata`, collegata all'organizzazione che la pubblica. Le testate hanno spesso titoli generici, condivisi da testate di altri paesi (《新团结》 è sia «Nuova Unità» sia la «Neue Einheit»): il titolo breve va in `forme_ambigue`, le `note` spiegano come distinguerle.
 - Una menzione della testata non è una menzione dell'organizzazione, e viceversa: ogni scheda trova i propri passaggi. Il legame si ricostruisce con `collegate`.
-
-
 
 ## 4. Forme ambigue
 
@@ -73,8 +63,6 @@ Vanno in `forme_ambigue`:
 
 Una forma ambigua non viene scartata: il passaggio viene estratto e letto, ma la pertinenza non si decide mai per regola. Il controllo segnala le forme brevi non dichiarate («avviso»): non sempre sono ambigue, ma la decisione va presa e scritta.
 
-
-
 ## 5. Entità collegate
 
 `collegate` serve a due cose:
@@ -83,15 +71,11 @@ Una forma ambigua non viene scartata: il passaggio viene estratto e letto, ma la
 
 Il legame si dichiara in tutte e due le schede, quando vale in tutte e due le direzioni (organizzazione e dirigente). Per gli omonimi non si usa `collegate`: si usano `forme_ambigue` e le `note`.
 
-
-
 ## 6. Provenienza delle forme
 
 - Si aggiungono solo forme attestate nel corpus. `esplora_nome` propone le forme trovate, e il ricercatore le conferma prima di `crea_scheda`.
 - Le forme ipotetiche (trascrizioni non ancora trovate) si segnano nelle `note` come «ipotesi», con la loro origine.
 - Le forme sfuggite all'estrazione si trovano con `valutazione.py candidati`. Ogni forma aggiunta si registra nelle `note`, con la fonte in cui è attestata.
-
-
 
 ## 7. Controllo automatico
 
