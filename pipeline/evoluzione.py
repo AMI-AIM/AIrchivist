@@ -21,10 +21,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from classifica import carica_jsonl
-from cronologia import PERIODICI, calcola, data_piena, fatti, tabella
+import cronologia as _cronologia
+from cronologia import calcola, data_di, fatti, tabella
 from estrai_occorrenze import carica_entita
 from glossario import blocco, carica_glossario
-from sintesi import (SISTEMA, avviso_non_letti, avviso_sintesi, elenco_modelli, filtra_rif, raggruppa,
+from sintesi import (SISTEMA, avviso_non_letti, avviso_sintesi, elenco_modelli, filtra_rif, nota_data, raggruppa,
                      sez_copertura, sez_documenti, sez_limiti, sez_passaggi, sez_tecnica)
 
 SCHEMA_ANNO = {
@@ -65,7 +66,7 @@ SCHEMA_EVOLUZIONE = {
 
 def riga_doc(d, c):
     a = c["analisi"]
-    parti = [f"[{d['n']}] {d['rif']} | entità: {c['entita']}"]
+    parti = [f"[{d['n']}] {d['rif']}{nota_data(d)} | entità: {c['entita']}"]
     if a.get("ruolo_entita"):
         parti.append(f"ruolo: {a['ruolo_entita']}")
     if a.get("tono"):
@@ -85,8 +86,8 @@ def per_anno(docs):
         for c in d["voci"]:
             if not c["analisi"].get("citazione_verificata"):
                 continue
-            dd = data_piena(c)
-            anni[dd.year if dd else "raccolte"].append(riga_doc(d, c))
+            anno = data_di(c)[1]                  # periodici: anno del numero; raccolte: della data interna
+            anni[anno or "raccolte, data del documento non deducibile"].append(riga_doc(d, c))
     return anni
 
 
@@ -167,7 +168,7 @@ def main():
     from llm import leggi_config, percorso
     cfg = leggi_config(args.config)
     import sintesi as _sintesi
-    _sintesi.DATI = percorso(cfg, "dati")
+    _sintesi.DATI = _cronologia.DATI = percorso(cfg, "dati")
     cart = Path(args.cartella)
     # se un passaggio compare più volte (correzioni manuali aggiunte in fondo) vale l'ultima riga
     classificati = list({c["id"]: c for c in carica_jsonl(cart / "classificati.jsonl")}.values())

@@ -83,14 +83,42 @@ def riferimento(c, con_pagina=True):
     return per_passaggio(dict(c, offset=0, analisi={}), DATI)[0]
 
 
+def data_documento(c):
+    """Data interna (dedotta) del documento che contiene il passaggio, nelle raccolte; None se non c'è."""
+    from date_interne import per_passaggio
+    return per_passaggio(c, DATI)
+
+
+def data_interna_it(di):
+    """«4 gennaio 1962», «gennaio 1962» o «1962» secondo la precisione della data interna."""
+    iso, prec = di["data"], di.get("precisione")
+    if prec == "giorno":
+        return data_it(iso)
+    if prec == "mese":
+        return f"{MESI_IT[int(iso[5:7]) - 1]} {iso[:4]}"
+    return iso[:4]
+
+
+def nota_data(d):
+    """Annotazione della data del documento in una raccolta (non fa parte della citazione)."""
+    di = d.get("data_interna")
+    return f" — documento del {data_interna_it(di)} (data dedotta dal testo)" if di else ""
+
+
 def raggruppa(pertinenti):
-    """Un numero [n] per documento (file), in ordine cronologico."""
-    per_file = defaultdict(list)
+    """Un numero [n] per documento, in ordine cronologico. Documento = file; nelle raccolte, il documento interno
+    riconosciuto dalla sua data d'intestazione (date_interne.py)."""
+    per_doc = defaultdict(list)
+    interne = {}
     for c in pertinenti:
-        per_file[c["file"]].append(c)
-    docs = sorted(per_file.values(), key=lambda v: (v[0]["data"], v[0]["file"]))
-    return [{"n": i, "voci": sorted(v, key=lambda c: c["riga"]), "rif": riferimento(v[0], con_pagina=False)}
-            for i, v in enumerate(docs, 1)]
+        di = data_documento(c)
+        chiave = (c["file"], di["posizione"] if di else None)
+        per_doc[chiave].append(c)
+        interne[chiave] = di
+    chiavi = sorted(per_doc, key=lambda k: ((interne[k] or {}).get("data") or per_doc[k][0]["data"], k[0], k[1] or 0))
+    return [{"n": i, "voci": sorted(per_doc[k], key=lambda c: c["riga"]), "data_interna": interne[k],
+             "rif": riferimento(per_doc[k][0], con_pagina=False)}
+            for i, k in enumerate(chiavi, 1)]
 
 
 # ---------------------------------------------------------------- sezioni deterministiche
@@ -98,7 +126,7 @@ def sez_documenti(docs):
     righe = ["## 1. Documenti rilevanti", ""]
     for d in docs:
         tipi = ", ".join(sorted({c["analisi"].get("tipo_menzione", "") for c in d["voci"]} - {""}))
-        righe.append(f"[{d['n']}] {d['rif']}{' — ' + tipi if tipi else ''}")
+        righe.append(f"[{d['n']}] {d['rif']}{nota_data(d)}{' — ' + tipi if tipi else ''}")
     return righe + [""]
 
 
@@ -148,7 +176,7 @@ def sez_passaggi(docs, modello):
     righe = ["## 2. Passaggi rilevanti", "",
              "Testo originale citato esattamente dalla fonte; la traduzione va controllata sull'originale.", ""]
     for d in docs:
-        righe += [f"### [{d['n']}] {d['rif']}", ""]
+        righe += [f"### [{d['n']}] {d['rif']}{nota_data(d)}", ""]
         for c in d["voci"]:
             a = c["analisi"]
             if a.get("assorbito_da"):
@@ -211,6 +239,8 @@ def lacune(cfg_problemi, docs):
     with open(cfg_problemi, encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
             serie = r["serie"]
+            if not r.get("file"):                         # riga malformata del CSV: non si può collocare
+                continue
             if not any(k.lower() in serie.lower() for k in serie_presenti):
                 continue
             nome = Path(r["file"]).name.replace(".txt", "")
@@ -313,6 +343,18 @@ def righe_provenienza(classificati):
 
 
 # ---------------------------------------------------------------- sezioni scritte dal modello
+def data_per_modello(d, c):
+    """Data del documento come la legge il modello: la data interna dedotta nelle raccolte, mai l'anno di
+    edizione della raccolta presentato come data del documento."""
+    if d.get("data_interna"):
+        return f"{d['data_interna']['data']}, dedotta dal testo"
+    from cronologia import PERIODICI
+    if "data_interna" in c or (c.get("data") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", c["data"])
+                               and c.get("fonte") not in PERIODICI):
+        return f"non nota (raccolta o volume del {c.get('data') or 's.d.'})"
+    return c.get("data") or "s.d."
+
+
 def elenco_per_modello(docs):
     righe = []
     for d in docs:
@@ -321,7 +363,7 @@ def elenco_per_modello(docs):
             if not a.get("citazione_verificata"):
                 continue
             altri = "; ".join(f"{x['nome']} ({x.get('ruolo', '')})" for x in (a.get("altri_nominati") or [])[:12])
-            righe.append(f"[{d['n']}] {d['rif']} (data del documento: {c.get('data') or 's.d.'}): "
+            righe.append(f"[{d['n']}] {d['rif']} (data del documento: {data_per_modello(d, c)}): "
                          f"{a.get('sintesi_it', '')} (frase: «{a.get('traduzione_it', '')}»)"
                          + (f" | Nominati nello stesso passaggio: {altri}" if altri else ""))
     return righe

@@ -529,6 +529,8 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
     for x in fonti or []:
         ammesse.update({"Hongqi": ["Hongqi", "Red Flag"]}.get(x, [x]))
     sel = []
+    dati = percorso(c, "dati")
+    from date_interne import anno_del_documento
     for (pid, e), v in arch.per_id.items():
         if e != entita:
             continue
@@ -538,20 +540,20 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
         p = P.get((pid, e))
         if not p:
             continue
-        anno = int(p["data"][:4]) if p.get("data", "")[:4].isdigit() else None
+        if ammesse and p.get("fonte") not in ammesse:
+            continue
+        # raccolte: conta la data interna del documento, non l'anno di edizione del volume (lavoro 9)
+        anno, di = anno_del_documento(p, dati)
         if anno and ((dal and anno < int(dal)) or (al and anno > int(al))):
             continue
         if (dal or al) and not anno:
             continue
-        if ammesse and p.get("fonte") not in ammesse:
-            continue
-        sel.append((p, a))
-    sel.sort(key=lambda x: (x[0].get("data", ""), x[0]["file"], x[0].get("offset", 0)))
+        sel.append((p, a, di))
+    sel.sort(key=lambda x: ((x[2] or {}).get("data") or x[0].get("data", ""), x[0]["file"], x[0].get("offset", 0)))
     da, massimo = int(da or 0), min(int(massimo or 8), 15)
     out = []
     from archivio import riga_citazione
-    dati = percorso(c, "dati")
-    for p, a in sel[da:da + massimo]:
+    for p, a, di in sel[da:da + massimo]:
         riga = riga_citazione(dati, p["file"], p["riga"], a.get("citazione_testuale", "")) \
             if a.get("citazione_verificata") else p["riga"]
         # riferimento pronto in stile Chicago (pagina solo se nota); file e riga servono a ritrovare il testo e
@@ -561,6 +563,8 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
              "file_e_riga": f"{p['file']}, riga {riga}",
              "originale": (a.get("citazione_testuale") or "")[:300] if a.get("citazione_verificata") else "",
              "traduzione": (a.get("traduzione_it") or "")[:300], "sintesi": (a.get("sintesi_it") or "")[:250]}
+        if di:                                  # raccolte: data del documento, dedotta (non entra nella citazione)
+            v["data_documento"] = f"{di['data']} (dedotta dal testo)"
         if not solo_pertinenti:
             v["pertinente"] = a.get("pertinente")
         out.append(v)

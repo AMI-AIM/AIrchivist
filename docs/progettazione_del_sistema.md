@@ -227,7 +227,7 @@ Se il formato regge tutti e tre, il disegno è verificato.
 1. **Motore OCR per il cinese.** Tesseract è debole sul cinese a colonne o in verticale. Alternative gratuite da provare su un campione del corpus: PaddleOCR, Kraken.
 2. **Sintassi definitiva del marcatore di pagina** e valore predefinito dei campi senza `_STATUS`.
 3. **Migrazione del corpus attuale** nel nuovo formato. I rapporti JPRS non hanno pagine: vanno recuperate con un nuovo OCR dei PDF originali, se disponibili. Peking Review e Hongqi vanno verificati.
-4. **Data interna per le raccolte di documenti** (中共中央文件选集 ecc.): come rilevarla e come usarla nella cronologia.
+4. **Data interna per le raccolte di documenti** (中共中央文件选集 ecc.): decisa il 24/10/2026 (`date_interne.py`). È l'ultima data d'intestazione prima del passaggio: forte (sola sulla riga, tra parentesi a inizio o fine riga, data d'agenzia con 讯/电) a qualsiasi precisione, debole (tra parentesi in mezzo alla riga, a inizio riga con virgola) solo se precisa al giorno. Si scartano testatine, elenchi fitti, anni non plausibili e intestazioni a più di 30.000 caratteri. È sempre «dedotta»; nelle risposte annota il documento ma non entra nella citazione. Nella cronologia le date al giorno entrano in estremi e silenzi, quelle al mese o all'anno solo nella presenza per anno; ogni documento interno conta come un documento. Resta aperto: misurarne la precisione su un campione verificato a mano (strumento di valutazione).
 5. **Elenco degli strumenti MCP** della versione generalizzata, ridotto e generico rispetto ai 18 attuali.
 6. **Formato del foglio di revisione** (colonne, stati, segnalazioni).
 7. **Modelli Kraken di eScriptorium in locale**: compatibilità da verificare.

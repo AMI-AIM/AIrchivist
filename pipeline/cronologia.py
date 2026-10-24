@@ -1,6 +1,10 @@
 """
 Cronologia calcolata da Python (nessun modello): presenze per anno, prima e ultima menzione,
 silenzi, comparsa di entità collegate, lacune delle fonti dentro i silenzi.
+
+Date: per i periodici la data del numero; per le raccolte la data interna del documento, dedotta dal testo
+(date_interne.py). Le date interne precise al giorno entrano in prime e ultime menzioni e nei silenzi; quelle
+al mese o all'anno solo nella presenza per anno. I fatti dichiarano quante date sono dedotte.
 """
 import csv
 import datetime as dt
@@ -13,6 +17,9 @@ FINE_FONTI = dt.date(1980, 12, 31)       # ultimo numero disponibile di Renmin R
 INIZIO_FONTI = dt.date(1963, 1, 1)
 
 
+DATI = None          # cartella delle fonti (per le date interne dei passaggi estratti prima del lavoro 9)
+
+
 def data_piena(c):
     if c["fonte"] not in PERIODICI:
         return None
@@ -20,6 +27,25 @@ def data_piena(c):
         return dt.date.fromisoformat(c.get("data", "")[:10])
     except ValueError:
         return None
+
+
+def data_di(c):
+    """(data o None, anno o None, documento) del passaggio. Periodici: data del numero, documento None.
+    Raccolte: data interna dedotta (data solo se precisa al giorno); documento = posizione dell'intestazione."""
+    d = data_piena(c)
+    if d:
+        return d, d.year, None
+    if c["fonte"] in PERIODICI:
+        return None, None, None
+    from date_interne import per_passaggio
+    di = per_passaggio(c, DATI)
+    if not di:
+        return None, None, None
+    try:
+        d = dt.date.fromisoformat(di["data"]) if di.get("precisione") == "giorno" else None
+    except ValueError:
+        d = None
+    return d, int(di["data"][:4]), di["posizione"]
 
 
 def mesi_tra(a, b):
@@ -48,35 +74,39 @@ def giorni_mancanti(problemi):
 def calcola(pertinenti, principale, soglia_mesi=6, problemi=None, collegate_fino_a=None, fino_a=None):
     """Restituisce un dizionario con tutti i dati della cronologia."""
     date_per_entita = defaultdict(set)
+    dedotte = defaultdict(set)                 # entità -> date che vengono da date interne delle raccolte
+    periodiche = defaultdict(set)              # entità -> date dei numeri dei periodici
     per_anno = defaultdict(Counter)            # anno -> entità -> n. documenti
     ruoli = defaultdict(lambda: defaultdict(Counter))   # entità -> anno -> ruolo
     toni = defaultdict(lambda: defaultdict(Counter))
     eventi = defaultdict(lambda: defaultdict(list))
     visti = set()
     for c in pertinenti:
-        d = data_piena(c)
-        if not d:
+        d, anno, documento = data_di(c)
+        if not anno:
             continue
         e = c["entita"]
         a = c["analisi"]
-        date_per_entita[e].add(d)
-        chiave = (e, c["file"])
+        if d:
+            date_per_entita[e].add(d)
+            (dedotte[e] if documento is not None else periodiche[e]).add(d)
+        chiave = (e, c["file"], documento)      # nelle raccolte conta ogni documento interno
         if chiave not in visti:
             visti.add(chiave)
-            per_anno[d.year][e] += 1
+            per_anno[anno][e] += 1
         if a.get("ruolo_entita"):
-            ruoli[e][d.year][a["ruolo_entita"]] += 1
+            ruoli[e][anno][a["ruolo_entita"]] += 1
         if a.get("tono"):
-            toni[e][d.year][a["tono"]] += 1
-        if a.get("evento") and len(eventi[e][d.year]) < 6:
-            eventi[e][d.year].append(a["evento"])
+            toni[e][anno][a["tono"]] += 1
+        if a.get("evento") and len(eventi[e][anno]) < 6:
+            eventi[e][anno].append(a["evento"])
 
     mancanti = giorni_mancanti(problemi)
     silenzi = []
     estremi = {}
     for e, date in date_per_entita.items():
         date = sorted(date)
-        estremi[e] = (date[0], date[-1], len(date))
+        estremi[e] = (date[0], date[-1], len(date), len(dedotte[e] - periodiche[e]))
         for x, y in zip(date, date[1:]):
             if mesi_tra(x, y) >= soglia_mesi:
                 silenzi.append({"entita": e, "da": x, "a": y, "mesi": round(mesi_tra(x, y)),
@@ -99,8 +129,10 @@ def fatti(cr):
     """Frasi descrittive, solo dati, da passare al modello e da mostrare nella risposta."""
     righe = []
     p = cr["principale"]
-    for e, (prima, ultima, n) in sorted(cr["estremi"].items(), key=lambda x: x[1][0]):
-        righe.append(f"{e}: {n} date di menzione nei periodici, dalla prima del {it(prima)} all'ultima del {it(ultima)}.")
+    for e, (prima, ultima, n, n_dedotte) in sorted(cr["estremi"].items(), key=lambda x: x[1][0]):
+        dove = (f" ({n_dedotte} dalle date dei documenti nelle raccolte, dedotte dal testo)" if n_dedotte
+                else " nei periodici")
+        righe.append(f"{e}: {n} date di menzione{dove}, dalla prima del {it(prima)} all'ultima del {it(ultima)}.")
     for s in cr["silenzi"]:
         lac = (f" (in questo intervallo mancano dalle fonti {s['lacune']} "
                f"{'numero' if s['lacune'] == 1 else 'numeri'} del Renmin Ribao)") if s["lacune"] else ""
@@ -115,7 +147,7 @@ def fatti(cr):
                          f"({s['mesi']} mesi){lac}.")
     if p in cr["estremi"]:
         ultima_p = cr["estremi"][p][1]
-        for e, (prima, ultima, n) in cr["estremi"].items():
+        for e, (prima, ultima, n, _) in cr["estremi"].items():
             if e != p and prima > ultima_p:
                 righe.append(f"{e} compare per la prima volta il {it(prima)}, {round(mesi_tra(ultima_p, prima))} mesi "
                              f"dopo l'ultima menzione di {p}.")
