@@ -111,7 +111,9 @@ Il piano dettagliato è in `docs/piano_di_lavoro.md`.
 
 Metadati ancora aperti (`problemi_residui.csv`): PR1974-15s (supplemento senza data né numero nel testo; discorso di Teng Hsiao-ping all'ONU del 10/04/1974, pubblicato anche in PR1974-16); PR1978-26-Index (data non verificabile); date del fascicolo o del rapporto JPRS mancanti in vari Hongqi 1977-1988; numeri mancanti; Renmin Ribao con giorni mancanti o numeri brevi.
 
-Rimandati: verificare a mano il primo insieme di riferimento con `valutazione.py`; PCd'I (m-l): controllare 23 passaggi pertinenti per regola sotto il nome vecchio e già letti sotto la scheda attuale con decisione diversa (22 «no», 1 «incerto»; esito `decisioni_diverse` nel piano), e decidere sulle forme «(M-L)» e 意大利共产党（马列主义）, che la scheda non ha (9 passaggi pertinenti non riattribuiti).
+Rimandati: verificare a mano il primo insieme di riferimento con `valutazione.py`; PCd'I (m-l): controllare 23 passaggi pertinenti per regola sotto il nome vecchio e già letti sotto la scheda attuale con decisione diversa (22 «no», 1 «incerto»; esito `decisioni_diverse` nel piano `riattribuzione_PCd_I_m_l_Italia_20261024.csv`, dove compaiono anche 3 sommari o duplicati della Peking Review esclusi in sessione).
+
+Il 24/10 la scheda PCd'I (m-l) ha ricevuto le forme «Communist Party of Italy (M-L)», «Italian Communist Party (M-L)» (tolte da «Altre organizzazioni m-l italiane», per non averle in due schede) e 意大利共产党（马列主义）. I 9 passaggi del nome vecchio con queste forme risultano già letti sotto la scheda: 6 pertinenti, 3 esclusi come sommari o duplicati.
 
 ### Verso un tool modulare e pubblicabile (obiettivo finale)
 
