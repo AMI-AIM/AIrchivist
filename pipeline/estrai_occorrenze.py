@@ -46,16 +46,39 @@ PROVENIENZE_TOLLERATE = {   # valori storici del corpus -> stato equivalente (to
     "indicata all'importazione": "dedotto",
     "letta nella prima pagina (OCR): da controllare": "da verificare",
 }
+# stati scritti con altre parole nelle revisioni dei metadati del corpus (22/10/2026), anch'essi tollerati in
+# lettura: 909 fascicoli di Peking Review hanno «verificata sul testo», uno «verificata manualmente», cinque
+# «probabile (poche occorrenze nel testo)»
+STATI_STORICI = {
+    "verificata sul testo": "verificato",
+    "verificata manualmente": "verificato",
+    "verificato sul testo": "verificato",
+    "verificato manualmente": "verificato",
+}
+PREFISSI_STORICI = {"probabile": "dedotto"}     # «probabile (motivo)» -> dedotto
+
+
+def stato_storico(v):
+    """Stato del vocabolario per un valore storico tollerato ('' se il valore non è tra quelli tollerati)."""
+    v = (v or "").strip().lower()
+    for p, s in PROVENIENZE_TOLLERATE.items():
+        if p.lower() == v:
+            return s
+    if v in STATI_STORICI:
+        return STATI_STORICI[v]
+    return next((s for p, s in PREFISSI_STORICI.items() if v == p or v.startswith(p + " ")), "")
 
 
 def stato_del_valore(valore):
-    """(stato normalizzato, noto) per il valore di un <CAMPO>_STATUS: noto se appartiene al vocabolario chiuso."""
+    """(stato normalizzato, noto) per il valore di un <CAMPO>_STATUS: noto se appartiene al vocabolario chiuso.
+    I valori storici tollerati danno lo stato equivalente con noto=False (importa.py controlla li segnala e
+    --migra-stati li riscrive); un valore sconosciuto resta com'è e conta come non verificato."""
     v = (valore or "").strip().lower()
     if not v:
         return "", True
     if v in STATI_CAMPO:
         return v, True
-    storico = next((s for p, s in PROVENIENZE_TOLLERATE.items() if p.lower() == v), None)
+    storico = stato_storico(v)
     if storico:
         return storico, False
     return v, False
@@ -70,12 +93,12 @@ def stato_attivo(meta, prefisso):
 
 def nota_del_campo(meta, prefisso):
     """Provenienza dichiarata per un campo: <prefisso>_NOTE, o (nei file storici) il valore stesso di
-    <prefisso>_STATUS quando contiene una provenienza tollerata; '' se non c'è."""
+    <prefisso>_STATUS quando è un valore storico tollerato; '' se non c'è."""
     nota = meta.get(prefisso + "_NOTE", "")
     if nota:
         return nota
     status = (meta.get(prefisso + "_STATUS") or "").strip()
-    return status if status.lower() in {p.lower() for p in PROVENIENZE_TOLLERATE} else ""
+    return status if stato_storico(status) else ""
 # Varianti in caratteri latini piu corte di cosi mantengono il confine di parola (Mao, Lin...)
 MIN_SENZA_CONFINE = 5
 

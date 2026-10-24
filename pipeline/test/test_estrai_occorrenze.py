@@ -156,6 +156,35 @@ class StatiDeiCampi(unittest.TestCase):
         s, noto = E.stato_del_valore("invenzione libera")
         self.assertEqual((s, noto), ("invenzione libera", False))
 
+    def test_stati_storici_del_corpus(self):
+        # valori di DATE_STATUS presenti nel corpus al 24/10/2026 (revisioni dei metadati del 22/10):
+        # 909 fascicoli di Peking Review «verificata sul testo», uno «verificata manualmente», cinque «probabile»
+        self.assertEqual(E.stato_del_valore("verificata sul testo"), ("verificato", False))
+        self.assertEqual(E.stato_del_valore("Verificata manualmente"), ("verificato", False))
+        self.assertEqual(E.stato_del_valore("probabile (poche occorrenze nel testo)"), ("dedotto", False))
+        self.assertEqual(E.stato_attivo({"DATE_STATUS": "verificata sul testo"}, "DATE"), "")
+        self.assertEqual(E.stato_attivo({"DATE_STATUS": "probabile (poche occorrenze nel testo)"}, "DATE"), "dedotto")
+        self.assertEqual(E.nota_del_campo({"DATE_STATUS": "probabile (poche occorrenze nel testo)"}, "DATE"),
+                         "probabile (poche occorrenze nel testo)")
+        # «probabilmente» non è il prefisso «probabile»: resta un valore sconosciuto, quindi non verificato
+        self.assertEqual(E.stato_del_valore("probabilmente giusta"), ("probabilmente giusta", False))
+
+    def test_intestazione_vera_di_peking_review(self):
+        # intestazione di PR1967-11.txt com'è nel corpus: data verificata sul testo, quindi affidabile e citata
+        testo = ("[DOC_ID: PR1967-11]\n[SERIES: Peking Review]\n[YEAR: 1967]\n[ISSUE: 11]\n[VOLUME: X]\n"
+                 "[DATE: 1967-03-10]\n[DATE_ORIGINAL: March 10, 1967]\n[DATE_STATUS: verificata sul testo]\n"
+                 "[SOURCE_FILE: PR1967-11.txt]\n[METADATA_SOURCE: verifica 2026-10 (data stampata nel fascicolo; "
+                 "vedi audit_fonti/registro_modifiche.csv)]\n[FULL_CITATION: Peking Review (1967), no. 11]\n\ntesto\n")
+        meta, _ = E.leggi_intestazione(testo)
+        p = Path("/c/riviste/peking_review/PR1967-11.txt")
+        self.assertEqual(E.metadati(p, Path("/c"), meta)[3:], ("1967-03-10", True))
+        import citazioni
+        self.assertEqual(citazioni.citazione(meta, "riviste/peking_review/PR1967-11.txt"),
+                         "*Peking Review* 10, no. 11 (10 marzo 1967)")
+        meta["DATE_STATUS"] = "probabile (poche occorrenze nel testo)"
+        self.assertEqual(citazioni.citazione(meta, "riviste/peking_review/PR1967-11.txt"),
+                         "*Peking Review* 10, no. 11 (1967)")
+
     def test_provenienza_nei_file_storici(self):
         # nei file vecchi la provenienza è dentro DATE_STATUS: nota_del_campo la recupera
         self.assertEqual(E.nota_del_campo({"DATE_STATUS": "dal nome del file"}, "DATE"), "dal nome del file")
