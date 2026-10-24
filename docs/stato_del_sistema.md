@@ -49,7 +49,7 @@ Il tool si usa attualmente dalla chat del programma Jan (assistente «Ricerca fo
 - **Citazioni** (`citazioni.py`, campo `chicago` di `serie.ini`): stile Chicago, fino alla pagina (marcatore `[[p. N]]` o `pagina_regex`, oggi solo 第N版 del Renmin Ribao). Nelle risposte non compaiono più file e righe, che passano alla sezione 8. Le `FULL_CITATION` del corpus restano quelle di prima: le risposte non le usano più.
 - **Test automatici** in `pipeline\test` (36): estrazione, citazioni, provenienza, calcoli della valutazione.
 - **Strumento di valutazione** (`valutazione.py`): campione alla cieca, candidati sfuggiti all'estrazione, misure con IC 95%. Nessun insieme verificato a mano esiste ancora. In una prova, la ricerca larga ha trovato 施特罗伯尔 (Franz Strobl, solo cognome) in una raccolta del 1976: è una forma assente dalla scheda.
-- **Schede delle entità**: regole proposte in `docs\schede_entita.md`, controllo automatico `schede.py controlla`. Al 22/10: 10 errori (forme in comune tra «Altre organizzazioni m-l italiane» e PCd'I (m-l) / Linea rossa, tra Jacques Grippa e PCB-Grippa, tra MLPÖ (Austria) e Partito Marxista-Leninista d'Austria) e 80 avvisi. Tra gli avvisi: 176 letture sotto «PCd'I (m-l) (Italia)», 128 sotto «Dirigenti ORT/PTE/PT» e 223 sotto «PCF rifondato (CPP)», nomi che non hanno più una scheda.
+- **Schede delle entità**: regole confermate in `docs\schede_entita.md`, controllo automatico `schede.py controlla`. Al 24/10: 91 schede, 0 errori, 81 avvisi, 147 informazioni. Tra gli avvisi: 42 schede senza note; 6 nomi che indicano gruppi o insiemi di forme; forme brevi non dichiarate in `forme_ambigue`; letture dell'archivio sotto nomi senza scheda: 345 «PCB-Grippa (Belgio)», 176 «PCd'I (m-l) (Italia)», 128 «Dirigenti ORT/PTE/PT», 81 «KPD/ML (Germania Ovest)», 58 «Communist party of Germany», 47 «Partito Marxista-Leninista d'Austria».
 
 ### Strumenti MCP (18)
 
@@ -110,7 +110,7 @@ Il piano dettagliato è in `docs/piano_di_lavoro.md`.
 
 Metadati ancora aperti (`problemi_residui.csv`): PR1974-15s (supplemento senza data né numero nel testo; discorso di Teng Hsiao-ping all'ONU del 10/04/1974, pubblicato anche in PR1974-16); PR1978-26-Index (data non verificabile); date del fascicolo o del rapporto JPRS mancanti in vari Hongqi 1977-1988; numeri mancanti; Renmin Ribao con giorni mancanti o numeri brevi.
 
-Rimandati: separare la scheda PCMLB (Vanderlinden) da PCB (m-l) «L'Exploité» (Trifaux); correggere le schede segnalate da `schede.py controlla`, dopo la conferma delle regole di `docs/schede_entita.md`; verificare a mano il primo insieme di riferimento con `valutazione.py`.
+Rimandati: verificare a mano il primo insieme di riferimento con `valutazione.py`; ricondurre alle schede attuali le letture dell'archivio sotto nomi senza scheda (avvisi di `schede.py controlla`).
 
 ### Verso un tool modulare e pubblicabile (obiettivo finale)
 
