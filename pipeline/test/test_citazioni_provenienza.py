@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import citazioni as C  # noqa: E402
-from archivio import descrivi_provenienza, livello, provenienza  # noqa: E402
+from archivio import descrivi_provenienza, livello, provenienza, riallinea  # noqa: E402
 import valutazione as V  # noqa: E402
 
 
@@ -83,6 +83,30 @@ class Provenienza(unittest.TestCase):
     def test_provenienza_registrata_prevale(self):
         reg = {"decisione": livello("regola", "x"), "lettura": None}
         self.assertIs(provenienza({"provenienza": reg, "modello_smistamento": "m"}), reg)
+
+
+class Riallineamento(unittest.TestCase):
+    CORPO = ("Greetings were sent.\nThe delegation of the Communist Party of Belgium,\nled by comrade "
+             "Jacques Grippa, arrived in Peking.\nOther news.")
+
+    def rec(self, intestazione):
+        testo = intestazione + self.CORPO
+        a, b = testo.index("Communist Party of Belgium"), testo.index("Grippa")
+        ev = (testo[len(intestazione):a] + "⟦Communist Party of Belgium⟧" + testo[a + 26:b] + "⟦Grippa⟧"
+              + testo[b + 6:])
+        return {"offset": a, "passaggio_evidenziato": " ".join(ev.split())}
+
+    def test_intestazione_allungata(self):
+        rec = self.rec("[DATE: 1965-03-26]\n\n")
+        nuovo = "[DATE: 1965-03-26]\n[DATE_STATUS: verificata]\n[DATE_NOTE: verificata sul testo]\n\n" + self.CORPO
+        self.assertEqual(riallinea(nuovo, rec),
+                         (nuovo.index("Communist Party of Belgium"), nuovo.index("Grippa")))
+
+    def test_testo_invariato_e_passaggio_assente(self):
+        testo = "[DATE: 1965-03-26]\n\n" + self.CORPO
+        rec = self.rec("[DATE: 1965-03-26]\n\n")
+        self.assertEqual(riallinea(testo, rec), (rec["offset"], testo.index("Grippa")))
+        self.assertIsNone(riallinea("[DATE: 1965]\n\nAltro testo, senza il passaggio.", rec))
 
 
 class Valutazione(unittest.TestCase):

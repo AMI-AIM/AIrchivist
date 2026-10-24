@@ -395,6 +395,36 @@ def registra_equivalenza(risultati, vecchio, nuovo, nota=""):
     f.write_bytes(json.dumps(eq, ensure_ascii=False, indent=1).encode("utf-8"))
 
 
+def riallinea(testo, rec, raggio=5000):
+    """(prima, ultima): offset attuali della prima e dell'ultima occorrenza di un passaggio salvato.
+    Se l'intestazione del file è cambiata dopo la lettura (es. migrazione degli stati), il corpo è lo stesso
+    ma spostato: si cerca vicino al vecchio offset la stessa forma preceduta dallo stesso testo
+    (da 'passaggio_evidenziato'). None se il passaggio non si ritrova."""
+    from estrai_occorrenze import INIZIO_EVID, FINE_EVID, normalizza
+    ev, vecchio = rec.get("passaggio_evidenziato", ""), rec["offset"]
+    marcate = [(m.start(), normalizza(m.group(1)))
+               for m in re.finditer(re.escape(INIZIO_EVID) + "(.*?)" + re.escape(FINE_EVID), ev)]
+    marcate = [(i, f) for i, f in marcate if f]
+    if not marcate:
+        return vecchio, vecchio
+
+    def coincide(o, i, forma):
+        return (testo[o:o + 1].lower() == forma[0]
+                and normalizza(testo[o:o + len(forma) + 40]).startswith(forma)
+                and normalizza(testo[max(0, o - 300):o]).endswith(
+                    normalizza(ev[:i].replace(INIZIO_EVID, "").replace(FINE_EVID, ""))[-60:]))
+
+    i, forma = marcate[0]
+    prima = next((o for d in range(raggio + 1) for o in ((vecchio + d, vecchio - d) if d else (vecchio,))
+                  if 0 <= o < len(testo) and coincide(o, i, forma)), None)
+    if prima is None:
+        return None
+    i, forma = marcate[-1]
+    ultima = next((o for o in range(prima, min(len(testo), prima + 3 * len(ev) + 2000)) if coincide(o, i, forma)),
+                  prima)
+    return prima, ultima
+
+
 def piano_riattribuzione(cfg, vecchio, nuovo):
     """Per ogni lettura dell'entità 'vecchio': il passaggio che la scheda 'nuovo' estrarrebbe nello stesso punto
     (stessi criteri di estrai_occorrenze.py), e che cosa farne. Esiti:
@@ -451,7 +481,14 @@ def piano_riattribuzione(cfg, vecchio, nuovo):
                 riga["nota"] = "passaggio vecchio non trovato nelle cartelle dei risultati (manca la posizione)"
                 righe.append(riga)
                 continue
-            p = next((n for n in nuovi if n["offset"] <= rec["offset"] <= fini[n["id"]]), None)
+            pos = riallinea(testo, rec) if testo else None
+            if pos is None:
+                riga["esito"] = "fuori_dalla_scheda"
+                riga["nota"] = "passaggio vecchio non ritrovato nel testo attuale del file"
+                righe.append(riga)
+                continue
+            # il passaggio della scheda nuova che si sovrappone al gruppo vecchio (dalla prima all'ultima occorrenza)
+            p = next((n for n in nuovi if n["offset"] <= pos[1] and pos[0] <= fini[n["id"]]), None)
             if not p:
                 riga["esito"] = "fuori_dalla_scheda"
                 righe.append(riga)
