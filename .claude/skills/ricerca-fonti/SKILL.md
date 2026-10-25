@@ -42,7 +42,7 @@ Leggi ogni `lotto_NN.md` per intero. Per ogni passaggio:
   decisione.
 - per `sì` e `incerto`:
   - `traduzione_it`: traduzione italiana fedele della sola FRASE DA TRADURRE, con i nomi del glossario; termini
-    incerti tra parentesi quadre;
+    incerti tra parentesi quadre; vuota per le fonti in italiano (il lotto lo indica);
   - `sintesi_it`: 1-3 frasi su ciò che il passaggio dice esplicitamente dell'entità. Date: l'anno solo se il
     testo lo dà o si ricava con certezza; un fatto già avvenuto in un mese successivo a quello della fonte è
     dell'anno precedente, uno annunciato in un mese precedente dell'anno seguente; se non è certo, data senza

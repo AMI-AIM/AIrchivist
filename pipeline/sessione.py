@@ -7,7 +7,7 @@ risposta. Le letture dichiarano la provenienza «sessione assistita» con il nom
 
 Uso:
   python sessione.py prepara "Enrico Berlinguer" [--cartella prova_berlinguer] [--dal 1965] [--al 1980]
-                     [--fonti "Renmin Ribao; Peking Review"] [--lotto 10]
+                     [--fonti "Renmin Ribao; Peking Review"] [--lotto 10] [--senza-archivio]
       estrae i passaggi, riprende dall'archivio quelli già letti e scrive in <cartella>/lotti/ quelli da leggere
   python sessione.py registra <cartella> <letture.json> [--da "claude-opus-5-5"]
       registra le letture di uno o più lotti (classificati.jsonl e archivio unico)
@@ -54,6 +54,12 @@ def stima_token(testo):
     """Token approssimativi: un carattere cinese ≈ 1 token, il resto ≈ 4 caratteri per token."""
     cjk = sum(1 for c in testo if is_cjk(c))
     return int(cjk + (len(testo) - cjk) / 4)
+
+
+def in_italiano(p):
+    """Passaggio di una serie in italiano (profilo della serie): la frase citata non va tradotta."""
+    import profili
+    return profili.di(p.get("fonte", ""), p.get("file", "")).get("lingua", "").strip().lower() == "it"
 
 
 def letti(cart):
@@ -103,6 +109,8 @@ def scrivi_lotti(cart, cfg, dimensione):
             regole = []
             if e_sommario(p):
                 regole.append("voce di sommario o di elenco: decidi solo la pertinenza, non serve tradurre")
+            elif in_italiano(p):
+                regole.append("testo in italiano: non serve tradurre (traduzione_it vuota)")
             sicure = [v for v in p.get("varianti_trovate") or []
                       if forma_sicura(v) and normalizza(v) not in amb.get(p["entita"], set())]
             if sicure:
@@ -153,6 +161,8 @@ def prepara(args, cfg):
                  + " Prima esplora_nome, conferma delle forme e schede crea (server MCP).")
     cart = cartella(cfg, args.cartella or slug(args.nome))
     cart.mkdir(parents=True, exist_ok=True)
+    if args.senza_archivio:
+        (cart / ".senza_archivio").touch()
     ini = cart / "entita_ricerca.ini"
     singola = configparser.ConfigParser(interpolation=None, delimiters=("=",))
     singola.optionxform = str
@@ -190,7 +200,8 @@ def prepara(args, cfg):
     print(f"Passaggi estratti: {len(carica_jsonl(cart / 'passaggi.jsonl'))}; dall'archivio: {dall_archivio}; "
           f"da leggere: {len(resto)} in {n_lotti} lotti ({cart / 'lotti'})")
     if resto:
-        print(f"Testo dei lotti: circa {token // 1000} mila token")
+        print(f"Testo dei lotti: circa {token // 1000} mila token" if token >= 1000 else
+              f"Testo dei lotti: circa {token} token")
     else:
         print("Nessun passaggio da leggere: si può passare a «documenti» e alla sintesi.")
         chiudi(cart)
@@ -225,13 +236,14 @@ def registra(args, cfg):
                       "modello_analisi": "nessuno (voce di sommario)", "sommario": True})
             let = livello("regola", "voce di sommario o di elenco, non tradotta")
         elif pert != "no":
-            if not (v.get("traduzione_it") or "").strip():
+            if not (v.get("traduzione_it") or "").strip() and not in_italiano(p):
                 problemi.append(f"{p['id']}: manca traduzione_it")
                 continue
             tipo = v.get("tipo_menzione") if v.get("tipo_menzione") in TIPI else "altro"
             tono = v.get("tono") if v.get("tono") in TONI else "non determinabile"
             a.update({"tipo_menzione": tipo, "citazione_testuale": frase_chiave(p),
-                      "traduzione_it": v["traduzione_it"].strip(), "sintesi_it": (v.get("sintesi_it") or "").strip(),
+                      "traduzione_it": (v.get("traduzione_it") or "").strip(),
+                      "sintesi_it": (v.get("sintesi_it") or "").strip(),
                       "nuove_varianti": [x for x in v.get("nuove_varianti") or []
                                          if isinstance(x, str) and x and x not in schede[p["entita"]]["varianti"]],
                       "altri_nominati": [x for x in v.get("altri_nominati") or [] if isinstance(x, dict) and x.get("nome")],
@@ -306,6 +318,8 @@ def main():
     a.add_argument("--al", type=int, default=None)
     a.add_argument("--fonti", default=None)
     a.add_argument("--lotto", type=int, default=10)
+    a.add_argument("--senza-archivio", action="store_true",
+                   help="la cartella non legge né scrive l'archivio unico (file .senza_archivio)")
     a = sub.add_parser("registra")
     a.add_argument("cartella")
     a.add_argument("letture")

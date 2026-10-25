@@ -262,8 +262,72 @@ def carica_pymupdf():
         import pymupdf
         return pymupdf
     except ImportError:
+        pass
+    try:
         import fitz
         return fitz
+    except ImportError:
+        pass
+    try:                                   # senza PyMuPDF (es. nella chat di Claude): solo lo strato di testo
+        import pypdf  # noqa: F401
+    except ImportError:
+        raise ImportError("Per leggere i PDF serve PyMuPDF (pip install pymupdf) oppure pypdf (pip install pypdf).")
+    import types
+    return types.SimpleNamespace(open=PdfSemplice, csGRAY=None, VersionBind=f"pypdf {pypdf.__version__}")
+
+
+class PdfSemplice:
+    """Un PDF letto con pypdf, con la parte dell'interfaccia di PyMuPDF che usa leggi_documento: testo ed
+    etichette delle pagine. Niente immagini: le pagine senza testo restano vuote (serve PyMuPDF per l'OCR)."""
+    def __init__(self, percorso):
+        import pypdf
+        self.lettore = pypdf.PdfReader(str(percorso))
+        # pypdf numera da sé le pagine senza etichette dichiarate (1, 2, 3...): come PyMuPDF, allora nessuna
+        try:
+            dichiarate = "/PageLabels" in self.lettore.trailer["/Root"]
+            etichette = list(self.lettore.page_labels) if dichiarate else []
+        except Exception:
+            etichette = []
+        self.pagine = [PaginaSemplice(p, etichette[k] if k < len(etichette) else "")
+                       for k, p in enumerate(self.lettore.pages)]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *errore):
+        return False
+
+    def __iter__(self):
+        return iter(self.pagine)
+
+    def __getitem__(self, k):
+        return self.pagine[k]
+
+    def __len__(self):
+        return len(self.pagine)
+
+
+class PaginaSemplice:
+    def __init__(self, pagina, etichetta):
+        import types
+        self.pagina, self.etichetta = pagina, etichetta
+        box = pagina.mediabox
+        self.rect = types.SimpleNamespace(width=float(box.width), height=float(box.height))
+
+    def get_text(self, *_):
+        try:
+            return self.pagina.extract_text() or ""
+        except Exception:
+            return ""
+
+    def get_label(self):
+        return self.etichetta
+
+    def get_image_info(self):
+        return []
+
+    def get_pixmap(self, *_, **__):
+        raise RuntimeError("Pagina senza testo: per l'OCR servono PyMuPDF e Tesseract.")
 
 
 def etichetta_pagina(pag):
@@ -442,6 +506,9 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                                 continue
                             if k in letti:                    # già letta con l'OCR nel campione
                                 pagine.append([chiave, letti[k][0], "ocr", letti[k][1]])
+                                continue
+                            if ocr_fn is None:                # nessun OCR disponibile: la pagina resta vuota
+                                pagine.append([chiave, "", "senza testo", None])
                                 continue
                             if cache and (cache / f"{k:05d}.conf").exists():
                                 pagine.append([chiave, (cache / f"{k:05d}.txt").read_text(encoding="utf-8"), "ocr",
@@ -742,7 +809,14 @@ def cmd_importa(args, stampa=print):
     lingue = lingue_ocr(scheda, args.lingue)
     ocr = None
     if any(f.suffix.lower() in PDF | IMMAGINI for f in file):
-        ocr = Ocr(cfg, lingue, args.dpi)
+        try:
+            ocr = Ocr(cfg, lingue, args.dpi)
+        except SystemExit as e:
+            # senza Tesseract si importano i PDF che hanno già il testo; immagini e OCR forzato no
+            if args.ocr == "sempre" or any(f.suffix.lower() in IMMAGINI for f in file):
+                raise
+            stampa(f"Avviso: OCR non disponibile ({e}). Si importano solo le pagine dei PDF che hanno già "
+                   "il testo; quelle senza restano vuote.")
     processi = args.processi or max(1, (os.cpu_count() or 2) // 2)
     cache_radice = cartella_importazioni(cfg) / "_cache"
     if args.prova:
@@ -790,6 +864,10 @@ def cmd_importa(args, stampa=print):
                             + (f" (XML ignorati, non PAGE né ALTO: {', '.join(rap['ignorati'][:5])})"
                                if rap["ignorati"] else ""))
             stampa("  nessuna pagina leggibile: non importato")
+            continue
+        if not testo.strip():
+            problemi.append(f"{origine}: nessun testo (scansione senza strato di testo: serve l'OCR)")
+            stampa("  nessun testo: non importato (serve l'OCR)")
             continue
         v = valori_documento(args.serie, scheda, args, metadati.get(doc["nome"], {}), doc["nome"], testo)
         nome = nome_file(scheda, args.serie, v, doc["base"])
