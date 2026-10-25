@@ -302,6 +302,27 @@ delle forme declinate, e propone solo quelle attestate; entrano nella scheda dop
 **Prima di usare i risultati albanesi**, conviene una prova rapida dei modelli sulla lettura dell'albanese
 (una ventina di passaggi verificati da te), come per i modelli nuovi.
 
+## Prova dei motori OCR
+
+`prova_ocr.py` misura quale motore legge meglio una serie, sulle stesse pagine. Nella cartella `pipeline`:
+
+```
+python prova_ocr.py motori --lingua zh
+python prova_ocr.py prepara "C:\...\scansione.pdf" --nome cina_icm --lingua zh --pagine 50,200,320
+python prova_ocr.py misura cina_icm
+```
+
+1. `motori`: quali motori sono disponibili e perché gli altri no. Oggi: Tesseract, anche con segmentazioni
+   diverse (`tesseract:3`, `tesseract:6`). PaddleOCR è previsto ma non installato: su questo PC era troppo lento,
+   circa 50 secondi per pagina. Kraken richiede Linux (WSL).
+2. `prepara`: rende le pagine come immagini e le fa leggere a ogni motore; se il PDF ha già uno strato di testo,
+   lo aggiunge al confronto (`strato_pdf`). Tutto va in `risultati\_prove\ocr\<nome>\`, fuori dall'archivio.
+   Per ogni pagina scrive `pNNN.riferimento.txt`, una proposta da correggere a mano guardando `pNNN.png`.
+3. Correggi i riferimenti e scrivi il tuo nome dopo `# VERIFICATO_DA:`. Una pagina non verificata non entra nella
+   misura. Per il cinese spazi e a capo non contano.
+4. `misura`: CER (percentuale di caratteri sbagliati, inseriti o mancanti), anche senza la punteggiatura, e
+   secondi per pagina di ogni motore, in `risultati\_prove\ocr\misure_<data>.md`.
+
 ## Archivio unico delle letture
 
 Ogni passaggio letto è conservato in `risultati\_archivio\letture.jsonl`, che sia stato letto dal modello o corretto da te. Una ricerca successiva non rimanda al modello lo stesso passaggio, né una sua copia identica in un altro file. Così le domande ripetute, di seguito o su altri periodi della stessa entità costano pochissimo.
