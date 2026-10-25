@@ -234,11 +234,21 @@ python schede.py controlla
 
 Se chiedi di una persona o di un'organizzazione che non ha una scheda, Jan usa `esplora_nome`:
 - cerca nelle fonti inglesi le forme latine del nome, tollerando gli errori dell'OCR;
-- verifica le trascrizioni cinesi che propone il modello della chat;
+- traduce gli indizi in caratteri latini (paesi, nazionalità, partiti, in italiano, inglese, francese, spagnolo,
+  tedesco e albanese) nelle forme cinesi: «Italian», «Italia» → 意大利, 意共 (`varianti_nomi.py`);
+- genera da sé le trascrizioni cinesi del nome, sul modello Xinhua e con le varianti più comuni (Berlinguer →
+  贝林格, 贝尔林格…; il nome proprio si combina con i cognomi trovati: 恩里科·贝林格), e le traduzioni dei nomi di
+  partito (Communist Party of Italy (Marxist-Leninist) → 意大利共产党（马列） …); tiene solo quelle attestate e,
+  tra queste, propone quelle che compaiono accanto agli indizi;
+- verifica anche le trascrizioni cinesi che propone il modello della chat;
 - confronta le testate: dove la Peking Review nomina la persona, cerca nel Renmin Ribao delle tre settimane
-  precedenti i nomi trascritti con il punto centrale accanto al paese o al partito (es. 比利时), e li propone;
+  precedenti i nomi trascritti accanto al paese o al partito, e li propone (allineamento dichiarato nei profili);
 - per ogni forma riporta conteggi per serie e anno, esempi con riferimento, quante volte compare accanto agli
   indizi, e segnala le forme brevi o spesso senza contesto (possibili omonimi).
+
+Le forme generate e quelle dell'allineamento sono attestate, ma possono indicare altre persone o parole (贝林格
+compare anche in 贝林格韦, una regione dello Zimbabwe): vanno confermate una per una e, se brevi, finiscono tra le
+forme ambigue, che il modello smista sempre.
 
 Jan ti mostra le forme attestate e crea la scheda solo dopo la tua conferma: nessuna forma entra nella scheda
 se non compare nelle fonti. Poi la ricerca procede come per le altre entità.

@@ -547,11 +547,11 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
     for p, a, di in sel[da:da + massimo]:
         riga = riga_citazione(dati, p["file"], p["riga"], a.get("citazione_testuale", "")) \
             if a.get("citazione_verificata") else p["riga"]
-        # riferimento pronto in stile Chicago (pagina solo se nota); file e riga servono a ritrovare il testo e
-        # vanno citati come "file, riga N": il numero di riga NON è una pagina
+        # riferimento pronto in stile Chicago (pagina solo se nota): l'unico testo citabile. File e riga stanno in
+        # «solo_per_apri_fonte»: servono ad apri_fonte, e il numero di riga NON è una pagina
         rif = sintesi_rif(dict(p, analisi=dict(a, pagina=a.get("pagina") or pagina_di(p))))
         v = {"id": p["id"], "riferimento": rif, "data": p.get("data"),
-             "file_e_riga": f"{p['file']}, riga {riga}",
+             "solo_per_apri_fonte": {"file": p["file"], "riga": riga},
              "originale": (a.get("citazione_testuale") or "")[:300] if a.get("citazione_verificata") else "",
              "traduzione": (a.get("traduzione_it") or "")[:300], "sintesi": (a.get("sintesi_it") or "")[:250]}
         if di:                                  # raccolte: data del documento, dedotta (non entra nella citazione)

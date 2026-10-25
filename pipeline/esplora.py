@@ -117,7 +117,7 @@ def riassunto(righe, lettore, indizi=(), esempi=2):
             "per_serie_e_anno": {s: dict(sorted(c.items())) for s, c in per.items()},
             "forme_trovate": dict(Counter(r["trovato"] for r in righe).most_common(6)),
             **({"con_indizio": f"{con}/{len(righe)}"} if ind else {}),
-            "esempi": [{"riferimento": riferimento(r, lettore), "file_e_riga": f"{r['file']}, riga {r['riga']}",
+            "esempi": [{"riferimento": riferimento(r, lettore), "solo_per_apri_fonte": {"file": r["file"], "riga": r["riga"]},
                         "testo": estratto(r["testo"], r["trovato"])} for r in scelti[:esempi + 1]]}
 
 
@@ -196,8 +196,10 @@ def allinea(ind, lettore, righe_latine, indizi_cjk, origine, destinazione, giorn
         if totale > 40 * n:
             continue
         scelti.append((nome, n, len(date), totale))
-    # tra forme contenute l'una nell'altra con lo stesso sostegno tengo la più lunga
-    finali = [x for x in scelti if not any(x[0] != y[0] and x[0] in y[0] and y[1] >= x[1] for y in scelti)]
+    # tra forme contenute l'una nell'altra con lo stesso sostegno tengo la più lunga, salvo che sia molto più rara
+    # nelle fonti (扬贝林格, 1 riga, contiene 贝林格, 167 righe: è un frammento, vale la forma breve)
+    finali = [x for x in scelti if not any(x[0] != y[0] and x[0] in y[0] and y[1] >= x[1] and y[3] * 2 >= x[3]
+                                           for y in scelti)]
     return finali[:8]
 
 
@@ -260,13 +262,18 @@ def forme_albanesi(nome):
 
 
 def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None):
+    import varianti_nomi
     lettore = Lettore(dati)
     indizi = [i for i in (indizi or []) if i.strip()]
     forme = [nome] + [c for c in (candidate or []) if c.strip() and c.strip() != nome]
     latine = [f for f in forme if not is_cjk(f)]
     cinesi = [f for f in forme if is_cjk(f)]
+    # indizi in caratteri latini (paesi, partiti) tradotti in cinese dal motore: servono all'allineamento e alla
+    # quota di righe accanto a un indizio anche quando la chat dà solo indizi latini
+    tradotti = varianti_nomi.indizi_tradotti(indizi + [nome])
+    indizi = indizi + [t for t in tradotti if t not in indizi]
     out = {"nome": nome, "forme_latine": {}, "forme_cinesi": {}, "forme_albanesi": {}, "dall_allineamento": [],
-           "non_attestate": []}
+           "non_attestate": [], "indizi_usati": indizi}
 
     righe_latine = []
     provate = []
@@ -339,14 +346,29 @@ def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None
             out["dall_allineamento"].append({"forma": cand, "settimane_con_la_forma": f"{n}/{tot}",
                                              "allineamento": f"{orig} -> {dest}", "righe_in_tutte_le_fonti": righe_rr})
 
+    # trascrizioni (modello Xinhua) e traduzioni dei nomi di partito generate dal motore: ipotesi, cercate qui
+    generate = {}
+    for f in latine:
+        # prima il cognome da solo, poi il nome proprio combinato con i cognomi attestati (恩里科·贝林格)
+        cognomi = [g for g in varianti_nomi.trascrizioni_cinesi(f.split()[-1]) if ind.cerca(g, dal, al)] \
+            if len(f.split()) > 1 else None
+        for g in varianti_nomi.trascrizioni_cinesi(f, cognomi=cognomi):
+            generate.setdefault(g, "trascrizione cinese generata dal motore")
+        for g in varianti_nomi.partiti_cinesi(f):
+            generate.setdefault(g, "traduzione cinese generata dal motore")
+    for c in cinesi + dall_allineamento:
+        generate.pop(c, None)
+    provate_generate = len(generate)
+
     date_latine = [dt.date.fromisoformat(r["data"]) for r in righe_latine
                    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.get("data") or "")]
     anni_latini = {r["anno"] for r in righe_latine if r["anno"]}
-    da_valutare = []
-    for f in cinesi + [c for c in dall_allineamento if c not in cinesi]:
+    da_valutare, trovate_generate = [], {}
+    for f in cinesi + [c for c in dall_allineamento if c not in cinesi] + list(generate):
         r = ind.cerca(f, dal, al)
         if not r:
-            out["non_attestate"].append(f)
+            if f not in generate:                 # le generate non attestate sono troppe: solo il conteggio
+                out["non_attestate"].append(f)
             continue
         s = riassunto(r, lettore, indizi)
         anni = {x["anno"] for x in r if x["anno"]}
@@ -368,28 +390,47 @@ def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None
                                "spesso senza l'indizio accanto: possibili omonimi")
         if f in cinesi:
             out["forme_cinesi"][f] = s
+        elif f in generate:
+            # una forma generata entra nella proposta se le sue righe stanno accanto agli indizi (o, senza indizi,
+            # cadono vicino alle menzioni nelle fonti latine); altrimenti resta da valutare
+            if quota is not None and quota >= 0.5 or quota is None and vicine is not None and vicine >= 0.5:
+                s["origine"] = generate[f]
+                trovate_generate[f] = (len(r), s)
+            else:
+                da_valutare.append(f)
         elif len(r) >= 2 and (quota is None or quota >= 0.5) and (vicine is None or vicine >= 0.5):
             s["origine"] = f"allineamento con {origine_di.get(f, 'un’altra serie')}"
             out["forme_cinesi"][f] = s           # candidata forte: entra nella proposta
         else:
             da_valutare.append(f)
+    # una generata contenuta in un'altra forma con almeno le stesse righe (施特罗伯 in 施特罗伯尔) non aggiunge nulla
+    conteggi = {g: m for g, (m, _) in trovate_generate.items()}
+    conteggi.update({g: s["totale"] for g, s in out["forme_cinesi"].items()})
+    for f, (n, s) in trovate_generate.items():
+        if not any(f != g and f in g and m >= n for g, m in conteggi.items()):
+            out["forme_cinesi"][f] = s
+    out["varianti_generate"] = {"provate": provate_generate, "attestate_vicine_agli_indizi": len(trovate_generate)}
+    out["da_valutare"] = da_valutare[:15]
     for x in out["dall_allineamento"]:
         x["esito"] = "proposta" if x["forma"] in out["forme_cinesi"] else \
             "non attestata nel periodo" if x["forma"] in out["non_attestate"] else "debole: probabilmente un altro nome"
 
     tutte = {**out["forme_latine"], **out["forme_cinesi"], **out["forme_albanesi"]}
-    dall_allin = [f for f, s in out["forme_cinesi"].items() if s.get("origine")]
-    base = [f for f in tutte if f not in dall_allin and f not in out["forme_albanesi"]]
+    dall_allin = [f for f, s in out["forme_cinesi"].items() if s.get("origine", "").startswith("allineamento")]
+    gener = [f for f, s in out["forme_cinesi"].items() if "generata" in s.get("origine", "")]
+    base = [f for f in tutte if f not in dall_allin and f not in gener and f not in out["forme_albanesi"]]
     out["proposta_di_scheda"] = {
         "varianti": base,
+        "da_confermare_generate": gener,
         "da_confermare_dall_allineamento": dall_allin,
         "da_confermare_albanesi": list(out["forme_albanesi"]),
         "forme_ambigue": [f for f in tutte if "attenzione" in tutte[f]],
         "contesto": indizi,
-        "nota": "Mostra all'utente le forme con conteggi ed esempi. Le forme trovate con l'allineamento possono "
-                "essere nomi di altre persone citate negli stessi articoli: chiedi conferma una per una. Le forme "
-                "non attestate e quelle deboli non vanno nella scheda; le forme_ambigue vanno sempre smistate. Le forme albanesi "
-                "sono ipotesi di trascrizione trovate nei testi albanesi: mostra gli esempi e chiedi conferma una per una."}
+        "nota": "Mostra all'utente le forme con conteggi ed esempi. Le forme generate dal motore (trascrizioni e "
+                "traduzioni cinesi) e quelle trovate con l'allineamento sono attestate ma possono indicare altre "
+                "persone o altre parole: chiedi conferma una per una. Le forme non attestate e quelle da valutare non "
+                "vanno nella scheda; le forme_ambigue vanno sempre smistate. Le forme albanesi sono ipotesi di "
+                "trascrizione trovate nei testi albanesi: mostra gli esempi e chiedi conferma una per una."}
     return out
 
 
@@ -403,7 +444,7 @@ def cerca_testo(ind, dati, testo, dal=None, al=None, fonti=None, massimo=8, da=0
     da, massimo = int(da or 0), min(int(massimo or 8), 15)
     return {"testo": testo, "totale": len(r), "per_serie_e_anno": {s: dict(sorted(c.items())) for s, c in per.items()},
             "mostrati": f"{da + 1}-{min(da + massimo, len(r))}" if r else "0",
-            "risultati": [{"riferimento": riferimento(x, lettore), "file_e_riga": f"{x['file']}, riga {x['riga']}",
+            "risultati": [{"riferimento": riferimento(x, lettore), "solo_per_apri_fonte": {"file": x["file"], "riga": x["riga"]},
                            "testo": estratto(x["testo"], x["trovato"], 90)} for x in r[da:da + massimo]],
             "nota": "Ricerca testuale senza lettura: le righe non sono state valutate per pertinenza. Le parole "
                     "latine di 5 lettere o più si trovano anche dentro parole più lunghe (l'OCR incolla le parole)."}
