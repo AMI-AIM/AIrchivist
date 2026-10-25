@@ -5,6 +5,10 @@ silenzi, comparsa di entità collegate, lacune delle fonti dentro i silenzi.
 Date: per i periodici la data del numero; per le raccolte la data interna del documento, dedotta dal testo
 (date_interne.py). Le date interne precise al giorno entrano in prime e ultime menzioni e nei silenzi; quelle
 al mese o all'anno solo nella presenza per anno. I fatti dichiarano quante date sono dedotte.
+
+Dai profili di serie (profili.py): quali fonti sono periodici (tipo), fin dove arrivano (periodo: i silenzi
+finali si calcolano fino all'ultimo numero disponibile tra le serie in cui l'entità compare), lacune di tutte le
+serie (problemi_residui.csv).
 """
 import csv
 import datetime as dt
@@ -12,16 +16,17 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
-PERIODICI = ("Renmin Ribao", "Peking Review", "Hongqi", "Red Flag")
-FINE_FONTI = dt.date(1980, 12, 31)       # ultimo numero disponibile di Renmin Ribao e Peking Review
-INIZIO_FONTI = dt.date(1963, 1, 1)
-
+import profili
 
 DATI = None          # cartella delle fonti (per le date interne dei passaggi estratti prima del lavoro 9)
 
 
+def periodico(c):
+    return profili.e_periodico(c.get("fonte", ""), c.get("file", ""))
+
+
 def data_piena(c):
-    if c["fonte"] not in PERIODICI:
+    if not periodico(c):
         return None
     try:
         return dt.date.fromisoformat(c.get("data", "")[:10])
@@ -30,13 +35,15 @@ def data_piena(c):
 
 
 def data_di(c):
-    """(data o None, anno o None, documento) del passaggio. Periodici: data del numero, documento None.
-    Raccolte: data interna dedotta (data solo se precisa al giorno); documento = posizione dell'intestazione."""
+    """(data o None, anno o None, documento) del passaggio. Periodici: data del numero (solo l'anno per i
+    fascicoli datati all'anno), documento None. Raccolte: data interna dedotta (data solo se precisa al giorno);
+    documento = posizione dell'intestazione."""
     d = data_piena(c)
     if d:
         return d, d.year, None
-    if c["fonte"] in PERIODICI:
-        return None, None, None
+    if periodico(c):
+        anno = (c.get("data") or "")[:4]
+        return None, (int(anno) if anno.isdigit() else None), None
     from date_interne import per_passaggio
     di = per_passaggio(c, DATI)
     if not di:
@@ -58,17 +65,31 @@ def it(d):
     return f"{d.day} {mesi[d.month - 1]} {d.year}"
 
 
+def serie_della_lacuna(nome_csv):
+    """Profilo di una serie come è scritta in problemi_residui.csv («Hongqi (JPRS)» -> gruppo Hongqi)."""
+    nome = (nome_csv or "").strip()
+    if nome in profili.tutti():
+        return nome
+    return next((n for n in profili.tutti() if nome.lower().startswith(profili.gruppo(n).lower())), nome)
+
+
 def giorni_mancanti(problemi):
-    """Date dei numeri del Renmin Ribao assenti dalle fonti."""
+    """[(data, serie)] dei numeri assenti dalle fonti («giorno mancante» in problemi_residui.csv)."""
     out = []
     if problemi and Path(problemi).exists():
         with open(problemi, encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
-                if r["serie"] == "Renmin Ribao" and r["problema"] == "giorno mancante":
+                if r.get("problema") == "giorno mancante" and r.get("file"):
                     m = re.search(r"(\d{4}-\d{2}-\d{2})", r["file"])
                     if m:
-                        out.append(dt.date.fromisoformat(m.group(1)))
+                        out.append((dt.date.fromisoformat(m.group(1)), serie_della_lacuna(r["serie"])))
     return out
+
+
+def lacune_tra(mancanti, da, a, fine_inclusa=False):
+    """Numeri mancanti tra due date, per serie: Counter {serie: n}. Contano tutte le serie, non solo quelle in cui
+    l'entità compare: un numero mancante di qualsiasi fonte cercata può nascondere una menzione."""
+    return Counter(s for g, s in mancanti if da < g and (g <= a if fine_inclusa else g < a))
 
 
 def calcola(pertinenti, principale, soglia_mesi=6, problemi=None, collegate_fino_a=None, fino_a=None):
@@ -80,6 +101,7 @@ def calcola(pertinenti, principale, soglia_mesi=6, problemi=None, collegate_fino
     ruoli = defaultdict(lambda: defaultdict(Counter))   # entità -> anno -> ruolo
     toni = defaultdict(lambda: defaultdict(Counter))
     eventi = defaultdict(lambda: defaultdict(list))
+    serie_entita = defaultdict(set)            # entità -> periodici in cui compare (per fine delle fonti e lacune)
     visti = set()
     for c in pertinenti:
         d, anno, documento = data_di(c)
@@ -87,6 +109,8 @@ def calcola(pertinenti, principale, soglia_mesi=6, problemi=None, collegate_fino
             continue
         e = c["entita"]
         a = c["analisi"]
+        if periodico(c):
+            serie_entita[e].add(profili.nome_di(c.get("fonte", ""), c.get("file", "")))
         if d:
             date_per_entita[e].add(d)
             (dedotte[e] if documento is not None else periodiche[e]).add(d)
@@ -107,19 +131,23 @@ def calcola(pertinenti, principale, soglia_mesi=6, problemi=None, collegate_fino
     for e, date in date_per_entita.items():
         date = sorted(date)
         estremi[e] = (date[0], date[-1], len(date), len(dedotte[e] - periodiche[e]))
+        serie = serie_entita[e]
         for x, y in zip(date, date[1:]):
             if mesi_tra(x, y) >= soglia_mesi:
                 silenzi.append({"entita": e, "da": x, "a": y, "mesi": round(mesi_tra(x, y)),
-                                "lacune": sum(1 for g in mancanti if x < g < y), "finale": False})
-        fine = FINE_FONTI
+                                "lacune": lacune_tra(mancanti, x, y), "finale": False})
+        fine_fonti = profili.fine_fonti(serie or None)          # ultimo numero tra le serie dell'entità
+        if not fine_fonti:
+            continue                                            # nessun periodo dichiarato nei profili
+        fine = fine_fonti
         if fino_a:
             fine = min(fine, dt.date(fino_a, 12, 31))
         if collegate_fino_a and e != principale:
             fine = min(fine, dt.date(collegate_fino_a, 12, 31))
         if mesi_tra(date[-1], fine) >= soglia_mesi:
             silenzi.append({"entita": e, "da": date[-1], "a": fine,
-                            "mesi": round(mesi_tra(date[-1], fine)), "limite_ricerca": fine != FINE_FONTI,
-                            "lacune": sum(1 for g in mancanti if date[-1] < g <= fine), "finale": True})
+                            "mesi": round(mesi_tra(date[-1], fine)), "limite_ricerca": fine != fine_fonti,
+                            "lacune": lacune_tra(mancanti, date[-1], fine, True), "finale": True})
     silenzi.sort(key=lambda s: (s["da"], s["entita"]))
     return {"principale": principale, "per_anno": per_anno, "ruoli": ruoli, "toni": toni,
             "eventi": eventi, "silenzi": silenzi, "estremi": estremi, "soglia": soglia_mesi}
@@ -134,8 +162,10 @@ def fatti(cr):
                 else " nei periodici")
         righe.append(f"{e}: {n} date di menzione{dove}, dalla prima del {it(prima)} all'ultima del {it(ultima)}.")
     for s in cr["silenzi"]:
-        lac = (f" (in questo intervallo mancano dalle fonti {s['lacune']} "
-               f"{'numero' if s['lacune'] == 1 else 'numeri'} del Renmin Ribao)") if s["lacune"] else ""
+        lac = ""
+        if s["lacune"]:
+            parti = [f"{n} {'numero' if n == 1 else 'numeri'} di {serie}" for serie, n in sorted(s["lacune"].items())]
+            lac = f" (in questo intervallo mancano dalle fonti {', '.join(parti)})"
         if s["finale"] and s.get("limite_ricerca"):
             righe.append(f"Dopo il {it(s['da'])} {s['entita']} non è più menzionato fino al limite della ricerca "
                          f"({it(s['a'])}): {s['mesi']} mesi{lac}.")

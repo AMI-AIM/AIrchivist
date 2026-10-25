@@ -195,30 +195,33 @@ def sez_passaggi(docs, modello):
 
 
 def _mese_problema(serie, nome):
-    """(anno, mese) di una voce di problemi_residui.csv, se ricavabile."""
-    m = re.search(r"(19\d\d)-(\d\d)-(\d\d)", nome)
+    """(anno, mese) di una voce di problemi_residui.csv, se ricavabile: dalla data nel nome del file, oppure
+    dal numero del fascicolo (sigla del profilo + anno-numero, es. PR1967-11) e dalla periodicità del profilo."""
+    import profili
+    m = re.search(r"(1[89]\d\d|20\d\d)-(\d\d)-(\d\d)", nome)
     if m:
         return int(m.group(1)), int(m.group(2))
-    m = re.search(r"PR(19\d\d)-(\d+)", nome)
-    if m:                                               # Peking Review: settimanale
-        return int(m.group(1)), min(12, (int(m.group(2)) - 1) * 12 // 52 + 1)
-    m = re.search(r"RF(19\d\d)-(\d+)", nome)
-    if m:                                               # Hongqi/JPRS: quindicinale dal 1980, mensile prima
-        a, n = int(m.group(1)), int(m.group(2))
-        return a, min(12, (n + 1) // 2 if a >= 1980 else n)
-    m = re.search(r"(19\d\d)", nome)
+    for n, p in profili.tutti().items():
+        sigla = p.get("sigla", "")
+        m = re.search(rf"{re.escape(sigla)}(\d{{4}})-(\d+)", nome) if sigla else None
+        if m:
+            a = int(m.group(1))
+            return a, profili.mese_del_numero(n, a, int(m.group(2)))
+    m = re.search(r"(1[89]\d\d|20\d\d)", nome)
     return (int(m.group(1)), None) if m else (None, None)
 
 
 def lacune(cfg_problemi, docs):
     """Lacune delle fonti nei mesi attorno ai documenti trovati (±1 mese), più un conteggio per anno."""
+    import profili
+    from cronologia import serie_della_lacuna
     if not docs or not Path(cfg_problemi).exists():
         return []
-    periodici = ("Renmin Ribao", "Peking Review", "Hongqi", "Red Flag")   # per le raccolte l'anno non è quello dei documenti
     mesi, anni = set(), set()
     for d in docs:
         v = d["voci"][0]
-        if v["fonte"] not in periodici or not v["data"][:4].isdigit():
+        # solo i periodici: per le raccolte l'anno del file non è quello dei documenti
+        if not profili.e_periodico(v["fonte"], v["file"]) or not v["data"][:4].isdigit():
             continue
         a = int(v["data"][:4])
         anni.add(a)
@@ -233,15 +236,16 @@ def lacune(cfg_problemi, docs):
                 mesi.add((aa, mm))
     if not anni:
         return []
-    chiavi = {"Renmin Ribao": "Renmin", "Peking Review": "Peking", "Hongqi": "Hongqi", "Red Flag": "Hongqi"}
-    serie_presenti = {chiavi.get(d["voci"][0]["fonte"], d["voci"][0]["fonte"]) for d in docs}
+    # gruppi delle serie dei documenti (Hongqi e Red Flag insieme: nel CSV «Hongqi (JPRS)»)
+    gruppi_presenti = {profili.gruppo(profili.nome_di(d["voci"][0]["fonte"], d["voci"][0]["file"])
+                                      or d["voci"][0]["fonte"]) for d in docs}
     vicine, per_anno = defaultdict(list), defaultdict(int)
     with open(cfg_problemi, encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
             serie = r["serie"]
             if not r.get("file"):                         # riga malformata del CSV: non si può collocare
                 continue
-            if not any(k.lower() in serie.lower() for k in serie_presenti):
+            if profili.gruppo(serie_della_lacuna(serie)) not in gruppi_presenti:
                 continue
             nome = Path(r["file"]).name.replace(".txt", "")
             a, m = _mese_problema(serie, r["file"])
@@ -261,17 +265,11 @@ def lacune(cfg_problemi, docs):
     return righe
 
 
-def note_limiti_serie():
-    """Serie descritte in serie.ini (fonti importate con importa.py) -> frase per la sezione «Limiti»."""
-    import configparser
-    cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
-    cp.optionxform = str
-    try:
-        cp.read(Path(__file__).resolve().parent / "serie.ini", encoding="utf-8")
-    except configparser.Error:
-        return {}
-    return {s: [x.strip() for x in cp.get(s, "nota_limiti", fallback="").split(" | ") if x.strip()]
-            for s in cp.sections()}
+def note_limiti(fonte, file):
+    """Frasi per la sezione «Limiti» dal profilo della serie del documento (campo nota_limiti, frasi separate
+    da « | »)."""
+    import profili
+    return [x.strip() for x in profili.di(fonte, file).get("nota_limiti", "").split(" | ") if x.strip()]
 
 
 def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None):
@@ -281,18 +279,19 @@ def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None):
     if incerti:
         righe.append(f"- {len(incerti)} passaggi classificati come **incerti**, da controllare a mano: "
                      + "; ".join(riferimento(c) for c in incerti[:30]) + " (file e righe nella sezione 8)")
-    fonti = {d["voci"][0]["fonte"] for d in docs}
-    if any(("资料" in f or "文件" in f) for f in fonti):
-        righe.append("- Per le raccolte di documenti l'anno indicato è quello della raccolta, non dei documenti.")
-    note_serie = note_limiti_serie()
+    import profili
+    senza_data = [d for d in docs if not d.get("data_interna")
+                  and not profili.e_periodico(d["voci"][0]["fonte"], d["voci"][0]["file"])
+                  and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d["voci"][0].get("data") or "")]
+    if senza_data:
+        righe.append(f"- Per {len(senza_data)} {'documento' if len(senza_data) == 1 else 'documenti'} di raccolte "
+                     "o volumi la data del documento non è stata dedotta dal testo: l'anno indicato è quello della "
+                     "raccolta, non del documento.")
     note = []
-    for f in sorted(fonti):
-        for frase in note_serie.get(f, []):
+    for d in sorted(docs, key=lambda d: d["voci"][0]["fonte"]):
+        for frase in note_limiti(d["voci"][0]["fonte"], d["voci"][0]["file"]):
             if frase not in note:
                 note.append(frase)
-    if any(f not in note_serie for f in fonti):          # fonti cinesi (quelle non importate con importa.py)
-        note.insert(0, "La stampa cinese registra ciò che Pechino sceglieva di pubblicare: l'assenza in queste "
-                       "fonti non prova l'assenza dei fatti.")
     righe += [f"- {n}" for n in note]
     righe.append("- Traduzioni e sintesi dei passaggi vanno controllate sull'originale riportato.")
     if scartati:
@@ -348,9 +347,9 @@ def data_per_modello(d, c):
     edizione della raccolta presentato come data del documento."""
     if d.get("data_interna"):
         return f"{d['data_interna']['data']}, dedotta dal testo"
-    from cronologia import PERIODICI
+    import profili
     if "data_interna" in c or (c.get("data") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", c["data"])
-                               and c.get("fonte") not in PERIODICI):
+                               and not profili.e_periodico(c.get("fonte", ""), c.get("file", ""))):
         return f"non nota (raccolta o volume del {c.get('data') or 's.d.'})"
     return c.get("data") or "s.d."
 

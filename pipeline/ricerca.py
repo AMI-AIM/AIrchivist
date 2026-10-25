@@ -78,30 +78,28 @@ def riduci_passaggi(cart, nomi, finestra, fino_a=None):
           f"(non rimandati al modello)" + (f"; {esclusi} delle entità collegate dopo il {fino_a} esclusi" if esclusi else ""))
 
 
-GRUPPI_FONTI = {
-    "renmin ribao": ["Renmin Ribao"],
-    "peking review": ["Peking Review"],
-    "hongqi": ["Hongqi", "Red Flag"],
-    "red flag": ["Hongqi", "Red Flag"],
-    "selected works": ["Selected Works"],
-    "documenti": ["无产阶级文化大革命资料汇编", "fonti_primarie"],
-}
+def fonte_ammessa(p, fonti):
+    """Vero se il passaggio appartiene a una delle fonti richieste: per nome della serie o per gruppo di profili
+    (profili.py: «Hongqi» = Hongqi + Red Flag, «documenti» = le raccolte di documenti)."""
+    import profili
+    gruppi = set().union(*(profili.serie_del_gruppo(x) for x in fonti))
+    return p.get("fonte") in gruppi or profili.nome_di(p.get("fonte", ""), p.get("file", "")) in gruppi
 
 
 def filtra_passaggi(cart, dal=None, al=None, fonti=None):
-    """Tiene solo i passaggi del periodo e delle fonti richieste. I documenti senza data (opere, raccolte)
-    restano, salvo che non siano esclusi dal filtro sulle fonti."""
+    """Tiene solo i passaggi del periodo e delle fonti richieste. Il periodo vale per l'anno del documento: nelle
+    raccolte la data interna, non l'anno di edizione (date_interne.anno_del_documento). I documenti senza anno
+    noto restano, salvo che non siano esclusi dal filtro sulle fonti."""
     import json
+    from date_interne import anno_del_documento
     f = cart / "passaggi.jsonl"
     P = [json.loads(r) for r in f.read_text(encoding="utf-8").splitlines() if r.strip()]
-    ammesse = set()
-    for x in fonti or []:
-        ammesse.update(GRUPPI_FONTI.get(x.strip().lower(), [x.strip()]))
+    ammesse = [x.strip() for x in fonti or [] if x.strip()]
     tenuti = []
     for p in P:
-        if ammesse and p["fonte"] not in ammesse:
+        if ammesse and not fonte_ammessa(p, ammesse):
             continue
-        anno = int(p["data"][:4]) if p.get("data", "")[:4].isdigit() else None
+        anno, _ = anno_del_documento(p)
         if anno and ((dal and anno < dal) or (al and anno > al)):
             continue
         tenuti.append(p)

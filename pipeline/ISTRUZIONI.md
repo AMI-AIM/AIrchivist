@@ -240,7 +240,11 @@ oppure copia `<lingua>.traineddata` da https://github.com/tesseract-ocr/tessdata
 **Serie.** Ogni testata o raccolta ha una scheda in `pipeline\serie.ini`: tipo (periodico o volume),
 lingua, cartella dentro `data\`, sigla dei file e modello della citazione (es. `Zëri i Popullit, {data}[, n.
 {numero}]`, che diventa «Zëri i Popullit, 12 gennaio 1967»). Ci sono già Zëri i Popullit e Rruga e Partisë;
-le altre si aggiungono copiando un blocco o chiedendo in Jan («crea la serie ...»).
+le altre si aggiungono copiando un blocco o chiedendo in Jan («crea la serie ...»). Il profilo dice anche
+al resto del sistema come trattare la serie: se è un periodico (`tipo`), fin dove arrivano i numeri (`periodo`,
+per i silenzi della cronologia), ogni quanto esce (`periodicita`), con quali altre serie cercarla (`gruppo`),
+come trovare la pagina nel testo (`pagina_regex`). L'elenco dei campi è in testa a `serie.ini`. Una serie senza
+`periodo` non ha silenzi finali nella cronologia.
 
 **Importare.** In Jan: «importa la cartella C:\...\scansioni nella serie Zëri i Popullit». La prima volta
 per una serie o un tipo di scansione Jan fa una **prova** sulle prime pagine e mostra testo, qualità e data

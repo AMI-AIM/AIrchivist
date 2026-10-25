@@ -166,11 +166,12 @@ def frase_chiave(rec, max_car=260):
 
 
 def pagina(rec):
-    """Pagina del Renmin Ribao (第N版) più vicina prima dell'occorrenza, se presente nel passaggio."""
+    """Pagina più vicina prima dell'occorrenza, se indicata nel passaggio secondo la pagina_regex del profilo
+    della serie (es. 第N版 del Renmin Ribao); '' se la serie non ne ha."""
+    import profili
     t = rec["passaggio_evidenziato"]
     i = t.find("⟦")
-    trovate = list(re.finditer(r"第\s*(\d+)\s*版", t[:i] if i > 0 else t))
-    return trovate[-1].group(1) if trovate else ""
+    return profili.ultima_pagina(t[:i] if i > 0 else t, rec.get("fonte", ""), rec.get("file", ""))
 
 
 def ritaglia(rec, n):

@@ -176,7 +176,7 @@ Estensione dell'attuale `serie.ini`. Ogni profilo dichiara:
 - frase dei «Limiti» nelle risposte;
 - regole specifiche attivabili (pagine 第N版 del Renmin Ribao, note di provenienza JPRS, allineamento tra serie).
 
-Le regole oggi scritte nel codice vengono trasferite nei profili. Il motore resta generico.
+Le regole oggi scritte nel codice vengono trasferite nei profili. Il motore resta generico. Fatto il 25/10/2026 (`profili.py`): tipo, periodo, periodicità, gruppo, pagine (`pagina_regex`), righe intere, allineamento tra serie, note dei «Limiti». Restano da definire nei profili: impaginazione (colonne, scrittura verticale), motore di testo preferito, posizione di data e numero.
 
 
 

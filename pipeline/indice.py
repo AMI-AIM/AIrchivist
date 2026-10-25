@@ -30,7 +30,7 @@ from estrai_occorrenze import is_cjk, leggi_intestazione, metadati, pattern_vari
 
 RIGHE_PER_FILE = 10_000_000          # rowid = id del file * RIGHE_PER_FILE + numero di riga
 CJK = re.compile(r"([㐀-鿿豈-﫿])")
-SERIE_BREVE = {"Red Flag": "Hongqi"}
+from profili import serie_breve   # noqa: E402   nome della serie nell'indice (Red Flag -> Hongqi: gruppo del profilo)
 
 
 def percorso_indice(cfg):
@@ -180,7 +180,7 @@ class Indice:
                       ((fid * RIGHE_PER_FILE + n, prepara(r)) for n, r in enumerate(righe, 1)
                        if n >= inizio and r.strip()))
         c.execute("INSERT INTO file VALUES (?,?,?,?,?,?,?,?)",
-                  (fid, rel, SERIE_BREVE.get(fonte, fonte), citazione, data, anno, inizio,
+                  (fid, rel, serie_breve(fonte), citazione, data, anno, inizio,
                    lingua_testo(meta, testo[pos:pos + 4000])))
         c.execute("INSERT OR REPLACE INTO stato_file VALUES (?,?,?)", (fid, st.st_size, int(st.st_mtime)))
 
@@ -377,12 +377,16 @@ class Indice:
     def file_candidati(self, varianti):
         """File che possono contenere almeno una delle varianti (insieme largo: la ricerca vera la fa poi
         l'espressione regolare su questi file).
-        Solo il Renmin Ribao (testo digitale, un paragrafo per riga: i nomi non vengono spezzati) viene
-        filtrato con l'indice; gli altri file (OCR, dove un nome può essere spezzato da un a capo o incollato
-        alle parole vicine) si leggono sempre tutti."""
+        Solo le serie con «righe_intere = sì» nel profilo (testo digitale, un paragrafo per riga: i nomi non
+        vengono spezzati; oggi il Renmin Ribao) vengono filtrate con l'indice; gli altri file (OCR, dove un
+        nome può essere spezzato da un a capo o incollato alle parole vicine) si leggono sempre tutti."""
+        import profili
+        intere = {profili.serie_breve(n) for n in profili.righe_intere()}
         file = self._file()
-        trovati = {r[1] for r in file.values() if r[2] != "Renmin Ribao"}
-        rr = {fid: r[1] for fid, r in file.items() if r[2] == "Renmin Ribao"}
+        trovati = {r[1] for r in file.values() if r[2] not in intere}
+        rr = {fid: r[1] for fid, r in file.items() if r[2] in intere}
+        if not rr:
+            return trovati
         domande = set()
         for v in varianti:
             car = CJK.findall(v)
@@ -443,7 +447,7 @@ class Indice:
             return ""
 
     def righe_in_date(self, serie, da_data, a_data):
-        """File di una serie tra due date (per allineare Peking Review e Renmin Ribao)."""
+        """File di una serie tra due date (per gli allineamenti tra serie: allinea_con nei profili)."""
         with self._connetti() as c:
             return [r[0] for r in c.execute("SELECT percorso FROM file WHERE serie=? AND data BETWEEN ? AND ? "
                                             "ORDER BY data", (serie, da_data, a_data))]

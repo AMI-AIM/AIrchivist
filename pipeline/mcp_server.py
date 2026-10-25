@@ -40,7 +40,9 @@ from classifica import pagina as pagina_di      # noqa: E402
 NOME, VERSIONE = "ricerca-fonti", "1.0"
 VERSIONI_PROTOCOLLO = ["2025-06-18", "2025-03-26", "2024-11-05"]
 CONFIG = None
-FONTI_SCELTE = ["Renmin Ribao", "Peking Review", "Hongqi", "Selected Works"]
+import profili                                  # noqa: E402
+# fonti selezionabili dalla chat: i gruppi dei profili di serie (Hongqi = Hongqi + Red Flag; documenti = raccolte)
+FONTI_SCELTE = sorted({profili.gruppo(n) for n in profili.tutti()})
 
 ISTRUZIONI = """Assistente di ricerca di uno storico (Cina maoista, maoismo italiano e internazionale). Rispondi in
 italiano. Le fonti (Renmin Ribao, Peking Review, Hongqi/Red Flag, raccolte, Selected Works, 1963-1980) le conosci
@@ -525,9 +527,8 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
     ris = percorso(c, "risultati")
     arch = Archivio(ris)
     P = tutti_i_passaggi(ris)
-    ammesse = set()
-    for x in fonti or []:
-        ammesse.update({"Hongqi": ["Hongqi", "Red Flag"]}.get(x, [x]))
+    from ricerca import fonte_ammessa
+    ammesse = [x for x in fonti or [] if x]
     sel = []
     dati = percorso(c, "dati")
     from date_interne import anno_del_documento
@@ -540,7 +541,7 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
         p = P.get((pid, e))
         if not p:
             continue
-        if ammesse and p.get("fonte") not in ammesse:
+        if ammesse and not fonte_ammessa(p, ammesse):
             continue
         # raccolte: conta la data interna del documento, non l'anno di edizione del volume (lavoro 9)
         anno, di = anno_del_documento(p, dati)

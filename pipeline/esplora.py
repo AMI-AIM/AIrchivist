@@ -6,8 +6,9 @@ esplora_nome: dato un nome (come lo scrive l'utente) e qualche indizio (paese, p
 lingua occidentale), restituisce le forme del nome ATTESTATE nelle fonti, con conteggi per serie e anno,
 esempi e un controllo del contesto. Le forme cinesi vengono da due vie:
   - le candidate proposte dal modello della chat (trascrizioni secondo l'uso Xinhua), verificate qui;
-  - l'allineamento tra le testate: dove la Peking Review nomina la persona, nel Renmin Ribao delle tre
-    settimane precedenti si cercano i nomi trascritti con il punto centrale accanto all'indizio (es. 比利时).
+  - l'allineamento tra le testate dichiarato nei profili (allinea_con): dove una serie nomina la persona (oggi la
+    Peking Review), nell'altra serie dei giorni precedenti (oggi il Renmin Ribao, tre settimane) si cercano i nomi
+    trascritti con il punto centrale accanto all'indizio (es. 比利时).
   - per le fonti albanesi, le trascrizioni albanesi del nome (la stampa albanese scrive i nomi stranieri come si
     pronunciano e li declina: Grippa -> Gripa, Gripës), generate qui come ipotesi e cercate nei testi albanesi.
 Nessuna forma viene proposta per la scheda se non compare nelle fonti.
@@ -18,6 +19,7 @@ import datetime as dt
 import re
 from collections import Counter, defaultdict
 
+import profili
 from estrai_occorrenze import is_cjk
 from sintesi import MESI_IT
 
@@ -59,30 +61,41 @@ class Lettore:
         r = self.righe(rel)
         return " ".join(r[max(0, n - 1 - k):n + k])
 
-    def pagina(self, rel, n):
-        """Pagina del Renmin Ribao (第N版) più vicina prima della riga."""
+    def pagina(self, rel, n, rx):
+        """Pagina più vicina prima della riga, secondo l'espressione del profilo (es. 第N版 del Renmin Ribao)."""
         r = self.righe(rel)
         for i in range(min(n, len(r)) - 1, max(-1, n - 600), -1):
-            m = re.search(r"第\s*(\d+)\s*版", r[i])
+            m = re.search(rx, r[i])
             if m:
                 return m.group(1)
         return ""
 
 
 def riferimento(x, lettore):
-    """Riferimento in stile Chicago, in italiano: «Renmin Ribao, 4 maggio 1966, p. 3»."""
+    """Riferimento in italiano: «Renmin Ribao, 4 maggio 1966, p. 3». La pagina viene dalla pagina_regex del
+    profilo della serie; la data del numero si aggiunge ai periodici la cui citazione non la contiene."""
     cit = x.get("citazione") or x.get("serie") or x["file"]
     m = re.search(r"(\d{1,2}) ([A-Za-z]+) (\d{4})", cit)
     if m and m.group(2).lower() in MESI_EN:
         cit = cit.replace(m.group(0), f"{int(m.group(1))} {MESI_IT[MESI_EN.index(m.group(2).lower())]} {m.group(3)}")
-    if x.get("serie") == "Renmin Ribao":
-        p = lettore.pagina(x["file"], x["riga"])
-        if p:
-            cit += f", p. {p}"
-    elif x.get("serie") == "Peking Review" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", x.get("data") or ""):
+    serie, rel = x.get("serie", ""), x["file"]
+    if profili.e_periodico(serie, rel) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", x.get("data") or ""):
         d = dt.date.fromisoformat(x["data"])
-        cit += f", {d.day} {MESI_IT[d.month - 1]} {d.year}"
+        data_it = f"{d.day} {MESI_IT[d.month - 1]} {d.year}"
+        if data_it not in cit:
+            cit += f", {data_it}"
+    rx = profili.pagina_regex(serie, rel)
+    p = lettore.pagina(rel, x["riga"], rx) if rx else ""
+    if p:
+        cit += f", p. {p}"
     return cit
+
+
+def serie_indice(ind, fonti):
+    """Nomi di serie dell'indice per le fonti richieste: i file del gruppo di profili di ciascuna (Hongqi = Hongqi
+    + Red Flag; documenti = le raccolte, che nell'indice hanno il proprio nome), più i nomi dati così come sono."""
+    gruppi = set().union(*(profili.serie_del_gruppo(f) for f in fonti))
+    return {r[2] for r in ind._file().values() if profili.nome_di(r[2], r[1]) in gruppi} | set(fonti)
 
 
 def estratto(testo, trovato, n=60):
@@ -141,21 +154,25 @@ def candidati_nel_testo(testo, indizi=()):
     return out
 
 
-def allinea(ind, lettore, righe_latine, indizi_cjk, massimo_date=25):
-    """Nomi trascritti che compaiono nel Renmin Ribao vicino a un indizio (entro 3 righe), nelle tre
-    settimane prima di ogni numero della Peking Review che nomina la persona. Restituisce
-    (forma, settimane in cui compare, settimane esaminate, righe di tutte le fonti che la contengono)."""
-    date = sorted({r["data"] for r in righe_latine if r["serie"] == "Peking Review"
+def allinea(ind, lettore, righe_latine, indizi_cjk, origine, destinazione, giorni_prima=21, massimo_date=25):
+    """Nomi trascritti che compaiono nella serie 'destinazione' vicino a un indizio (entro 3 righe), nei
+    'giorni_prima' giorni prima di ogni numero della serie 'origine' che nomina la persona (profili: allinea_con,
+    allinea_giorni; oggi Peking Review -> Renmin Ribao, tre settimane). Restituisce
+    (forma, numeri in cui compare, numeri esaminati, righe di tutte le fonti che la contengono)."""
+    da_origine = serie_indice(ind, [origine])
+    date = sorted({r["data"] for r in righe_latine if r["serie"] in da_origine
                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.get("data") or "")})
     if not date or not indizi_cjk:
         return []
     if len(date) > massimo_date:                       # campione distribuito su tutto il periodo
         passo = len(date) / massimo_date
         date = [date[int(i * passo)] for i in range(massimo_date)]
-    giorni = {(dt.date.fromisoformat(d) - dt.timedelta(days=k)).isoformat() for d in date for k in range(22)}
+    giorni = {(dt.date.fromisoformat(d) - dt.timedelta(days=k)).isoformat()
+              for d in date for k in range(giorni_prima + 1)}
     righe_indizio = []
     for i in indizi_cjk:
-        righe_indizio += ind.cerca(i, serie={"Renmin Ribao"}, solo_date=giorni, massimo_righe=200000)
+        righe_indizio += ind.cerca(i, serie=serie_indice(ind, [destinazione]), solo_date=giorni,
+                                   massimo_righe=200000)
     per_data = defaultdict(list)
     for r in righe_indizio:
         per_data[r["data"]].append(r)
@@ -163,7 +180,7 @@ def allinea(ind, lettore, righe_latine, indizi_cjk, massimo_date=25):
     for d in date:
         fine = dt.date.fromisoformat(d)
         visti = set()
-        for k in range(0, 22):
+        for k in range(0, giorni_prima + 1):
             for r in per_data.get((fine - dt.timedelta(days=k)).isoformat(), []):
                 visti |= candidati_nel_testo(lettore.intorno(r["file"], r["riga"], 3), indizi_cjk)
         for nome in visti:
@@ -309,13 +326,18 @@ def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None
                                         "solo il cognome: può indicare altre persone con lo stesso cognome")
                 out["forme_albanesi"][forma] = s_
 
-    # allineamento Peking Review -> Renmin Ribao: le forme trovate così sono solo candidate
+    # allineamenti tra serie dichiarati nei profili (allinea_con; oggi Peking Review -> Renmin Ribao): le forme
+    # trovate così sono solo candidate
     indizi_cjk = [i for i in indizi if is_cjk(i)]
-    dall_allineamento = []
-    for cand, n, tot, righe_rr in allinea(ind, lettore, righe_latine, indizi_cjk):
-        dall_allineamento.append(cand)
-        out["dall_allineamento"].append({"forma": cand, "settimane_con_la_forma": f"{n}/{tot}",
-                                         "righe_in_tutte_le_fonti": righe_rr})
+    dall_allineamento, origine_di = [], {}
+    for orig, dest, giorni_prima in profili.allineamenti():
+        for cand, n, tot, righe_rr in allinea(ind, lettore, righe_latine, indizi_cjk, orig, dest, giorni_prima):
+            if cand in origine_di:
+                continue
+            dall_allineamento.append(cand)
+            origine_di[cand] = orig
+            out["dall_allineamento"].append({"forma": cand, "settimane_con_la_forma": f"{n}/{tot}",
+                                             "allineamento": f"{orig} -> {dest}", "righe_in_tutte_le_fonti": righe_rr})
 
     date_latine = [dt.date.fromisoformat(r["data"]) for r in righe_latine
                    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.get("data") or "")]
@@ -347,7 +369,7 @@ def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None
         if f in cinesi:
             out["forme_cinesi"][f] = s
         elif len(r) >= 2 and (quota is None or quota >= 0.5) and (vicine is None or vicine >= 0.5):
-            s["origine"] = "allineamento con la Peking Review"
+            s["origine"] = f"allineamento con {origine_di.get(f, 'un’altra serie')}"
             out["forme_cinesi"][f] = s           # candidata forte: entra nella proposta
         else:
             da_valutare.append(f)
@@ -373,11 +395,7 @@ def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None
 
 def cerca_testo(ind, dati, testo, dal=None, al=None, fonti=None, massimo=8, da=0):
     lettore = Lettore(dati)
-    serie = None
-    if fonti:
-        serie = set()
-        for f in fonti:
-            serie.update({"Hongqi": ["Hongqi", "Red Flag"]}.get(f, [f]))
+    serie = serie_indice(ind, fonti) if fonti else None
     r = ind.cerca(testo, dal, al, serie)
     per = defaultdict(Counter)
     for x in r:

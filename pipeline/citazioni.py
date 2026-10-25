@@ -13,7 +13,6 @@ Il campo "pagina" gi√† calcolato per il passaggio vale solo se il file non ne d√
 Uso da riga di comando (prova):
   python citazioni.py <file del corpus, relativo a data> [offset]
 """
-import configparser
 import datetime as dt
 import re
 import sys
@@ -45,35 +44,16 @@ DATE_INATTENDIBILI = {"filename+local_header"}      # METADATA_SOURCE con date r
 
 
 # ---------------------------------------------------------------- profili
-_PROFILI = None
-
-
 def profili():
-    """Sezioni di serie.ini (nome della serie -> campi)."""
-    global _PROFILI
-    if _PROFILI is None:
-        cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
-        cp.optionxform = str
-        try:
-            cp.read(CARTELLA / "serie.ini", encoding="utf-8")
-        except configparser.Error:
-            pass
-        _PROFILI = {s: dict(cp[s]) for s in cp.sections()}
-    return _PROFILI
+    """Sezioni di serie.ini (nome della serie -> campi): profili.py."""
+    import profili as P
+    return P.tutti()
 
 
 def profilo_di(meta, file=""):
-    """Profilo della serie del file: per nome della serie, altrimenti per cartella."""
-    pr = profili()
-    serie = meta.get("SERIES", "")
-    if serie in pr:
-        return pr[serie]
-    file = file.replace("\\", "/")
-    for p in pr.values():
-        cart = (p.get("cartella") or "").strip().strip("/")
-        if cart and (file == cart or file.startswith(cart + "/")):
-            return p
-    return {}
+    """Profilo della serie del file: per nome della serie, altrimenti per cartella (profili.py)."""
+    import profili as P
+    return P.di(meta.get("SERIES", ""), file)
 
 
 # ---------------------------------------------------------------- intestazione
