@@ -122,6 +122,13 @@ Campioni in `risultati\_prove\ocr\`: `cina_icm` (国际共产主义运动史.pdf
 
 Esito provvisorio: su stampa recente pulita Tesseract basta per cinese e albanese; la segmentazione non cambia la qualità (psm 6 è la più rapida); lo strato di testo di quel PDF è un po' peggiore di un OCR rifatto. Di conseguenza (25/10) `importa.py` non preferisce più lo strato a prescindere: per i PDF scansionati con strato di testo rifà l'OCR su 3 pagine del corpo (25%, 50%, 75%) e tiene lo strato solo se concorda entro il 2% dei caratteri, o se l'OCR è poco sicuro (confidenza media sotto 85, con avviso); altrimenti rifà l'OCR di tutto il documento riusando le pagine del campione (`confronto_testi.py`, 8 test). Sul PDF cinese: discordanza 4,3%, confidenza OCR 94,3, strato scartato. I PDF con testo nativo non vengono confrontati. Soglie (2%, 85) scelte a giudizio, da tarare su altri campioni. Gli errori di Tesseract sul cinese sono soprattutto virgolette di chiusura lette come d'apertura e caratteri simili (遗/遍, 帐/帮, 人/入). Restano da fare: verifica a mano dei riferimenti, campioni di stampa d'epoca (Renmin Ribao, Zëri i Popullit), Kraken con WSL. I due libri non sono serie di `serie.ini`: nessun profilo aggiornato.
 
+### Distribuzione (fase 4, lavoro 15, 25/10/2026)
+
+- `pipeline\installa.py`: `librerie` (installa `requirements.txt` nel Python di sistema), `controlla` (Python, SQLite FTS5, servizio dei modelli con chiave e raggiungibilità, progetto in uso, PyMuPDF, Tesseract con le lingue delle serie, PaddleOCR; esce con 1 se manca un requisito necessario), `client` (configurazione del server MCP per Jan, Claude Desktop, LM Studio o generica, con i percorsi del PC; non scrive nei file dei client).
+- `requirements.txt` (solo PyMuPDF, facoltativo), `LICENSE` (AGPL-3.0, testo ufficiale di gnu.org), `README.md` in inglese; `LEGGIMI.md` e `ISTRUZIONI.md` con l'installazione.
+- Python minimo 3.10: i 140 test passano con 3.10, 3.13 e 3.14 (senza PyMuPDF i test sui PDF si saltano invece di fallire). Provata un'installazione pulita (copia dei soli file del repository, Python 3.10 senza librerie, progetto nuovo vuoto): controllo superato.
+- Restano: corpus d'esempio libero da diritti (rimandato), traduzione inglese di `ISTRUZIONI.md`, dati di ricerca dell'autore (`entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`) da separare prima di pubblicare il repository.
+
 Requisiti di sistema (da installare): Tesseract UB Mannheim con la lingua Albanian (sqi), PyMuPDF. Nessun modello OCR dentro la cartella del progetto.
 
 - `indice.py`: aggiorna (incrementale), lingua reale dei file (`[LANG]`), filtro per lingua.
@@ -134,7 +141,7 @@ Provato solo su una scansione sintetica: mancano prove su scansioni vere e una p
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).
 - Librerie: il codice usa la libreria standard più PyMuPDF (1.28.0, MuPDF 1.29.0), solo in `importa.py`. SQLite 3.50.4 con FTS5 funzionante.
-- Tesseract 5.5.3 in `C:\Program Files\Tesseract-OCR` (non nel PATH: `importa.py` lo trova nella cartella consueta). Lingue: deu, eng, fra, ita, ita_old, osd, rus, spa, sqi. **Mancano chi_sim e chi_tra**: oggi non è possibile l'OCR del cinese con Tesseract.
+- Tesseract 5.5.3 in `C:\Program Files\Tesseract-OCR` (non nel PATH: `importa.py` lo trova nella cartella consueta). Lingue: deu, eng, fra, ita, ita_old, osd, rus, spa, sqi; al 25/10 anche chi_sim e chi_sim_vert (manca chi_tra).
 - FreeLLMAPI: app desktop installata (`%LOCALAPPDATA%\Programs\freellmapi-desktop`), chiave `FREELLMAPI_KEY` presente nelle variabili d'utente. Al momento della verifica il servizio **non era avviato** (nessuna risposta su 127.0.0.1:31415): le ricerche richiedono di aprire prima l'app.
 - Controllo di versione: git attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false` per conservare i fine riga). Esclusi: `data/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `pipeline/_backup/`.
 

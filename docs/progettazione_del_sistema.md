@@ -206,7 +206,7 @@ Ogni lettura conserva la propria provenienza, su tre livelli distinti: letto da 
 
 ## 10. Distribuzione
 
-- Pacchetto installabile con un solo comando; requisiti (Tesseract o altro motore OCR, librerie) installati nel sistema, non nella cartella del progetto.
+- Pacchetto installabile con un solo comando; requisiti (Tesseract o altro motore OCR, librerie) installati nel sistema, non nella cartella del progetto. Deciso il 25/10/2026: il motore non diventa un pacchetto pip (i moduli si importano per nome dalla cartella `pipeline` e `config.ini` deve restare accanto al codice, modificabile); si scarica con git o come archivio e `python pipeline/installa.py librerie` installa nel Python di sistema le librerie facoltative di `requirements.txt` (solo PyMuPDF: il motore usa la libreria standard, Python 3.10 o successivo). `installa.py controlla` verifica l'ambiente; `installa.py client` stampa la configurazione MCP per Jan, Claude Desktop, LM Studio o in forma generica, senza modificare i file dei client. Licenza: AGPL-3.0, perché copre anche l'uso come servizio in rete (server MCP).
 - Un file di configurazione unico; una cartella per progetto di ricerca (corpus, profili, schede delle entità, glossario, risultati). Fatto il 25/10/2026 (`progetto.py`): config.ini del motore più progetto.ini del progetto scelto (config.ini o variabile d'ambiente AIRCHIVIST_PROGETTO); `progetto.py nuovo` crea un progetto vuoto.
 - Istruzioni di collegamento per i client principali; documentazione in italiano e in inglese; licenza; test automatici; corpus d'esempio libero da diritti.
 

@@ -5,6 +5,22 @@ Sistema per trovare **tutte** le occorrenze di una persona, un partito o una tes
 passaggi originali, la traduzione e il riferimento esatto. Nuovo materiale (anche scansioni in PDF, con OCR)
 si aggiunge con `pipeline\importa.py` o chiedendo in Jan.
 
+## Installazione
+
+Serve Python 3.10 o successivo (quello di python.org). I requisiti si installano nel sistema, mai dentro la
+cartella. Dalla cartella del progetto:
+
+```
+python pipeline\installa.py librerie
+python pipeline\installa.py controlla
+python pipeline\installa.py client jan
+```
+
+- `librerie`: installa le librerie facoltative di `requirements.txt` (PyMuPDF, per importare i PDF).
+- `controlla`: verifica Python, l'indice FTS5, il servizio dei modelli (chiave e raggiungibilità), il progetto
+  in uso, PyMuPDF, Tesseract e le lingue OCR richieste dalle serie. Se manca qualcosa di necessario, lo dice.
+- `client`: mostra cosa scrivere nel client per collegare il server MCP (`jan`, `claude`, `lmstudio`, `json`).
+
 ## Come si usa
 
 1. Avvia **FreeLLMAPI** (fornisce i modelli gratuiti).
@@ -41,3 +57,11 @@ Jan usa gli strumenti del server MCP «Pipeline» (`pipeline\mcp_server.py`). Co
 - l'importazione di nuove fonti (OCR);
 - la valutazione dei modelli;
 - i problemi frequenti.
+
+In inglese: `README.md`.
+
+## Licenza
+
+Il codice è distribuito con la licenza GNU Affero General Public License, versione 3 (`LICENSE`). Chi offre
+una versione modificata come servizio in rete, anche come server MCP usato da altri, deve renderne disponibile il
+codice. La licenza non riguarda le fonti del corpus, che restano soggette ai propri diritti.

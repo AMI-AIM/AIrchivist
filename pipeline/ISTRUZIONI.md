@@ -12,7 +12,8 @@ Il lavoro è diviso così:
 
 ```
 RAG\
-  LEGGIMI.md
+  LEGGIMI.md, README.md     guida rapida (in italiano e in inglese)
+  LICENSE, requirements.txt licenza (AGPL-3.0) e librerie facoltative
   data\                     le fonti (Renmin Ribao, Peking Review, Hongqi, raccolte, Selected Works)
   audit_fonti\
     registro_modifiche.csv  ogni correzione fatta ai metadati delle fonti (citato nelle intestazioni dei file)
@@ -30,6 +31,7 @@ RAG\
     _valutazione\           insiemi di riferimento verificati a mano e misure (valutazione.py)
     <nome_entità>\          una cartella per ogni ricerca
   pipeline\
+    installa.py             installazione delle librerie, controllo dell'ambiente, configurazione dei client
     mcp_server.py           il server che collega Jan alla pipeline
     ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, glossario.py,
@@ -48,10 +50,25 @@ RAG\
 
 ## Requisiti (una volta sola)
 
-1. **Python per Windows**, da https://www.python.org/downloads/. Durante l'installazione spunta **"Add python.exe to PATH"**. Non servono librerie aggiuntive.
+1. **Python per Windows** (3.10 o successivo), da https://www.python.org/downloads/. Durante l'installazione spunta **"Add python.exe to PATH"**. Il motore usa solo la libreria standard.
 2. **FreeLLMAPI**: vedi sotto.
 3. **Jan**: vedi sotto.
 4. Solo per importare nuovo materiale (vedi «Importare nuove fonti»): **Tesseract** e **PyMuPDF**.
+
+Dalla cartella `pipeline`:
+
+```
+python installa.py librerie
+python installa.py controlla
+python installa.py client jan
+```
+
+- `librerie` installa nel Python di sistema le librerie facoltative di `requirements.txt` (PyMuPDF).
+- `controlla` verifica Python, SQLite con FTS5, il servizio dei modelli scelto in `config.ini` (chiave
+  presente, servizio raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie e
+  PaddleOCR. Esce con 1 se manca un requisito necessario; `--rapido` salta PaddleOCR.
+- `client` stampa la configurazione del server MCP con i percorsi di questo PC: `jan` (i campi da compilare),
+  `claude` (Claude Desktop), `lmstudio`, `json` (blocco `mcpServers` generico). Non modifica i file dei client.
 
 ### FreeLLMAPI (i modelli gratuiti)
 

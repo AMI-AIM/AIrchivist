@@ -40,6 +40,6 @@ Lavori in ordine di priorità per la generalizzazione dello strumento (22/10/202
 
 13. **Separare i dati di progetto dal motore**: una cartella per progetto di ricerca, scelta in `config.ini`.
 14. **Server MCP generico**: strumenti ridotti e generici, istruzioni di comportamento consegnate dal server e non scritte per un solo client.
-15. **Distribuzione**: pacchetto installabile, file dei requisiti, documentazione in italiano e in inglese, licenza, corpus d'esempio libero da diritti.
+15. **Distribuzione**: pacchetto installabile, file dei requisiti, documentazione in italiano e in inglese, licenza, corpus d'esempio libero da diritti. Fatti il 25/10/2026: `installa.py` (librerie, controllo dell'ambiente, configurazione dei client), `requirements.txt`, licenza AGPL-3.0, `README.md` in inglese. Restano: corpus d'esempio (rimandato), traduzione inglese di `ISTRUZIONI.md`, separazione dei dati di ricerca dell'autore dal repository pubblico.
 16. **Verifica del bisogno** presso 5-10 ricercatori di ambiti vicini.
 17. **Articolo metodologico** con le misure dello strumento di valutazione.
