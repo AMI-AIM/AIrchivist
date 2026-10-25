@@ -49,6 +49,9 @@ citazione in stile Chicago standard; segnaposto: `{autore} {titolo} {data} {data
 `*...*` è il corsivo. Esempi: periodico `*Rinascita*[ {volume}][, {numero_lbl}] ({data_o_anno})[: {pagina}]`;
 libro `{autore}. *{titolo}*. {luogo}: {editore}, {anno}[, {pagina}]`; documento d'archivio
 `{autore}. *{titolo}*. {data_o_anno}[, {pagina}]`. `python .../motore/chat.py serie` mostra i profili.
+Nei periodici il testo dei PDF si legge per colonne (i giornali non mescolano più articoli diversi); per un
+volume impaginato a più colonne aggiungi `--campo "ordine_lettura=colonne"`, per un periodico a colonna unica
+con un'impaginazione insolita `--campo "ordine_lettura=pdf"`.
 
 ## 3. Importazione
 

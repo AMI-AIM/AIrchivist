@@ -49,8 +49,9 @@ AIrchivist\
     lavori.py               fa girare le ricerche come processi indipendenti dalla chat
     progetto.py, profili.py progetti di ricerca (nuovo, stato, percorsi) e profili delle serie
     importa.py              importazione di nuovo materiale (PDF, scansioni, .txt, PAGE/ALTO XML)
-    pagine_xml.py, numerazione.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py
-                            parti dell'importazione: XML, numeri di pagina, motori OCR, confronto dei testi
+    pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py
+                            parti dell'importazione: XML, numeri di pagina, ordine delle colonne nei giornali,
+                            motori OCR, confronto dei testi
     citazioni.py            citazioni in stile Chicago dalle intestazioni e dai profili di serie
     sessione.py             lettura dei passaggi in sessione (skill ricerca-fonti per Claude Code)
     chat.py, crea_skill_chat.py   motore e pacchetto della skill per la chat di Claude

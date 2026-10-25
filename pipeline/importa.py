@@ -343,6 +343,28 @@ def testo_utile(t):
     return sum(1 for ch in t if ch.isalnum())
 
 
+def testo_pagina(pag, colonne=False):
+    """Testo dello strato di una pagina del PDF. Con colonne=True (giornali: ordine_lettura = colonne nel profilo
+    della serie, predefinito per i periodici) i blocchi si rimettono nell'ordine di lettura (colonne.py) invece
+    di quello in cui sono scritti nel file, che nei giornali mescola articoli diversi."""
+    if not colonne:
+        return pag.get_text("text")
+    try:
+        blocchi = [b for b in pag.get_text("blocks") if b[6] == 0 and b[4].strip()]
+    except (TypeError, ValueError, AttributeError, IndexError):   # PDF letto con pypdf: niente geometria
+        return pag.get_text("text")
+    import colonne as mod_colonne
+    return "\n".join(blocchi[i][4].strip() for i in mod_colonne.ordina([b[:4] for b in blocchi])) + "\n"
+
+
+def ordine_per_colonne(scheda):
+    """Ordine di lettura per colonne: campo ordine_lettura del profilo (colonne | pdf); senza, per i periodici."""
+    v = (scheda.get("ordine_lettura") or "").strip().lower()
+    if v:
+        return v == "colonne"
+    return scheda.get("tipo", "periodico") == "periodico"
+
+
 # scritture attese per la lingua della serie, oltre al latino (numeri, sigle, nomi stranieri)
 SCRITTURE = {"zh": {"CJK"}, "ja": {"CJK", "HIRAGANA", "KATAKANA"}, "ko": {"HANGUL", "CJK"},
              "ru": {"CYRILLIC"}, "uk": {"CYRILLIC"}, "bg": {"CYRILLIC"}, "sr": {"CYRILLIC"}, "mk": {"CYRILLIC"},
@@ -432,7 +454,8 @@ def nota_scelta(s):
 
 
 def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stampa=print, max_pagine=None,
-                    campione=PAGINE_CAMPIONE, prima_pagina=None, da_pagina=1, pagine_pdf=True, lingua=""):
+                    campione=PAGINE_CAMPIONE, prima_pagina=None, da_pagina=1, pagine_pdf=True, lingua="",
+                    colonne=False):
     """Legge uno o più file (unendoli nell'ordine dato). Restituisce (testo, rapporto).
     Le pagine senza testo si rendono come immagini e si passano a Tesseract poche alla volta (in parallelo),
     così anche un volume di centinaia di pagine non riempie il disco; le pagine già lette restano nella cache
@@ -521,7 +544,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                             chiave = f"{p.name} p.{k}"
                             posizioni.append(len(pagine))
                             etichette.append(etichetta_pagina(pag))
-                            t = pag.get_text("text") if modo_file != "sempre" else ""
+                            t = testo_pagina(pag, colonne) if modo_file != "sempre" else ""
                             if testo_utile(t) >= SOGLIA_TESTO_PDF and lingua and strato_corrotto(t, lingua):
                                 corrotte.append(chiave)       # come una pagina senza testo: OCR, se c'è
                                 t = ""
@@ -848,7 +871,7 @@ def cmd_importa(args, stampa=print):
         g = gruppi[0]
         stampa(f"Prova su {g['origine']}: prime {args.prova} pagine")
         testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova, args.campione,
-                                     lingua=scheda.get("lingua", ""),
+                                     lingua=scheda.get("lingua", ""), colonne=ordine_per_colonne(scheda),
                                      **opzioni_pagine(args, metadati.get(g["nome"], {})))
         v = valori_documento(args.serie, scheda, args, metadati.get(g["nome"], {}), g["nome"], testo)
         stampa(f"\nMetodo: {rap['metodo']}; confidenza media: {rap['confidenza']}; "
@@ -880,7 +903,7 @@ def cmd_importa(args, stampa=print):
         cache.mkdir(parents=True, exist_ok=True)
         try:
             testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa, campione=args.campione,
-                                         lingua=scheda.get("lingua", ""),
+                                         lingua=scheda.get("lingua", ""), colonne=ordine_per_colonne(scheda),
                                          **opzioni_pagine(args, metadati.get(doc["nome"], {})))
         except Exception as e:
             problemi.append(f"{origine}: {type(e).__name__}: {e}")
