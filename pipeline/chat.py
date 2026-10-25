@@ -8,7 +8,8 @@ Uso (dalla cartella del motore):
   python chat.py apri [file o cartelle ...]     crea il progetto (se non c'è), estrae gli zip, mette nelle fonti i
                                                 .txt con intestazione [SERIES: ...], copia entita.ini, serie.ini e
                                                 audit_fonti/*.csv, elenca il resto da importare, costruisce l'indice
-                                                (senza argomenti: i file caricati in /mnt/user-data/uploads)
+                                                (senza argomenti: i file caricati nella chat, in
+                                                /mnt/user-data/uploads e /mnt/user-data/attachments)
   python chat.py stato
   python chat.py serie                          profili delle serie
   python chat.py serie-crea "Nome" --tipo periodico|volume --lingua it --cartella riviste/nome
@@ -30,6 +31,7 @@ Il progetto sta in AIRCHIVIST_PROGETTO, altrimenti in ~/airchivist_progetto.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,7 +43,8 @@ sys.path.insert(0, str(CARTELLA))
 os.environ.setdefault("AIRCHIVIST_PROGETTO", str(Path.home() / "airchivist_progetto"))
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 RADICE = Path(os.environ["AIRCHIVIST_PROGETTO"])
-CARICATI = Path("/mnt/user-data/uploads")
+CARICATI = [Path("/mnt/user-data/uploads"), Path("/mnt/user-data/attachments")]
+ALLEGATO = re.compile(r"^[0-9a-f]{8}-")     # prefisso che la chat aggiunge ai nomi degli allegati
 CONSEGNA = Path("/mnt/user-data/outputs")
 DOCUMENTI = {".pdf", ".txt", ".xml", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 NOMI_PROGETTO = {"entita.ini", "serie.ini", "istruzioni.md"}
@@ -103,14 +106,18 @@ def crea_progetto():
 def apri(args):
     nuovo = crea_progetto()
     dati = RADICE / "data"
-    sorgenti = [Path(x) for x in args.file] or ([CARICATI] if CARICATI.is_dir() else [])
+    sorgenti = [Path(x) for x in args.file] or [c for c in CARICATI if c.is_dir()]
     if not sorgenti:
-        sys.exit("Nessun file indicato e nessuna cartella /mnt/user-data/uploads.")
+        sys.exit("Nessun file indicato e nessuna cartella dei file caricati (/mnt/user-data/uploads, "
+                 "/mnt/user-data/attachments).")
     lavoro = RADICE / "_caricati"
     lavoro.mkdir(exist_ok=True)
     elementi = []                                      # (file, percorso relativo da conservare)
     for s in sorgenti:
-        if s.is_dir():
+        if s.is_dir() and s.name == "attachments":
+            # allegati della chat: attachments/<conversazione>/<prefisso>-<nome>; conta solo il nome
+            elementi += [(f, Path(ALLEGATO.sub("", f.name))) for f in sorted(s.rglob("*")) if f.is_file()]
+        elif s.is_dir():
             elementi += [(f, f.relative_to(s)) for f in sorted(s.rglob("*")) if f.is_file()]
         elif s.is_file():
             elementi.append((s, Path(s.name)))

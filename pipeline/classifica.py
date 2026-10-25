@@ -99,6 +99,8 @@ MESI_EN = (r"\b(?:January|February|March|April|May|June|July|August|September|Oc
 NUMERO_DI_PAGINA = re.compile(r"(?:[a-zA-Z\),”\"]|(?<!\d)\.)\s?(\d{1,3})\s?(?=[A-Z“\"])")
 PRIMA_DATA = re.compile(r"(?:" + MESI_EN + r"|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b)[,\s]*$")
 DOPO_DATA = re.compile(r"\s?(?:" + MESI_EN + r")")
+SOMMARIO_CINESE = re.compile(r"(?:今日|本期|本刊|本报)要目")
+PAGINA_CINESE = re.compile(r"第[一二三四五六七八九十\d]{1,3}版")
 
 
 def e_sommario(rec):
@@ -111,6 +113,10 @@ def e_sommario(rec):
     if i < 0:
         return False
     vicino = t[max(0, i - 300): i + 300]
+    # sommario dei quotidiani cinesi: «今 日 要 目 第四版 … 第一版 中苏两国领导人…» (Renmin Ribao 1961)
+    compatto = re.sub(r"\s+", "", vicino)
+    if SOMMARIO_CINESE.search(compatto) and len(PAGINA_CINESE.findall(compatto)) >= 2:
+        return True
     pagine = 0
     for m in NUMERO_DI_PAGINA.finditer(vicino):
         if PRIMA_DATA.search(vicino[max(0, m.start() - 12): m.start(1)]) or DOPO_DATA.match(vicino, m.end(1)):
@@ -151,9 +157,13 @@ SISTEMA = ("Sei un assistente di ricerca storica. Lavori solo sul testo che ti v
 
 
 # ---------------------------------------------------------------- utilità sul testo
+# marcatore di pagina dei testi importati ([[p. 61 | pdf 2]], numerazione.py): non fa parte delle citazioni
+MARCATORE = re.compile(r"\[\[\s*p[^\]]*\]\]", re.IGNORECASE)
+
+
 def normalizza(s):
-    """Confronto insensibile a spazi, a capo e trattini dell'OCR."""
-    return re.sub(r"[\s\-‐]+", "", (s or "").replace("⟦", "").replace("⟧", "")).lower()
+    """Confronto insensibile a spazi, a capo, trattini dell'OCR e marcatori di pagina."""
+    return re.sub(r"[\s\-‐]+", "", MARCATORE.sub("", (s or "").replace("⟦", "").replace("⟧", ""))).lower()
 
 
 def verifica(rec, analisi):
@@ -162,8 +172,10 @@ def verifica(rec, analisi):
 
 
 def frase_chiave(rec, max_car=260):
-    """Frase che contiene la prima occorrenza (testo esatto, senza i segni ⟦ ⟧)."""
-    t = rec["passaggio_evidenziato"]
+    """Frase che contiene la prima occorrenza (testo esatto, senza i segni ⟦ ⟧ né i marcatori di pagina)."""
+    # i marcatori diventano spazi della stessa lunghezza: le posizioni restano, e il punto di «p.» non
+    # chiude più una frase (25/10/2026: «1 | pdf 1]] 中苏两国…» in testa a una citazione)
+    t = MARCATORE.sub(lambda m: " " * len(m.group(0)), rec["passaggio_evidenziato"])
     i = t.find("⟦")
     if i < 0:
         return rec["passaggio"][:max_car]
@@ -181,7 +193,7 @@ def frase_chiave(rec, max_car=260):
     if fine - inizio > max_car:          # frase troppo lunga: finestra attorno all'occorrenza
         inizio = max(inizio, i - max_car // 2)
         fine = min(fine, j + max_car // 2)
-    return t[inizio:fine].replace("⟦", "").replace("⟧", "").strip()
+    return re.sub(r" {2,}", " ", t[inizio:fine].replace("⟦", "").replace("⟧", "")).strip()
 
 
 def pagina(rec):

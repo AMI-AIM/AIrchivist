@@ -71,10 +71,14 @@ def leggi_intestazione(testo):
 
 
 def data_it(iso):
+    """«4 maggio 1966»; per le date note solo al mese (AAAA-MM) «maggio 1966»."""
     try:
         d = dt.date.fromisoformat(iso)
         return f"{d.day} {MESI_IT[d.month - 1]} {d.year}"
     except (TypeError, ValueError):
+        m = re.fullmatch(r"(\d{4})-(\d{2})", iso or "")
+        if m and 1 <= int(m.group(2)) <= 12:
+            return f"{MESI_IT[int(m.group(2)) - 1]} {m.group(1)}"
         return iso or ""
 
 
@@ -137,7 +141,7 @@ def valori_da_intestazione(meta, profilo=None):
     if not v["titolo"]:
         v["titolo"] = v["serie"] or meta.get("DOC_ID", "")
     data = meta.get("DATE", "")
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) and data_affidabile(meta):
+    if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) and data_affidabile(meta):     # anche al mese
         v["data"] = data_it(data)
     if not v["anno"] and data[:4].isdigit():
         v["anno"] = data[:4]

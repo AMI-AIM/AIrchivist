@@ -229,7 +229,8 @@ def applicabile(meta, profilo, data_contenitore=""):
         return True
     if v in ("no", "false", "0") or pr.get("tipo", "").strip() == "periodico":
         return False
-    return not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data_contenitore or meta.get("DATE", "") or "")
+    # una data al mese (AAAA-MM, es. un rapporto datato «November 1971») vale come data del contenitore
+    return not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data_contenitore or meta.get("DATE", "") or "")
 
 
 def per_file(testo, meta, inizio, rel="", data_contenitore=""):

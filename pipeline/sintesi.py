@@ -68,11 +68,8 @@ SCHEMA_FINALE = {
 
 # ---------------------------------------------------------------- riferimenti
 def data_it(iso):
-    try:
-        d = dt.date.fromisoformat(iso)
-        return f"{d.day} {MESI_IT[d.month - 1]} {d.year}"
-    except Exception:
-        return iso
+    from citazioni import data_it as data_citazione          # anche le date al mese: «novembre 1971»
+    return data_citazione(iso) or iso
 
 
 def riferimento(c, con_pagina=True):
@@ -282,7 +279,7 @@ def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None):
     import profili
     senza_data = [d for d in docs if not d.get("data_interna")
                   and not profili.e_periodico(d["voci"][0]["fonte"], d["voci"][0]["file"])
-                  and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d["voci"][0].get("data") or "")]
+                  and not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", d["voci"][0].get("data") or "")]
     if senza_data:
         righe.append(f"- Per {len(senza_data)} {'documento' if len(senza_data) == 1 else 'documenti'} di raccolte "
                      "o volumi la data del documento non è stata dedotta dal testo: l'anno indicato è quello della "
@@ -348,7 +345,7 @@ def data_per_modello(d, c):
     if d.get("data_interna"):
         return f"{d['data_interna']['data']}, dedotta dal testo"
     import profili
-    if "data_interna" in c or (c.get("data") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", c["data"])
+    if "data_interna" in c or (c.get("data") and not re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", c["data"])
                                and not profili.e_periodico(c.get("fonte", ""), c.get("file", ""))):
         return f"non nota (raccolta o volume del {c.get('data') or 's.d.'})"
     return c.get("data") or "s.d."

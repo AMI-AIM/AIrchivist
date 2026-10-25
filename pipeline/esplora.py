@@ -113,7 +113,10 @@ def riassunto(righe, lettore, indizi=(), esempi=2):
     ind = [i.lower() for i in indizi if i.strip()]
     con = sum(1 for r in righe if any(i in lettore.intorno(r["file"], r["riga"]).lower() for i in ind)) if ind else None
     scelti = righe[:1] + righe[len(righe) // 2:len(righe) // 2 + 1] + righe[-1:] if len(righe) > 2 else righe
-    return {"totale": len(righe),
+    # «totale» conta le righe che contengono la forma; una riga (un paragrafo, nei testi digitali) può
+    # contenerla più volte: «menzioni» le conta tutte (苏联 nel Renmin Ribao 1961: 121 righe, 238 menzioni)
+    menzioni = sum(max(1, (r.get("testo") or "").lower().count((r.get("trovato") or "").lower())) for r in righe)
+    return {"totale": len(righe), "righe": len(righe), "menzioni": menzioni,
             "per_serie_e_anno": {s: dict(sorted(c.items())) for s, c in per.items()},
             "forme_trovate": dict(Counter(r["trovato"] for r in righe).most_common(6)),
             **({"con_indizio": f"{con}/{len(righe)}"} if ind else {}),

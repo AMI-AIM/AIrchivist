@@ -54,6 +54,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -342,6 +343,25 @@ def testo_utile(t):
     return sum(1 for ch in t if ch.isalnum())
 
 
+# scritture attese per la lingua della serie, oltre al latino (numeri, sigle, nomi stranieri)
+SCRITTURE = {"zh": {"CJK"}, "ja": {"CJK", "HIRAGANA", "KATAKANA"}, "ko": {"HANGUL", "CJK"},
+             "ru": {"CYRILLIC"}, "uk": {"CYRILLIC"}, "bg": {"CYRILLIC"}, "sr": {"CYRILLIC"}, "mk": {"CYRILLIC"},
+             "el": {"GREEK"}, "ar": {"ARABIC"}, "fa": {"ARABIC"}, "he": {"HEBREW"}}
+SOGLIA_CORROTTO = 0.25      # quota di lettere in scritture estranee oltre la quale lo strato è corrotto
+
+
+def strato_corrotto(testo, lingua):
+    """Vero se lo strato di testo di una pagina è illeggibile: font senza tabella dei caratteri (ToUnicode), per
+    cui il PDF restituisce glifi a caso. Renmin Ribao 1961: accanto a caratteri cinesi casuali, più di metà delle
+    lettere in cirillico, sillabario canadese, copto, malayalam. Si contano le lettere in scritture che la lingua
+    della serie non usa."""
+    attese = {"LATIN"} | SCRITTURE.get((lingua or "").lower()[:2], set())
+    lettere = [unicodedata.name(ch, "?").split()[0] for ch in testo if ch.isalpha()]
+    if len(lettere) < 50:
+        return False
+    return sum(1 for s in lettere if s not in attese) / len(lettere) > SOGLIA_CORROTTO
+
+
 def e_scansione(pag):
     """Vero se un'immagine copre almeno metà della pagina: scansione (lo strato di testo, se c'è, è un OCR)."""
     area = pag.rect.width * pag.rect.height
@@ -412,7 +432,7 @@ def nota_scelta(s):
 
 
 def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stampa=print, max_pagine=None,
-                    campione=PAGINE_CAMPIONE, prima_pagina=None, da_pagina=1, pagine_pdf=True):
+                    campione=PAGINE_CAMPIONE, prima_pagina=None, da_pagina=1, pagine_pdf=True, lingua=""):
     """Legge uno o più file (unendoli nell'ordine dato). Restituisce (testo, rapporto).
     Le pagine senza testo si rendono come immagini e si passano a Tesseract poche alla volta (in parallelo),
     così anche un volume di centinaia di pagine non riempie il disco; le pagine già lette restano nella cache
@@ -421,6 +441,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
     pagine = []          # [chiave, testo, metodo, confidenza]
     motori, stampate, ignorati = [], [], []     # dalle esportazioni PAGE/ALTO
     scelte = []                                 # scelte tra strato di testo del PDF e OCR rifatto
+    corrotte = []                               # pagine con lo strato di testo illeggibile (strato_corrotto)
     pdf_letti = []                              # (posizioni in pagine, etichette) di ogni PDF: numerazione.py
     tmp = Path(tempfile.mkdtemp(prefix="importa_"))
     attesa = deque()
@@ -501,6 +522,9 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                             posizioni.append(len(pagine))
                             etichette.append(etichetta_pagina(pag))
                             t = pag.get_text("text") if modo_file != "sempre" else ""
+                            if testo_utile(t) >= SOGLIA_TESTO_PDF and lingua and strato_corrotto(t, lingua):
+                                corrotte.append(chiave)       # come una pagina senza testo: OCR, se c'è
+                                t = ""
                             if testo_utile(t) >= SOGLIA_TESTO_PDF:
                                 pagine.append([chiave, t.strip(), "testo del PDF", None])
                                 continue
@@ -554,6 +578,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                 "motore": "; ".join(dict.fromkeys(motori)),
                 "pagine_stampate": f"{stampate[0]}-{stampate[-1]}" if len(stampate) > 1 else "".join(stampate),
                 "ignorati": ignorati,
+                "pagine_corrotte": corrotte,
                 "numerazione": numerazioni[0] if len(numerazioni) == 1 else (
                     {"metodo": "; ".join(dict.fromkeys(x["metodo"] for x in numerazioni)),
                      "stato": "dedotto" if any(x["stato"] for x in numerazioni) else "",
@@ -644,7 +669,7 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("YEAR", valori.get("anno") or data[:4]),
         ("ISSUE", valori.get("numero", "")),
         ("VOLUME", valori.get("volume", "")),
-        ("DATE", data if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) else ""),
+        ("DATE", data if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) else ""),        # anche al mese
         ("DATE_STATUS", valori.get("stato_data", "")),
         ("DATE_NOTE", valori.get("nota_data", "") if valori.get("stato_data") else ""),
         ("AUTHOR", valori.get("autore", "")),
@@ -714,7 +739,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
         from citazioni import valori_da_intestazione, componi as componi_chicago
         meta = {"SERIES": serie, "TITLE": v.get("titolo", ""), "AUTHOR": v.get("autore", ""),
                 "VOLUME": v.get("volume", ""), "ISSUE": v.get("numero", ""), "YEAR": v.get("anno", ""),
-                "DATE": data if re.fullmatch(r"\d{4}-\d{2}-\d{2}", data) else "",
+                "DATE": data if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) else "",
                 "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", "")}
         v["citazione"] = componi_chicago(scheda["chicago"], dict(valori_da_intestazione(meta, scheda), pagina=""))
     else:
@@ -823,6 +848,7 @@ def cmd_importa(args, stampa=print):
         g = gruppi[0]
         stampa(f"Prova su {g['origine']}: prime {args.prova} pagine")
         testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova, args.campione,
+                                     lingua=scheda.get("lingua", ""),
                                      **opzioni_pagine(args, metadati.get(g["nome"], {})))
         v = valori_documento(args.serie, scheda, args, metadati.get(g["nome"], {}), g["nome"], testo)
         stampa(f"\nMetodo: {rap['metodo']}; confidenza media: {rap['confidenza']}; "
@@ -854,6 +880,7 @@ def cmd_importa(args, stampa=print):
         cache.mkdir(parents=True, exist_ok=True)
         try:
             testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa, campione=args.campione,
+                                         lingua=scheda.get("lingua", ""),
                                          **opzioni_pagine(args, metadati.get(doc["nome"], {})))
         except Exception as e:
             problemi.append(f"{origine}: {type(e).__name__}: {e}")
@@ -866,7 +893,9 @@ def cmd_importa(args, stampa=print):
             stampa("  nessuna pagina leggibile: non importato")
             continue
         if not testo.strip():
-            problemi.append(f"{origine}: nessun testo (scansione senza strato di testo: serve l'OCR)")
+            problemi.append(f"{origine}: nessun testo (" + (
+                "strato di testo illeggibile, font senza tabella dei caratteri" if rap["pagine_corrotte"] else
+                "scansione senza strato di testo") + ": serve l'OCR)")
             stampa("  nessun testo: non importato (serve l'OCR)")
             continue
         v = valori_documento(args.serie, scheda, args, metadati.get(doc["nome"], {}), doc["nome"], testo)
@@ -876,6 +905,9 @@ def cmd_importa(args, stampa=print):
         if rap["ignorati"]:
             avvisi.append(f"{len(rap['ignorati'])} file XML ignorati (non PAGE né ALTO, es. METS)")
         avvisi += [nota_scelta(s) for s in rap["scelte_strato"] if s["scelta"] != "strato"]
+        if rap["pagine_corrotte"]:
+            avvisi.append(f"strato di testo illeggibile in {len(rap['pagine_corrotte'])} pagine (font senza tabella "
+                          "dei caratteri): " + ("lette con l'OCR" if ocr else "rimaste vuote, serve l'OCR"))
         if out.exists() and not args.sovrascrivi:
             saltati.append(nome)
             stampa(f"  già presente: {out.relative_to(dati)} (usa --sovrascrivi per sostituirlo)")

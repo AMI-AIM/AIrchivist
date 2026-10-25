@@ -17,9 +17,13 @@ imposta `PYTHONIOENCODING=utf-8`.
 1. Controlla che l'entità abbia una scheda: cerca la sezione `[Nome]` in `entita.ini` del progetto
    (`python progetto.py stato` dice dov'è).
 2. Se non c'è, non inventare forme. Usa lo strumento MCP `esplora_nome` (o `esplora.py`), proponi all'utente
-   solo le forme attestate e crea la scheda dopo la sua conferma (`schede crea`).
+   solo le forme attestate, con il numero di `menzioni` (`totale` conta le righe), e crea la scheda dopo la sua
+   conferma (`schede crea`).
 3. Avvisa se una forma è in `forme_ambigue` ma non in `varianti`: non viene cercata
    (`python schede.py controlla`).
+4. Per un gruppo o una categoria («i partiti filo-cinesi»), che non ha un nome solo, cerca prima con
+   `cerca_testo` come le fonti chiamano quei soggetti (nomi dei singoli partiti, grafie d'epoca come «Peiping»,
+   «pro-Peking», «splinter groups») e proponi quelle forme.
 
 ## 2. Estrazione
 
