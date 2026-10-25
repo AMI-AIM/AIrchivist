@@ -171,14 +171,32 @@ def t_esplora_nome(nome, indizi=None, candidate=None, dal=None, al=None):
     return r
 
 
+AVVERTENZA_GREZZO = ("Testo grezzo delle fonti, non letto né valutato dalla pipeline: non è una risposta. Non "
+                     "costruire la risposta da qui e non citare file né righe. Per rispondere su un'entità usa "
+                     "ricerca (azione avvia) e presenta la sua risposta.")
+
+
+def prossimo_passo(nome):
+    """Che cosa fare per rispondere su un nome: ricerca sulla sua scheda, oppure creare la scheda."""
+    cp = schede.leggi_schede(percorso(cfg(), "entita"))
+    trovate = schede.trova_nel_testo(nome, cp) or [s_ for s_ in cp.sections() if nome.strip().lower() == s_.lower()]
+    if trovate:
+        return (f"Per rispondere: ricerca con azione avvia ed entita = «{trovate[0]}»"
+                + (f" (o una di: {', '.join(trovate[1:4])})" if len(trovate) > 1 else "") + ".")
+    return (f"«{nome}» non ha una scheda: esplora_nome, mostra all'utente le forme trovate e chiedi conferma, poi "
+            "schede (azione crea) con le forme confermate, poi ricerca (azione avvia).")
+
+
 def t_cerca_testo(testo, dal=None, al=None, fonti=None, massimo=8, da=0):
     ind, errore = indice_pronto()
     if errore:
         return errore
     import esplora
     r = esplora.cerca_testo(ind, percorso(cfg(), "dati"), testo, dal, al, fonti, massimo, da)
-    if _indice.get("avviso") and isinstance(r, dict):
-        r["avviso_indice"] = _indice["avviso"]
+    if isinstance(r, dict):
+        r = {"avvertenza": AVVERTENZA_GREZZO, "prossimo_passo": prossimo_passo(testo), **r}
+        if _indice.get("avviso"):
+            r["avviso_indice"] = _indice["avviso"]
     return r
 
 
@@ -269,7 +287,7 @@ def t_avvia_ricerca(entita, collegate=None, modalita="occorrenze", dal=None, al=
     sezioni = schede.leggi_schede(percorso(c, "entita")).sections()
     if entita not in sezioni:
         simili = [s_ for s_ in sezioni if entita.lower() in s_.lower() or s_.lower() in entita.lower()]
-        return {"errore": f"«{entita}» non è una scheda.", "forse": simili[:10]}
+        return {"errore": f"«{entita}» non è una scheda.", "forse": simili[:10], "prossimo_passo": prossimo_passo(entita)}
     collegate = [x for x in (collegate or []) if x != entita]
     sbagliate = [x for x in collegate if x not in sezioni]
     if sbagliate:
@@ -493,6 +511,9 @@ def t_elenca_risposte(quante=20):
 
 def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=True, massimo=8, da=0):
     c = cfg()
+    if entita not in schede.leggi_schede(percorso(c, "entita")).sections():
+        return {"errore": f"«{entita}» non è una scheda: nell'archivio ci sono solo passaggi di entità con scheda.",
+                "prossimo_passo": prossimo_passo(entita)}
     ris = percorso(c, "risultati")
     arch = Archivio(ris)
     P = tutti_i_passaggi(ris)
@@ -611,7 +632,8 @@ def t_apri_fonte(file, riga, contesto=25, testo="", max_caratteri=6000):
     mostrate = sorted(fuori + ([riga] if centrale else []))
     corpo = "\n".join(f"{n}{'>>' if n == riga else ': '} {centrale if n == riga else taglia(righe[n - 1], 300)}"
                       for n in mostrate)
-    return {"file": file, "righe": f"{mostrate[0]}-{mostrate[-1]} di {len(righe)}" if mostrate else "",
+    return {"avvertenza": AVVERTENZA_GREZZO, "file": file,
+            "righe": f"{mostrate[0]}-{mostrate[-1]} di {len(righe)}" if mostrate else "",
             "testo": corpo,
             "nota": "Righe lunghe accorciate (…). Per un'altra parte della riga indicata usa testo=<parola>."}
 
@@ -733,27 +755,32 @@ def _azione(*valori):
 
 
 STRUMENTI = {
-    "guida": (t_guida, "Istruzioni di lavoro e fonti del progetto. Chiamalo all'inizio se non hai ricevuto le "
-              "istruzioni del server.", {}, []),
-    "schede": (t_schede, "Schede delle entità (persone, organizzazioni, testate): elenca (filtro = nome da cercare) "
-               "o crea, con le sole forme confermate dall'utente.",
+    "guida": (t_guida, "Istruzioni di lavoro e fonti del progetto. Chiamalo PRIMA di qualsiasi altro strumento, "
+              "all'inizio di ogni conversazione, e seguilo.", {}, []),
+    "schede": (t_schede, "Primo passo per ogni domanda su una persona, un'organizzazione o una testata: elenca "
+               "(filtro = nome) trova la scheda. Senza scheda: esplora_nome, conferma dell'utente, poi crea con le "
+               "sole forme confermate.",
                {"azione": _azione("elenca", "crea"), "filtro": _S, "nome": _S, "varianti": _L, "contesto": _L,
                 "forme_ambigue": _L, "collegate": _L, "descrizione": _S,
                 "tipo": {"type": "string", "enum": list(schede.TIPI)},
                 "forma_estesa": dict(_S, description="nome per esteso, se il nome della scheda è una sigla")},
                ["azione"]),
     "esplora_nome": (t_esplora_nome, "Entità senza scheda: forme del nome attestate nelle fonti, con conteggi ed "
-                     "esempi. Prima di schede (azione crea).",
+                     "esempi. Mostrale all'utente e chiedi conferma prima di schede (azione crea). Non è una risposta "
+                     "sulle fonti.",
                      {"nome": _S,
                       "indizi": dict(_L, description="parole che accompagnano il nome nelle fonti (paese, partito), "
                                                      "nelle lingue delle fonti"),
                       "candidate": dict(_L, description="tue trascrizioni del nome da verificare nelle fonti"),
                       "dal": _I, "al": _I},
                      ["nome"]),
-    "cerca_testo": (t_cerca_testo, "Ricerca libera di parole in tutte le fonti (senza valutazione di pertinenza).",
+    "cerca_testo": (t_cerca_testo, "Ricerca libera di parole, senza lettura né valutazione: SOLO per verificare un "
+                    "punto o per esplorare. Non serve a rispondere su un'entità: per quello usa ricerca (azione avvia) "
+                    "e presenta la sua risposta. Non citare file né righe.",
                     {"testo": _S, "dal": _I, "al": _I, "fonti": _F, "massimo": _I, "da": _I}, ["testo"]),
-    "ricerca": (t_ricerca, "Ricerca completa nelle fonti, come processo indipendente: avvia, poi attendi finché "
-                "finito è vero (ogni attesa è breve); ferma.",
+    "ricerca": (t_ricerca, "Il modo di rispondere a ogni domanda sulle fonti: avvia (entita = nome esatto della "
+                "scheda), poi attendi finché finito è vero (ogni attesa è breve); ferma. Presenta risposta_pronta "
+                "così com'è nei fatti e nei riferimenti, senza aggiungere nulla.",
                 {"azione": _azione("avvia", "attendi", "ferma"), "entita": _S,
                  "collegate": dict(_L, description="altre schede: modalità evoluzione"),
                  "modalita": _azione("occorrenze", "evoluzione"), "dal": _I, "al": _I, "fonti": _F,
@@ -764,13 +791,16 @@ STRUMENTI = {
                  "continua).",
                  {"azione": _azione("elenca", "leggi"), "file": _S, "sezioni": _SEZ, "dal": _I, "al": _I, "da": _I,
                   "testo_filtro": _S, "quante": _I}, ["azione"]),
-    "passaggi_archivio": (t_passaggi_archivio, "Passaggi già letti di un'entità, con originale, traduzione e "
-                          "riferimento. Immediato; da per scorrere.",
+    "passaggi_archivio": (t_passaggi_archivio, "Passaggi già letti di un'entità con scheda (originale, traduzione, "
+                          "riferimento), per mostrarli all'utente. Immediato; da per scorrere. Copertura parziale: "
+                          "per rispondere usa ricerca. Cita con «riferimento», mai con file e riga.",
                           {"entita": _S, "dal": _I, "al": _I, "fonti": _F, "solo_pertinenti": _B, "massimo": _I,
                            "da": _I}, ["entita"]),
     "copertura_fonti": (t_copertura_fonti, "Numeri presenti di ogni periodico e lacune registrate in un periodo.",
                         {"dal": _I, "al": _I}, ["dal"]),
-    "apri_fonte": (t_apri_fonte, "Testo del file sorgente attorno a una riga; testo centra la riga su una parola.",
+    "apri_fonte": (t_apri_fonte, "Testo grezzo del file sorgente attorno a una riga (testo centra la riga su una "
+                   "parola): SOLO per mostrare o verificare un passaggio che l'utente chiede. Non costruire risposte "
+                   "da qui e non citare file né righe.",
                    {"file": _S, "riga": _I, "contesto": _I, "testo": _S}, ["file", "riga"]),
     "varianti": (t_varianti, "Forme del nome proposte durante la lettura: elenca, aggiungi (dopo conferma), scarta.",
                  {"azione": _azione("elenca", "aggiungi", "scarta"), "entita": _S, "forme": _L}, ["azione"]),

@@ -45,7 +45,16 @@ class ServerMcp(unittest.TestCase):
                                                                              "arguments": {"azione": "crea"}}},
             {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "inesistente", "arguments": {}}},
             {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "guida", "arguments": {}}},
+            {"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+             "params": {"name": "passaggi_archivio", "arguments": {"entita": "Persona senza scheda"}}},
+            {"jsonrpc": "2.0", "id": 10, "method": "tools/call",
+             "params": {"name": "ricerca", "arguments": {"azione": "avvia", "entita": "Persona senza scheda"}}},
+            {"jsonrpc": "2.0", "id": 11, "method": "tools/call",
+             "params": {"name": "apri_fonte", "arguments": {"file": "riviste/gazzetta/G1955-01-01.txt", "riga": 2}}},
         ]
+        (radice / "data" / "riviste" / "gazzetta").mkdir(parents=True)
+        (radice / "data" / "riviste" / "gazzetta" / "G1955-01-01.txt").write_text(
+            "[SERIES: Gazzetta di prova]\n\nPrima riga del testo.\nSeconda riga.\n", encoding="utf-8")
         r = subprocess.run([sys.executable, str(PIPELINE / "mcp_server.py")], env=env, capture_output=True,
                            input="\n".join(json.dumps(m) for m in messaggi) + "\n", text=True, encoding="utf-8",
                            timeout=120)
@@ -85,6 +94,27 @@ class ServerMcp(unittest.TestCase):
         self.assertEqual(self.risposte[7]["error"]["code"], -32602)
         guida = json.loads(self._testo(8))
         self.assertEqual((guida["progetto"], guida["fonti_selezionabili"]), ("Stampa di prova", ["Gazzetta di prova"]))
+
+
+    def test_regole_nelle_descrizioni(self):
+        # le descrizioni sono il solo testo che ogni client mostra sempre al modello
+        d = {t["name"]: t["description"] for t in self.risposte[2]["result"]["tools"]}
+        self.assertIn("PRIMA di qualsiasi altro strumento", d["guida"])
+        self.assertIn("SOLO per verificare", d["cerca_testo"])
+        self.assertIn("Non costruire risposte", d["apri_fonte"])
+        self.assertIn("non citare file né righe", d["apri_fonte"])
+        self.assertIn("Il modo di rispondere", d["ricerca"])
+
+    def test_scheda_mancante_e_avvertenze(self):
+        for i in (9, 10):
+            out = json.loads(self._testo(i))
+            self.assertTrue(self.risposte[i]["result"]["isError"])
+            self.assertIn("esplora_nome", out["prossimo_passo"])
+            self.assertIn("schede (azione crea)", out["prossimo_passo"])
+        fonte = json.loads(self._testo(11))
+        self.assertEqual(list(fonte)[0], "avvertenza")                # prima cosa che il modello legge
+        self.assertIn("non è una risposta", fonte["avvertenza"])
+        self.assertIn("Seconda riga", fonte["testo"])
 
 
 if __name__ == "__main__":
