@@ -99,7 +99,7 @@ Strumenti (13; con `azione` quelli che uniscono più operazioni): guida, schede 
 
 ### Modelli (FreeLLMAPI)
 
-Profilo «ricerca» attivo, strategia custom (affidabilità 0,3, velocità 0,2, intelligenza 0,5). Catena «ricerca» 26 modelli, «chat» 17. Provati con la prova rapida (21 passaggi Nuova Unità, 21/10): Nemotron Ultra (NVIDIA) 21/21, GPT-OSS 120B (Ollama) 21/21, Gemma 4 31B (Ollama) 21/21, Nemotron 3 Super (Ollama) 15/15, Muse Glimmer 30B (NVIDIA) 15/15, Ministral 14B (Mistral) 20/21; scartato Nemotron 3.5 Lightning (0/15). Regola: stesso modello su un nuovo fornitore non va riprovato; modello nuovo -> prova rapida; `valuta.py` completo solo nei casi dubbi. Risultati in `risultati\_prove\prova_rapida_2026-10-21.md`. `config.ini`: max_token 4000 (sintesi 8000).
+Profilo «ricerca» attivo, strategia custom (affidabilità 0,3, velocità 0,2, intelligenza 0,5). Catena «ricerca» 26 modelli, «chat» 17. Provati con la prova rapida (21 passaggi Nuova Unità, 21/10): Nemotron Ultra (NVIDIA) 21/21, GPT-OSS 120B (Ollama) 21/21, Gemma 4 31B (Ollama) 21/21, Nemotron 3 Super (Ollama) 15/15, Muse Glimmer 30B (NVIDIA) 15/15, Ministral 14B (Mistral) 20/21; scartato Nemotron 3.5 Lightning (0/15). Regola: stesso modello su un nuovo fornitore non va riprovato; modello nuovo -> prova rapida; `valuta.py` completo solo nei casi dubbi. I risultati sono quelli riportati qui (il file della prova, `risultati\_prove\prova_rapida_2026-10-21.md`, è stato tolto il 25/10). `config.ini`: max_token 4000 (sintesi 8000).
 
 Prova rapida del 22/10 (`valutazione.py modelli`) sui 97 passaggi verificati a mano. La prima fase ha provato 50 modelli su 30 passaggi; 13 li hanno letti tutti, gli altri sono stati fermati da quote o errori del servizio. Seconda fase sui 97 passaggi (pertinenti riconosciuti; «sì» giusti):
 
@@ -142,11 +142,19 @@ Esito provvisorio: su stampa recente pulita Tesseract basta per cinese e albanes
 
 ### Dati di ricerca separati dal motore (fase 4, lavoro 15, 25/10/2026)
 
-- `entita.ini` e `serie.ini` spostati da `pipeline` alla radice del progetto (posizione predefinita); `progetto.ini` non li sposta più. Con `istruzioni.md` e `progetto.ini` sono fuori dal controllo di versione (`.gitignore`, `git rm --cached`): restano sul disco, copie in `pipeline\_backup\2026-10-25_separazione_dati`.
+- `entita.ini` e `serie.ini` spostati da `pipeline` alla radice del progetto (posizione predefinita); `progetto.ini` non li sposta più. Con `istruzioni.md` e `progetto.ini` sono fuori dal controllo di versione (`.gitignore`, `git rm --cached`): restano sul disco; le versioni precedenti sono nella storia di git.
 - Il motore porta `pipeline\serie_modello.ini` (descrizione dei campi ed esempio), da cui `progetto.py nuovo` scrive il `serie.ini` dei progetti nuovi.
 - I test non leggono più il progetto in uso: i profili delle serie su cui sono scritti stanno in `pipeline\test\progetto_prova` (`prova.py` lo sceglie con `AIRCHIVIST_PROGETTO` per i moduli delle citazioni e della cronologia); le importazioni di prova si scrivono il proprio `serie.ini`. Provato su una copia dei soli file del repository: 140 test con Python 3.10 e 3.14, `installa.py controlla` (segnala schede e serie mancanti e come creare un progetto), server MCP avviato senza progetto (`schede` vuote, `guida`). Sul progetto vero: 92 schede, 8 serie, 0 errori.
 - Restano nella storia di git: le versioni precedenti dei quattro file sono nei commit fino al 25/10. Per pubblicare serve un repository nuovo senza storia o una storia riscritta.
 - Restano da valutare prima della pubblicazione: `CLAUDE.md` e `docs/` (stato, piano, schede) parlano di questa ricerca; `config.ini` ha `cartella = ..`.
+
+### Riordino della cartella (25/10/2026)
+
+- Tolto `pipeline\registra_analisi.py` (registrava le letture fatte in chat per la vecchia skill «ricerca-occorrenze-fonti»; lo sostituisce `sessione.py registra`). Resta nella storia di git.
+- `pipeline\_backup`: tolte le copie di codice e documenti identiche a una versione già in git; restano le copie dei file fuori da git (fonti, archivio, risultati, schede) e le versioni intermedie mai committate. I file sparsi (`entita.ini.bak*`, `config.ini.prima_max_token`) sono in cartelle per data (`2026-10-15_entita`, `2026-10-20_entita`, `2026-10-21_config`).
+- `risultati\_prove`: tolte le prove di smistamento dei modelli del 20-23/10 (i risultati sono riassunti in «Modelli»); restano `chat`, `ocr` e la prova della skill (`prova_skill_enrico_berlinguer`, spostata da `risultati`).
+- `risposte`: tolta la seconda risposta su Enrico Berlinguer del 25/10 (stessa domanda, cinque minuti dopo).
+- `ISTRUZIONI.md`, `LEGGIMI.md`, `CLAUDE.md`: elenco delle cartelle e dei programmi aggiornato; `.gitignore` senza le righe di `pipeline\entita.ini` e `pipeline\serie.ini`.
 
 Requisiti di sistema (da installare): Tesseract UB Mannheim con la lingua Albanian (sqi), PyMuPDF. Nessun modello OCR dentro la cartella del progetto.
 
@@ -162,7 +170,7 @@ Provato solo su una scansione sintetica: mancano prove su scansioni vere e una p
 - Librerie: il codice usa la libreria standard più PyMuPDF (1.28.0, MuPDF 1.29.0), solo in `importa.py`. SQLite 3.50.4 con FTS5 funzionante.
 - Tesseract 5.5.3 in `C:\Program Files\Tesseract-OCR` (non nel PATH: `importa.py` lo trova nella cartella consueta). Lingue: deu, eng, fra, ita, ita_old, osd, rus, spa, sqi; al 25/10 anche chi_sim e chi_sim_vert (manca chi_tra).
 - FreeLLMAPI: app desktop installata (`%LOCALAPPDATA%\Programs\freellmapi-desktop`), chiave `FREELLMAPI_KEY` presente nelle variabili d'utente. Al momento della verifica il servizio **non era avviato** (nessuna risposta su 127.0.0.1:31415): le ricerche richiedono di aprire prima l'app.
-- Controllo di versione: git attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false` per conservare i fine riga). Esclusi: `data/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `pipeline/_backup/`.
+- Controllo di versione: git attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false` per conservare i fine riga). Esclusi: `data/`, `audit_fonti/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `letteratura/`, `dist/`, `pipeline/_backup/` e, dal 25/10, `entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`.
 
 
 

@@ -45,8 +45,13 @@ Jan usa gli strumenti del server MCP «Pipeline» (`pipeline\mcp_server.py`). Co
 | `risultati\_archivio` | i passaggi già letti (non vengono mai riletti) |
 | `risultati\_riferimenti` | letture di riferimento per provare i modelli |
 | `risultati\_sessioni_precedenti` | lavori delle sessioni con Claude |
-| `risultati\_prove` | prove dei modelli |
+| `risultati\_prove` | prove dei modelli, dell'OCR, della chat e della skill |
+| `risultati\_valutazione` | insiemi di riferimento verificati a mano e misure di precisione e richiamo |
 | `pipeline` | programmi e `config.ini` (il motore) |
+| `pipeline\_backup` | copie dei file fuori dal controllo di versione, una cartella per data e argomento |
+| `docs` | documentazione di progetto: stato, progettazione, piano di lavoro, schede delle entità |
+| `letteratura` | letteratura secondaria sul metodo |
+| `skill_chat`, `dist` | skill ricerca-fonti per la chat di Claude e il suo zip (vedi `skill_chat\LEGGIMI.md`) |
 | `entita.ini`, `serie.ini`, `istruzioni.md` | schede delle entità, serie di fonti e regole per la chat di questo progetto (fuori dal controllo di versione) |
 | `progetto.ini` | nome e impostazioni di questo progetto di ricerca. Per un'altra ricerca: `python pipeline\progetto.py nuovo <cartella>` (vedi `pipeline\ISTRUZIONI.md`, «Progetti di ricerca») |
 

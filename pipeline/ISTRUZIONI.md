@@ -11,9 +11,12 @@ Il lavoro è diviso così:
 ## Organizzazione delle cartelle
 
 ```
-RAG\
+AIrchivist\
   LEGGIMI.md, README.md     guida rapida (in italiano e in inglese)
   LICENSE, requirements.txt licenza (AGPL-3.0) e librerie facoltative
+  progetto.ini              nome e impostazioni del progetto di ricerca di questa cartella
+  entita.ini, serie.ini     schede delle entità e profili delle serie (anche citazioni)
+  istruzioni.md             regole del progetto per il modello della chat
   data\                     le fonti (Renmin Ribao, Peking Review, Hongqi, raccolte, Selected Works)
   audit_fonti\
     registro_modifiche.csv  ogni correzione fatta ai metadati delle fonti (citato nelle intestazioni dei file)
@@ -27,26 +30,38 @@ RAG\
     _archivio\              archivio unico dei passaggi già letti
     _riferimenti\           letture di riferimento per valuta.py (nuova_unita, grippa)
     _sessioni_precedenti\   lavori delle sessioni con Claude (letture assistite, tabelle, rapporti)
-    _prove\                 prove dei modelli (non entrano nell'archivio)
+    _prove\                 prove dei modelli, dell'OCR, della chat e della skill (non entrano nell'archivio)
     _valutazione\           insiemi di riferimento verificati a mano e misure (valutazione.py)
     <nome_entità>\          una cartella per ogni ricerca
+  letteratura\              letteratura secondaria sul metodo (PDF, fuori dal controllo di versione)
+  docs\                     documentazione di progetto (stato, progettazione, piano di lavoro, schede)
+  skill_chat\               skill ricerca-fonti per la chat di Claude (crea_skill_chat.py la impacchetta)
+  dist\                     lo zip della skill per la chat (si rigenera)
+  .claude\skills\           skill ricerca-fonti per Claude Code, sul progetto di questa cartella
   pipeline\
     installa.py             installazione delle librerie, controllo dell'ambiente, configurazione dei client
-    mcp_server.py           il server che collega Jan alla pipeline
+    mcp_server.py           il server che collega Jan alla pipeline; istruzioni.py: le regole che consegna
     ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
-    estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, glossario.py,
-    archivio.py, schede.py, varianti.py, llm.py   le parti del motore
+    estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
+    glossario.py, archivio.py, schede.py, varianti.py, llm.py   le parti del motore
     indice.py, esplora.py   indice delle fonti, esplorazione dei nomi nuovi e ricerca libera nel testo
+    varianti_nomi.py        trascrizioni cinesi e forme tradotte proposte da esplora_nome
     lavori.py               fa girare le ricerche come processi indipendenti dalla chat
-    importa.py, serie.ini   importazione di nuovo materiale (OCR) e profili delle serie (anche citazioni)
+    progetto.py, profili.py progetti di ricerca (nuovo, stato, percorsi) e profili delle serie
+    importa.py              importazione di nuovo materiale (PDF, scansioni, .txt, PAGE/ALTO XML)
+    pagine_xml.py, numerazione.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py
+                            parti dell'importazione: XML, numeri di pagina, motori OCR, confronto dei testi
     citazioni.py            citazioni in stile Chicago dalle intestazioni e dai profili di serie
+    sessione.py             lettura dei passaggi in sessione (skill ricerca-fonti per Claude Code)
+    chat.py, crea_skill_chat.py   motore e pacchetto della skill per la chat di Claude
     valuta.py               prova rapida dei modelli su una lettura di riferimento
     valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
+    prova_ocr.py, prova_chat.py   prove dei motori OCR e dei modelli della chat
     test\                   test automatici (python -m unittest discover -s pipeline/test)
-    registra_analisi.py     usato dalla skill di Claude «ricerca-occorrenze-fonti»
     config.ini              configurazione del motore
     serie_modello.ini       modello di serie.ini per i progetti nuovi
-    _backup\                copie precedenti di entita.ini
+    _backup\                copie dei file fuori dal controllo di versione (fonti, archivio, schede),
+                            una cartella per data e argomento
 ```
 
 ## Requisiti (una volta sola)

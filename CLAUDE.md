@@ -16,7 +16,7 @@ Gli originali di `stato_del_sistema.md` e `progettazione_del_sistema.md` sono ne
 
 - Rispondi in italiano.
 - La copia dei file su questo PC è quella che conta.
-- Prima di modificare un file, salvane una copia in `pipeline/_backup/<data>_<argomento>/`. Quando il controllo di versione con git sarà attivo, un commit con un messaggio chiaro sostituisce la copia.
+- I file sotto controllo di versione si modificano con un commit dal messaggio chiaro, senza copia. Prima di modificare un file fuori da git (`data/`, `audit_fonti/`, `risultati/`, `entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`), salvane una copia in `pipeline/_backup/<data>_<argomento>/`.
 - Quando correggi codice, consegna la versione completa del file o della funzione, pronta da copiare.
 - Solo soluzioni gratuite. I requisiti (Tesseract, librerie Python, modelli OCR) si installano nel sistema, mai dentro la cartella del progetto.
 - Prima di dire che qualcosa funziona, provalo: esegui il codice, i test, una ricerca di prova.
@@ -43,22 +43,23 @@ Gli originali di `stato_del_sistema.md` e `progettazione_del_sistema.md` sono ne
 | `audit_fonti/` | registro delle correzioni ai metadati e problemi aperti |
 | `progetto.ini`, `entita.ini`, `serie.ini`, `istruzioni.md` | progetto di ricerca di questa cartella: nome, schede delle entità, profili delle serie, regole per la chat. Fuori dal controllo di versione (non si pubblicano); `_backup` resta in `pipeline/`. Il progetto in uso si sceglie in `pipeline/config.ini`, `[progetto] cartella`, o con `AIRCHIVIST_PROGETTO`; `python pipeline/progetto.py stato` |
 | `pipeline/` | motore: codice, `config.ini` (modelli, parametri), `serie_modello.ini` (modello per i progetti nuovi); i test usano il progetto di prova `pipeline/test/progetto_prova/` |
-| `pipeline/_backup/` | copie precedenti dei file modificati |
-| `indice/` | indice SQLite FTS5 (circa 870 MB, si aggiorna da solo) |
+| `pipeline/_backup/` | copie precedenti dei file fuori da git, una cartella per data e argomento |
+| `indice/` | indice SQLite FTS5 (circa 900 MB, si aggiorna da solo) |
 | `risultati/_archivio/letture.jsonl` | archivio unico dei passaggi già letti |
-| `risultati/_riferimenti/`, `risultati/_prove/` | letture di riferimento e prove dei modelli |
+| `risultati/_riferimenti/`, `risultati/_sessioni_precedenti/` | letture di riferimento e lavori delle sessioni con Claude (entrano nell'archivio) |
+| `risultati/_prove/`, `risultati/_valutazione/` | prove dei modelli, dell'OCR, della chat e della skill; insiemi di valutazione |
 | `risposte/` | risposte complete, una per domanda |
 | `lavori/` | stato delle ricerche avviate dalla chat |
 | `importazioni/` | registro delle importazioni |
 | `docs/` | documentazione di progetto |
+| `letteratura/` | letteratura secondaria sul metodo (PDF, fuori da git) |
+| `skill_chat/`, `dist/` | skill ricerca-fonti per la chat di Claude e il suo zip (`python pipeline/crea_skill_chat.py`) |
+| `.claude/skills/ricerca-fonti/` | skill ricerca-fonti per Claude Code (lettura in sessione, `pipeline/sessione.py`) |
 
 Ambiente: Windows. Il tool si usa dalla chat di Jan tramite il server MCP `pipeline/mcp_server.py`. I modelli arrivano da FreeLLMAPI (`http://127.0.0.1:31415/v1`, chiave in `FREELLMAPI_KEY`).
 
 ## Controllo di versione
 
-Da attivare come primo passo, se git non è ancora configurato:
-- `git init` nella cartella RAG;
-- `.gitignore` con almeno `data/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `pipeline/_backup/`, `__pycache__/`;
-- primo commit del codice, della documentazione e delle configurazioni.
+Git è attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false`). `.gitignore` esclude il corpus e i dati generati (`data/`, `audit_fonti/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `letteratura/`, `dist/`), i dati di ricerca del progetto (`entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`), `pipeline/_backup/` e `__pycache__/`.
 
 `data/` resta fuori dal controllo di versione per le dimensioni e per i diritti delle fonti. Le sue correzioni restano documentate nel registro di `audit_fonti/`.
