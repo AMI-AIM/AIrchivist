@@ -173,7 +173,14 @@ def componi(modello, valori):
     s = re.sub(r"\(\s+", "(", s)
     s = re.sub(r",\s*,", ",", s)
     s = re.sub(r":\s*,", ",", s)
+    s = dopo_punto_interrogativo(s)
     return re.sub(r"\s{2,}", " ", s).strip(" ,:")
+
+
+def dopo_punto_interrogativo(s):
+    """Chicago: dopo un titolo che finisce con «?» o «!» non si aggiunge punto né virgola, anche oltre le virgolette
+    o il corsivo («"Whither Albania?."» -> «"Whither Albania?"»)."""
+    return re.sub(r"([?!])([\"”’'*»]*)[.,]", r"\1\2", s)
 
 
 def modello_di(profilo, meta):

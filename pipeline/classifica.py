@@ -90,14 +90,33 @@ def forma_sicura(v):
         not any(p.lower() in GENERICHE for p in parole)
 
 
+# nomi interi o abbreviati, come parole intere («Hsiang Jung 23» non è una data)
+MESI_EN = (r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December|"
+           r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|"
+           r"agosto|settembre|ottobre|novembre|dicembre)\b\.?")
+# il punto conta (titoli che finiscono col punto: «"Reasonable Step". 27ROUND»), ma non dopo una cifra:
+# «1960.14 “The …» è il rimando a una nota dopo una data
+NUMERO_DI_PAGINA = re.compile(r"(?:[a-zA-Z\),”\"]|(?<!\d)\.)\s?(\d{1,3})\s?(?=[A-Z“\"])")
+PRIMA_DATA = re.compile(r"(?:" + MESI_EN + r"|\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b)[,\s]*$")
+DOPO_DATA = re.compile(r"\s?(?:" + MESI_EN + r")")
+
+
 def e_sommario(rec):
-    """Voce di sommario o di elenco: titoli seguiti dal numero di pagina, uno dopo l'altro."""
+    """Voce di sommario o di elenco: titoli seguiti dal numero di pagina, uno dopo l'altro («Toast 14 Comrade …
+    Journalists 15 …»). Non contano come numeri di pagina i rimandi alle note dopo una data («1960.14 “The …»)
+    né i numeri delle date («26 October», «Apr. 22», «Sun, 30 Aug»): 25/10/2026, un articolo con note a piè di
+    pagina era preso per un sommario e il passaggio non veniva tradotto."""
     t = rec.get("passaggio_evidenziato", "")
     i = t.find("⟦")
     if i < 0:
         return False
     vicino = t[max(0, i - 300): i + 300]
-    return len(re.findall(r"[a-zA-Z\)\.,]\s?\d{1,3}\s?(?=[A-Z“\"])", vicino)) >= 3
+    pagine = 0
+    for m in NUMERO_DI_PAGINA.finditer(vicino):
+        if PRIMA_DATA.search(vicino[max(0, m.start() - 12): m.start(1)]) or DOPO_DATA.match(vicino, m.end(1)):
+            continue
+        pagine += 1
+    return pagine >= 3
 
 SCHEMA_SMISTA = {
     "type": "object",
@@ -217,6 +236,14 @@ PASSAGGIO:
 Rispondi con JSON: {{"pertinente": "sì" | "no" | "incerto", "motivazione": "una frase"}}"""
 
 
+# 25/10/2026: «ricavando l'anno dalla data della fonte» ha fatto scrivere «ottobre 1979» per un fatto che un
+# articolo del 2 agosto 1979 dà come già avvenuto «in ottobre» (cioè nel 1978). Controllo: archivio.py date_sospette.
+REGOLA_ANNO = ("Per le date: scrivi l'anno solo se il passaggio lo indica o se si ricava con certezza. Se il passaggio "
+               "dà solo giorno o mese, confrontalo con la data della fonte: un fatto già avvenuto in un mese successivo "
+               "a quello della fonte è dell'anno precedente; un fatto annunciato o previsto in un mese precedente è "
+               "dell'anno seguente. Se non è certo, scrivi la data senza anno e aggiungi «(anno non indicato)».")
+
+
 def prompt_analisi(rec, scheda, frase, n=0, glossario=None):
     testo = ritaglia(rec, n)
     return f"""{blocco(glossario or [], testo + frase)}Entità cercata: {rec['entita']}
@@ -232,7 +259,7 @@ FRASE DA TRADURRE:
 Compiti:
 1. "tipo_menzione": uno tra {', '.join(TIPI)}.
 2. "traduzione_it": traduzione italiana fedele della FRASE DA TRADURRE (non del passaggio intero). Per persone, partiti e testate usa i nomi del GLOSSARIO, se presenti. Se un termine è incerto, segnalalo tra parentesi quadre.
-3. "sintesi_it": 1-3 frasi su ciò che il passaggio dice ESPLICITAMENTE dell'entità (chi, cosa, quando). Indica le date complete di anno, ricavandolo se necessario dalla data della fonte. Nessuna informazione esterna.
+3. "sintesi_it": 1-3 frasi su ciò che il passaggio dice ESPLICITAMENTE dell'entità (chi, cosa, quando). {REGOLA_ANNO} Nessuna informazione esterna.
 4. "nuove_varianti": altre forme del nome dell'entità presenti nel passaggio e non già note (lista vuota se nessuna).
 5. "altri_nominati": altre persone e organizzazioni nominate nel passaggio accanto all'entità, ciascuna con il ruolo o il rapporto con l'entità come risulta dal testo. Se la stessa organizzazione compare più volte con firmatari o dirigenti diversi, riporta ogni voce separatamente.
 6. "ruolo_entita": titolo, carica o qualifica che il passaggio attribuisce all'entità (es. "segretario del Comitato centrale", "organo del partito"); stringa vuota se non indicato.
@@ -351,6 +378,8 @@ def da_completare(a):
     regola, senza che nessuno l'abbia letto. Le correzioni manuali e le voci di sommario restano come sono."""
     if not a or a.get("corretto_a_mano") or a.get("sommario") or a.get("assorbito_da"):
         return None
+    if a.get("pertinente") == "sì" and a.get("da_rileggere") == "analisi":     # archivio.py date_sospette
+        return "analisi"
     if a.get("pertinente") == "sì" and not (a.get("traduzione_it") or "").strip():
         return "analisi"
     if a.get("pertinente") == "incerto" and "per regola" in (a.get("tipo_menzione") or ""):
@@ -512,6 +541,11 @@ def main():
             correnti = {p["id"]: p for p in passaggi if p["entita"] in schede and not p.get("assorbito_da")}
             for pid, rec in list(fatti.items()):
                 k = da_completare(rec.get("analisi"))
+                if not k and arch is not None and not args.senza_archivio:
+                    # lettura di questa cartella che l'archivio segna da rileggere (archivio.py date_sospette)
+                    a_arch, _ = arch.cerca(rec)
+                    if a_arch and a_arch.get("da_rileggere"):
+                        k = da_completare(a_arch)
                 if k and pid in correnti:
                     if k == "analisi":
                         gia_pertinenti[pid] = rec["analisi"].get("motivazione") or "pertinente (lettura precedente)"

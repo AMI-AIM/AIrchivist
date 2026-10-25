@@ -31,6 +31,12 @@ Opzioni di importa:
                      con avviso); altrimenti rifà l'OCR di tutto il documento.
                      sempre = rifà l'OCR di ogni pagina; strato = usa lo strato quando c'è, senza confronto
   --campione N       pagine del confronto tra strato e OCR (0 = nessun confronto)
+  --prima-pagina N [--da-pagina K]
+                     la pagina K del PDF (predefinito 1) è la p. N stampata; le seguenti proseguono. Senza: le
+                     pagine vengono dalle etichette del PDF o dai numeri stampati in testa e in piede, se lo scarto
+                     dalla posizione è costante (numerazione.py). Anche come colonne prima_pagina, da_pagina di
+                     --metadati. I marcatori sono [[p. N | pdf K]]
+  --senza-pagine     nessun marcatore di pagina nei PDF
   --unisci           tutti i file indicati diventano un solo documento (es. le foto delle pagine di un numero)
   --sovrascrivi      sostituisce i documenti già importati con lo stesso nome
   --processi N       pagine lette in parallelo (predefinito: metà dei processori)
@@ -260,6 +266,14 @@ def carica_pymupdf():
         return fitz
 
 
+def etichetta_pagina(pag):
+    """Etichetta della pagina dichiarata dal PDF (PageLabels); '' se manca o se il PDF la dichiara male."""
+    try:
+        return pag.get_label() or ""
+    except Exception:
+        return ""
+
+
 def testo_utile(t):
     return sum(1 for ch in t if ch.isalnum())
 
@@ -334,7 +348,7 @@ def nota_scelta(s):
 
 
 def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stampa=print, max_pagine=None,
-                    campione=PAGINE_CAMPIONE):
+                    campione=PAGINE_CAMPIONE, prima_pagina=None, da_pagina=1, pagine_pdf=True):
     """Legge uno o più file (unendoli nell'ordine dato). Restituisce (testo, rapporto).
     Le pagine senza testo si rendono come immagini e si passano a Tesseract poche alla volta (in parallelo),
     così anche un volume di centinaia di pagine non riempie il disco; le pagine già lette restano nella cache
@@ -343,6 +357,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
     pagine = []          # [chiave, testo, metodo, confidenza]
     motori, stampate, ignorati = [], [], []     # dalle esportazioni PAGE/ALTO
     scelte = []                                 # scelte tra strato di testo del PDF e OCR rifatto
+    pdf_letti = []                              # (posizioni in pagine, etichette) di ogni PDF: numerazione.py
     tmp = Path(tempfile.mkdtemp(prefix="importa_"))
     attesa = deque()
     stato = {"fatti": 0, "t0": time.time(), "annunciato": False}
@@ -413,10 +428,14 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                                 scelte.append(dict(dettagli, file=p.name))
                             if scelta == "ocr":
                                 modo_file = "sempre"
+                        posizioni, etichette = [], []
+                        pdf_letti.append((posizioni, etichette))
                         for k, pag in enumerate(doc, 1):
                             if max_pagine and len(pagine) >= max_pagine:
                                 break
                             chiave = f"{p.name} p.{k}"
+                            posizioni.append(len(pagine))
+                            etichette.append(etichetta_pagina(pag))
                             t = pag.get_text("text") if modo_file != "sempre" else ""
                             if testo_utile(t) >= SOGLIA_TESTO_PDF:
                                 pagine.append([chiave, t.strip(), "testo del PDF", None])
@@ -438,7 +457,22 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
         shutil.rmtree(tmp, ignore_errors=True)
     if stato["fatti"]:
         stampa(f"    {stato['fatti']} pagine lette con l'OCR in {time.time() - stato['t0']:.0f} s")
+    # pagine stampate dei PDF (numerazione.py): a lettura finita, perché i numeri stampati vengono anche dall'OCR
+    numerazioni = []
+    if pagine_pdf:
+        import numerazione
+        for posizioni, etichette in pdf_letti:
+            numeri, info = numerazione.numera([pagine[i][1] or "" for i in posizioni], etichette,
+                                              prima_pagina, da_pagina)
+            for k, (pagina, nota) in sorted(numeri.items()):
+                i = posizioni[k - 1]
+                pagine[i][1] = numerazione.marcatore(pagina, i + 1, nota) + "\n" + (pagine[i][1] or "")
+                stampate.append(pagina)
+            if info["metodo"]:
+                numerazioni.append(info)
     testo = "\n\n".join(t for _, t, _, _ in pagine if t)
+    # caratteri di controllo (i PDF di JSTOR ne hanno a centinaia nella riga di download): rendono il file «binario»
+    testo = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", testo)
     confs = [c for *_, c in pagine if c is not None]
     metodi = sorted({m for _, _, m, _ in pagine})
     if "ocr" in metodi:
@@ -452,7 +486,11 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                 "scelte_strato": scelte,
                 "motore": "; ".join(dict.fromkeys(motori)),
                 "pagine_stampate": f"{stampate[0]}-{stampate[-1]}" if len(stampate) > 1 else "".join(stampate),
-                "ignorati": ignorati}
+                "ignorati": ignorati,
+                "numerazione": numerazioni[0] if len(numerazioni) == 1 else (
+                    {"metodo": "; ".join(dict.fromkeys(x["metodo"] for x in numerazioni)),
+                     "stato": "dedotto" if any(x["stato"] for x in numerazioni) else "",
+                     "nota": "; ".join(x["nota"] for x in numerazioni)} if numerazioni else {})}
     return testo, rapporto
 
 
@@ -511,6 +549,8 @@ def componi(modello, valori):
     s = re.sub(r"\s+,", ",", s)
     s = re.sub(r",\s*,", ",", s)
     s = re.sub(r":\s*,", ",", s)
+    from citazioni import dopo_punto_interrogativo
+    s = dopo_punto_interrogativo(s)
     return re.sub(r"\s{2,}", " ", s).strip(" ,:")
 
 
@@ -541,7 +581,8 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("DATE_STATUS", valori.get("stato_data", "")),
         ("DATE_NOTE", valori.get("nota_data", "") if valori.get("stato_data") else ""),
         ("AUTHOR", valori.get("autore", "")),
-        ("TITLE", valori.get("titolo", "") if scheda.get("tipo") == "volume" else ""),
+        # anche nei periodici, se indicato (--titolo, metadati): il titolo dell'articolo entra nella citazione
+        ("TITLE", valori.get("titolo", "")),
         ("PUBLISHER", valori.get("editore", "")),
         ("PUBLICATION_PLACE", valori.get("luogo", "")),
         ("LANG", scheda.get("lingua", "")),
@@ -550,6 +591,9 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("TEXT_METHOD", rapporto.get("metodo_testo", "")),
         ("OCR_ENGINE", rapporto.get("motore", "")),
         ("PAGES", rapporto.get("pagine_stampate", "")),
+        # numerazione ricavata dai numeri stampati nel testo: «dedotto»; etichette del PDF e --prima-pagina no
+        ("PAGES_STATUS", (rapporto.get("numerazione") or {}).get("stato", "") if rapporto.get("pagine_stampate") else ""),
+        ("PAGES_NOTE", (rapporto.get("numerazione") or {}).get("nota", "") if rapporto.get("pagine_stampate") else ""),
         ("OCR_CONFIDENCE", "" if rapporto["confidenza"] is None else str(rapporto["confidenza"])),
         ("FULL_CITATION", valori["citazione"]),
     ]
@@ -665,6 +709,15 @@ def raggruppa_file(file, unisci=False):
     return gruppi
 
 
+def opzioni_pagine(args, riga_csv):
+    """Numerazione delle pagine dei PDF: --prima-pagina/--da-pagina, o le colonne prima_pagina/da_pagina del file
+    --metadati (valgono per quel file); --senza-pagine la disattiva."""
+    prima = (riga_csv.get("prima_pagina") or "").strip() or getattr(args, "prima_pagina", None)
+    da = (riga_csv.get("da_pagina") or "").strip() or getattr(args, "da_pagina", None) or 1
+    return {"prima_pagina": int(prima) if prima else None, "da_pagina": int(da),
+            "pagine_pdf": not getattr(args, "senza_pagine", False)}
+
+
 def cmd_importa(args, stampa=print):
     cfg = leggi_config()
     serie_ini = leggi_serie()
@@ -695,12 +748,19 @@ def cmd_importa(args, stampa=print):
     if args.prova:
         g = gruppi[0]
         stampa(f"Prova su {g['origine']}: prime {args.prova} pagine")
-        testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova, args.campione)
+        testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova, args.campione,
+                                     **opzioni_pagine(args, metadati.get(g["nome"], {})))
         v = valori_documento(args.serie, scheda, args, metadati.get(g["nome"], {}), g["nome"], testo)
         stampa(f"\nMetodo: {rap['metodo']}; confidenza media: {rap['confidenza']}; "
                f"pagine deboli: {rap['pagine_deboli'] or 'nessuna'}"
                + (f"; motore: {rap['motore']}" if rap["motore"] else "")
                + (f"; pagine stampate: {rap['pagine_stampate']}" if rap["pagine_stampate"] else ""))
+        if rap["numerazione"]:
+            stampa(f"Pagine: {rap['numerazione']['metodo']} ({rap['numerazione']['nota']})"
+                   + (" — numerazione dedotta: controllala" if rap["numerazione"]["stato"] else ""))
+        elif any(f.suffix.lower() in PDF for f in g["file"]) and not getattr(args, "senza_pagine", False):
+            stampa("Pagine: nessuna numerazione riconosciuta nelle pagine lette (nella prova sono poche): "
+                   "eventualmente --prima-pagina N [--da-pagina K]")
         if rap["ignorati"]:
             stampa(f"File XML ignorati (non PAGE né ALTO): {', '.join(rap['ignorati'][:10])}")
         for s in rap["scelte_strato"]:
@@ -719,7 +779,8 @@ def cmd_importa(args, stampa=print):
         cache = cache_radice / firma
         cache.mkdir(parents=True, exist_ok=True)
         try:
-            testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa, campione=args.campione)
+            testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa, campione=args.campione,
+                                         **opzioni_pagine(args, metadati.get(doc["nome"], {})))
         except Exception as e:
             problemi.append(f"{origine}: {type(e).__name__}: {e}")
             stampa(f"  ERRORE: {type(e).__name__}: {e}")
@@ -947,6 +1008,11 @@ def main(argv=None):
         a.add_argument(f"--{k}")
     a.add_argument("--ocr", choices=["auto", "sempre", "strato"], default="auto")
     a.add_argument("--campione", type=int, default=PAGINE_CAMPIONE)
+    a.add_argument("--prima-pagina", dest="prima_pagina", type=int,
+                   help="pagina stampata della pagina --da-pagina del PDF (le seguenti proseguono)")
+    a.add_argument("--da-pagina", dest="da_pagina", type=int, default=1)
+    a.add_argument("--senza-pagine", dest="senza_pagine", action="store_true",
+                   help="nessun marcatore di pagina nei PDF")
     a.add_argument("--unisci", action="store_true")
     a.add_argument("--sovrascrivi", action="store_true")
     a.add_argument("--processi", type=int)

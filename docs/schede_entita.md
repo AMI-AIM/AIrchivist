@@ -21,7 +21,7 @@ note = Segretario generale del PCd'I (m-l). Non confondere con Manlio Dinucci (s
 | `varianti` | sì | Tutte le forme del nome attestate nel corpus, separate da `;`: scritture, trascrizioni, sigle, epiteti. Spazi e a capo dell'OCR, punto centrale, parentesi piene o mezze e sillabazione sono già tollerati: non vanno scritti come varianti. |
 | `tipo` | consigliato | `persona`, `organizzazione`, `testata`, `stato`, `altro`. |
 | `note` | consigliato | Chi è, periodo, omonimi da escludere, provenienza delle forme. È il testo che il modello legge per decidere la pertinenza. Le forme non ancora verificate nel corpus si segnano come «ipotesi». |
-| `forme_ambigue` | consigliato | Varianti che da sole possono indicare altro: non decidono mai la pertinenza per regola, il passaggio va sempre letto. Devono comparire anche tra le `varianti`. |
+| `forme_ambigue` | consigliato | Varianti che da sole possono indicare altro: non decidono mai la pertinenza per regola, il passaggio va sempre letto. Devono comparire anche tra le `varianti`: la ricerca cerca solo le varianti, e una forma presente solo qui non viene cercata. |
 | `contesto` | facoltativo | Parole che rendono più probabile la pertinenza. Non filtrano nulla. |
 | `collegate` | facoltativo | Schede di entità legate a questa (dirigenti, organi di stampa, predecessori). Le ricerche sull'evoluzione le includono. |
 | `forma_estesa` | per le sigle | Nome per esteso dell'ente, quando il nome canonico è una sigla (PCdoB → Partido Comunista do Brasil). |

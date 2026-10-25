@@ -19,6 +19,9 @@ Uso da riga di comando:
                                   (dichiara che due nomi indicano la stessa entità: risultati/_archivio/equivalenze.json)
   python archivio.py riattribuisci "nome vecchio" "nome della scheda" [--applica]
                                   (piano per portare le letture sotto la scheda; --applica le aggiunge all'archivio)
+  python archivio.py date_sospette ["nome della scheda"] [--applica]
+                                  (sintesi con una data dopo quella della fonte e l'anno non scritto nell'originale;
+                                  --applica le segna da rileggere: la prossima ricerca rifà solo l'analisi)
 """
 import datetime as dt
 import hashlib
@@ -562,6 +565,108 @@ def riattribuisci(cfg, vecchio, nuovo, applica=False):
         print("Nessuna modifica: per applicare, aggiungi --applica.")
 
 
+# ---------------------------------------------------------------- date sospette nelle sintesi
+MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre",
+           "ottobre", "novembre", "dicembre"]
+DATA_IT = re.compile(r"\b(?:(\d{1,2})\s+)?(" + "|".join(MESI_IT) + r")\s+(\d{4})\b", re.IGNORECASE)
+CIFRE_CINESI = dict(zip("〇一二三四五六七八九", "0123456789"), **{"○": "0", "零": "0"})
+
+
+def anno_nel_testo(anno, testo):
+    """L'anno è scritto nel testo, in cifre o in numerali cinesi (一九七九)?"""
+    if str(anno) in testo:
+        return True
+    cinese = "".join(CIFRE_CINESI.get(ch, "?") for ch in testo)
+    return str(anno) in cinese
+
+
+def date_sospette(analisi, data_fonte):
+    """Date della sintesi che cadono dopo la data della fonte, nello stesso anno, mentre la frase originale non
+    scrive quell'anno: il modello ha probabilmente preso l'anno della fonte per un fatto passato (Berlinguer a
+    Mosca «in ottobre», articolo del 2 agosto 1979: ottobre 1978, non 1979). Gli annunci di fatti futuri
+    risultano anch'essi sospetti: la rilettura con la regola nuova li conferma. [(data trovata, motivo)]"""
+    try:
+        fonte = dt.date.fromisoformat(str(data_fonte)[:10])
+    except ValueError:
+        return []
+    testo = analisi.get("sintesi_it") or ""
+    originale = analisi.get("citazione_testuale") or ""
+    out = []
+    for m in DATA_IT.finditer(testo):
+        giorno, mese, anno = m.group(1), MESI_IT.index(m.group(2).lower()) + 1, int(m.group(3))
+        if anno != fonte.year or anno_nel_testo(anno, originale):
+            continue
+        if (mese, int(giorno or 0)) > (fonte.month, fonte.day if giorno else 0) and mese != fonte.month:
+            out.append((m.group(0), f"dopo la data della fonte ({fonte.isoformat()}), anno non scritto nell'originale"))
+    return out
+
+
+def piano_date_sospette(cfg, entita=None):
+    """Letture pertinenti dell'archivio, lette da un modello, con date sospette nella sintesi."""
+    from llm import percorso
+    from estrai_occorrenze import leggi_intestazione
+    ris, dati = percorso(cfg, "risultati"), percorso(cfg, "dati")
+    arch = Archivio(ris)
+    date_file, righe, voci = {}, [], []
+    for (pid, ent), v in arch.per_id.items():
+        a = v.get("analisi") or {}
+        if entita and ent != entita:
+            continue
+        if a.get("pertinente") != "sì" or a.get("corretto_a_mano") or a.get("da_rileggere"):
+            continue
+        if not DATA_IT.search(a.get("sintesi_it") or ""):
+            continue
+        f = v.get("file", "")
+        if f not in date_file:
+            try:
+                testa = (dati / f).read_text(encoding="utf-8", errors="replace")[:4000]
+                date_file[f] = leggi_intestazione(testa)[0].get("DATE", "")
+            except OSError:
+                date_file[f] = ""
+        sospette = date_sospette(a, date_file[f])
+        if not sospette:
+            continue
+        lettore = (provenienza(a).get("lettura") or {}).get("livello", "")
+        righe.append({"id": pid, "entita": ent, "file": f, "data_fonte": date_file[f],
+                      "date": "; ".join(d for d, _ in sospette), "lettura": lettore,
+                      "esito": "da rileggere" if lettore == "modello" else "da controllare a mano",
+                      "sintesi": a.get("sintesi_it", ""), "originale": a.get("citazione_testuale", "")})
+        if lettore == "modello":
+            voci.append(dict(v, origine="date sospette", letto_il=dt.date.today().isoformat(),
+                             analisi=dict(a, da_rileggere="analisi")))
+    return righe, voci
+
+
+def segna_date_sospette(cfg, entita=None, applica=False):
+    import csv
+    from llm import percorso
+    ris = percorso(cfg, "risultati")
+    righe, voci = piano_date_sospette(cfg, entita)
+    f_piano = ris / NOME / f"date_sospette_{dt.date.today():%Y%m%d}.csv"
+    f_piano.parent.mkdir(parents=True, exist_ok=True)
+    campi = ["esito", "entita", "data_fonte", "date", "lettura", "sintesi", "originale", "file", "id"]
+    with open(f_piano, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, campi, delimiter=";", extrasaction="ignore")
+        w.writeheader()
+        w.writerows(sorted(righe, key=lambda r: (r["esito"], r["entita"], r["data_fonte"])))
+    conta = Counter(r["esito"] for r in righe)
+    print(f"Letture con date sospette: {len(righe)} ({', '.join(f'{k} {n}' for k, n in conta.most_common()) or '-'})")
+    for e, n in Counter(r["entita"] for r in righe).most_common():
+        print(f"  {e}: {n}")
+    print(f"Piano: {f_piano}")
+    if applica and voci:
+        arch = Archivio(ris)
+        dest = percorso(cfg, "backup") / f"{dt.date.today().isoformat()}_date_sospette"
+        dest.mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy2(arch.file, dest / f"letture_{dt.datetime.now():%H%M%S}.jsonl")
+        append_jsonl(arch.file, [json.dumps(v, ensure_ascii=False) for v in voci])
+        print(f"Segnate da rileggere: {len(voci)} (copia dell'archivio in {dest}). Alla prossima ricerca su queste "
+              "entità il modello rifà solo l'analisi (traduzione e sintesi); la decisione sulla pertinenza resta.")
+    elif voci:
+        print("Nessuna modifica: per segnarle da rileggere, aggiungi --applica.")
+
+
 def main():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from llm import leggi_config, percorso
@@ -582,6 +687,9 @@ def main():
         if len(sys.argv) < 4:
             sys.exit('Uso: python archivio.py riattribuisci "nome vecchio" "nome della scheda" [--applica]')
         riattribuisci(cfg, sys.argv[2], sys.argv[3], "--applica" in sys.argv)
+    elif azione == "date_sospette":
+        altri = [x for x in sys.argv[2:] if not x.startswith("--")]
+        segna_date_sospette(cfg, altri[0] if altri else None, "--applica" in sys.argv)
     elif azione == "importa":
         agg = arch.importa(ris)
         for k, n in agg.most_common():

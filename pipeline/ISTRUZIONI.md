@@ -240,6 +240,8 @@ Campi:
 - `forma_estesa`: il nome per esteso, per gli enti indicati da una sigla.
 - `collegate`: entità da analizzare insieme nelle domande sull'evoluzione nel tempo, per esempio il partito o l'organo di stampa.
 - `forme_ambigue`: forme che possono indicare anche un'altra entità; per queste il passaggio viene sempre controllato dal modello.
+  Devono stare anche in `varianti`: la ricerca cerca solo le varianti. `schede.py controlla` segnala quelle che mancano,
+  e il server lo dice alla chat quando crea una scheda così.
 - `note`: indicazioni per il modello che legge i passaggi.
 
 Regole per unire o separare le schede, per dirigenti, organi di stampa e forme ambigue: `docs\schede_entita.md`.
@@ -287,7 +289,8 @@ correzioni conviene ricostruirlo da capo per ripulirlo (`python indice.py costru
 scansionati, foto o scansioni delle pagine (jpg, png, tif), file `.txt` ed esportazioni PAGE XML / ALTO XML. Per ogni documento prende il testo
 del PDF quando c'è, altrimenti fa l'**OCR** con Tesseract (gratuito, gira sul tuo PC); scrive in `data\` un
 file `.txt` con l'intestazione dei metadati, come le altre fonti; registra in `importazioni\registro.csv`
-il metodo, le pagine, la qualità dell'OCR e gli avvisi; aggiorna l'indice. Non inserisce marcatori di pagina.
+il metodo, le pagine, la qualità dell'OCR e gli avvisi; aggiorna l'indice. Nei PDF segna le pagine stampate (vedi
+«Pagine dei PDF»), così le citazioni arrivano alla pagina.
 
 **Preparazione (una volta sola)**, dal Prompt dei comandi:
 
@@ -328,12 +331,29 @@ python importa.py importa "C:\scansioni\ZP 1967" --serie "Zëri i Popullit"
 - **Data**: per i periodici si prende dal nome del file (`1967-01-12`, `12.01.1967`, `12 janar 1967`...);
   se manca, dalla testata della prima pagina (segnata «da controllare»); oppure `--data`, o un file
   `--metadati elenco.csv` con le colonne `file, data, numero, titolo, autore, anno, volume`.
+- **Articoli** di un periodico: `--titolo` e `--autore` entrano nell'intestazione (`TITLE`, `AUTHOR`) e, se il
+  modello `chicago` della serie li usa, nella citazione (es. `{autore}. "{titolo}." *The World Today*[ {volume}]…`).
 - `--unisci`: le foto delle pagine di un solo numero diventano un solo documento.
 - L'importazione si può interrompere: le pagine già lette restano in `importazioni\_cache` e alla ripresa
   non si rileggono. I documenti già importati si saltano (`--sovrascrivi` per rifarli).
 - **Qualità**: per ogni documento la confidenza media dell'OCR (0-100) e le pagine deboli (sotto 60) sono in
   `registro.csv` e nell'intestazione (`[OCR_CONFIDENCE]`). Sotto 70 conviene controllare a campione o
   rifare la scansione (300 dpi, in scala di grigi).
+
+**Pagine dei PDF.** Ogni pagina riceve il marcatore `[[p. 61 | pdf 2]]` (pagina stampata | posizione nel PDF), che
+le citazioni usano. La pagina stampata viene, nell'ordine:
+1. da `--prima-pagina N` (con `--da-pagina K`, predefinito 1): la pagina K del PDF è la p. N e le seguenti
+   proseguono; le pagine prima di K restano senza marcatore. Per molti file: colonne `prima_pagina` e `da_pagina`
+   nel CSV di `--metadati`;
+2. dalle etichette di pagina dichiarate dal PDF (i PDF di JSTOR hanno «p. 61», «p. 62»...), se non ripetono
+   soltanto la posizione nel file;
+3. dai numeri stampati in testa o in piede della pagina, se lo scarto dalla posizione nel PDF è costante (almeno 3
+   pagine e la maggior parte di quelle con un numero). Le pagine senza numero leggibile ricevono la pagina per
+   continuità, annotata «dedotta» nel marcatore; l'intestazione ha `[PAGES_STATUS: dedotto]` e in `PAGES_NOTE`
+   quante pagine sono state lette. Conviene controllare a campione.
+
+Se nessuna delle tre vale (numerazione irregolare, tavole, salti), nessun marcatore: la citazione si ferma al
+documento. La prova (`--prova`) dice quale via è stata usata. `--senza-pagine` non segna le pagine.
 
 **PDF scansionati con uno strato di testo.** Molti PDF d'archivio contengono già un vecchio OCR, spesso
 scadente. Se le pagine sono scansioni (un'immagine copre la pagina) e hanno uno strato di testo, `importa.py`
@@ -446,6 +466,23 @@ secondo ricalcola i passaggi come li estrarrebbe la scheda e scrive il piano in 
 toccare nulla. Ogni lettura vecchia risulta in uno di questi casi: già letta sotto la scheda, da riattribuire,
 con decisione diversa, fuori dalla scheda (forma che la scheda non ha). Il terzo aggiunge all'archivio solo le
 letture da riattribuire, dopo averne fatto una copia in `pipeline\_backup`.
+
+**Date sospette nelle sintesi.** Fino al 25/10/2026 il prompt di analisi chiedeva di completare l'anno delle date
+«dalla data della fonte». Un fatto già avvenuto in un mese successivo a quello della fonte finiva così nell'anno
+della fonte invece che in quello precedente (Renmin ribao, 2 agosto 1979: Berlinguer a Mosca «in ottobre», letto
+come ottobre 1979). Ora la regola confronta mese e data della fonte e, se non è certo, lascia la data senza anno.
+Per trovare e far rileggere le letture già nell'archivio:
+```
+python archivio.py date_sospette
+python archivio.py date_sospette --applica
+```
+Il primo comando scrive il piano in `risultati\_archivio\date_sospette_<data>.csv` senza toccare nulla: letture
+pertinenti la cui sintesi ha una data dopo quella della fonte, nello stesso anno, che la frase originale non
+scrive. Il secondo, dopo una copia in `pipeline\_backup`, segna da rileggere quelle lette da un modello: alla
+prossima ricerca su quell'entità (anche dalla chat) il modello rifà solo traduzione e sintesi, e la decisione sulla
+pertinenza resta. Le letture fatte in sessione compaiono nel piano come «da controllare a mano». Si può limitare a
+una scheda: `python archivio.py date_sospette "Enrico Berlinguer"`. Il controllo non vede l'errore opposto (un
+annuncio di un mese precedente alla fonte, che è dell'anno seguente).
 
 ## Meno richieste al modello
 

@@ -139,11 +139,17 @@ ENTITA_VUOTO = """# Schede delle entità del progetto: una sezione per entità.
 """
 
 
+# tutte righe con «#»: finché non le scrivi, nessuna regola di progetto arriva alla chat (25/10/2026: la
+# spiegazione senza «#» veniva inviata come regola)
 ISTRUZIONI_VUOTO = """# Regole proprie di questo progetto per l'IA della chat
-
-Il server MCP le aggiunge alle regole generali e all'elenco delle fonti (ricavato da serie.ini). Scrivi qui solo
-ciò che vale per questa ricerca: argomento e taglio, carattere delle fonti, convenzioni sui nomi e sulle cariche,
-esempi di citazione. Le righe che iniziano con «#» non vengono inviate.
+#
+# Il server MCP le aggiunge alle regole generali e all'elenco delle fonti (ricavato da serie.ini). Scrivi qui solo
+# ciò che vale per questa ricerca: argomento e taglio, carattere delle fonti (primarie o studi, propaganda),
+# convenzioni sui nomi e sulle cariche, esempi di citazione. Le righe che iniziano con «#» non vengono inviate.
+#
+# Esempio:
+# Le fonti sono di due tipi: la stampa e le pubblicazioni ufficiali albanesi (fonti primarie, propagandistiche) e
+# gli studi (fonti secondarie). Nelle risposte distingui sempre gli uni dagli altri.
 """
 
 

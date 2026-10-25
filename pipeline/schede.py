@@ -121,6 +121,14 @@ def norm(v):
     return re.sub(r"[\s·・•.\-（）()《》]", "", v).lower()
 
 
+def ambigue_non_cercate(varianti, forme_ambigue):
+    """Forme ambigue che non sono tra le varianti. La ricerca cerca solo le varianti: forme_ambigue dice quali di
+    queste il modello deve controllare sempre, non aggiunge forme da cercare (25/10/2026: «Berlinguer», solo
+    tra le forme ambigue, non è stato cercato e Peking Review 1980, no. 18 è sfuggito)."""
+    cercate = {norm(v) for v in varianti}
+    return [a for a in forme_ambigue if a and a.strip() and norm(a) not in cercate]
+
+
 def controlla(f_entita, risultati=None):
     """Problemi delle schede, come righe (gravità, scheda, problema). Vedi docs/schede_entita.md."""
     cp = leggi_schede(f_entita)
@@ -149,9 +157,9 @@ def controlla(f_entita, risultati=None):
         elif tipo not in TIPI:
             out.append(("errore", s, f"tipo «{tipo}» non previsto (" + ", ".join(TIPI) + ")"))
         ambigue = {norm(a) for a in dividi(x.get("forme_ambigue", ""))}
-        for a in dividi(x.get("forme_ambigue", "")):
-            if norm(a) not in {norm(v) for v in var}:
-                out.append(("avviso", s, f"forma ambigua «{a}» non compare tra le varianti"))
+        for a in ambigue_non_cercate(var, dividi(x.get("forme_ambigue", ""))):
+            out.append(("avviso", s, f"forma ambigua «{a}» non compare tra le varianti: la ricerca non la cerca "
+                                     "(aggiungerla alle varianti, o toglierla dalle forme ambigue)"))
         brevi = [v for v in var if forma_breve(v) and norm(v) not in ambigue]
         if brevi:
             out.append(("avviso", s, "forme brevi o generiche non dichiarate in forme_ambigue: " + "; ".join(brevi)))

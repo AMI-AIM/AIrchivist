@@ -117,9 +117,16 @@ def t_crea_scheda(nome, varianti, descrizione="", contesto=None, forme_ambigue=N
     sbagliate = [c for c in (collegate or []) if c not in sezioni]
     if sbagliate:
         return {"errore": f"Schede collegate inesistenti: {', '.join(sbagliate)}"}
-    return {"scheda": schede.aggiungi_scheda(f, nome, varianti or [nome], descrizione or "", contesto,
-                                             forme_ambigue, collegate, tipo, forma_estesa),
-            "nota": "Scheda creata in entita.ini. Ora puoi avviare la ricerca."}
+    out = {"scheda": schede.aggiungi_scheda(f, nome, varianti or [nome], descrizione or "", contesto,
+                                            forme_ambigue, collegate, tipo, forma_estesa),
+           "nota": "Scheda creata in entita.ini. Ora puoi avviare la ricerca."}
+    non_cercate = schede.ambigue_non_cercate(varianti or [nome], forme_ambigue or [])
+    if non_cercate:
+        out["avviso"] = (f"Forme ambigue che non sono tra le varianti e quindi non verranno cercate: "
+                         f"{'; '.join(non_cercate)}. Chiedi all'utente se aggiungerle alle varianti (la ricerca le "
+                         "cercherà e il modello le controllerà sempre) prima di avviare la ricerca; la scheda si "
+                         "corregge in entita.ini.")
+    return out
 
 
 # ---------------------------------------------------------------- indice delle fonti
@@ -206,7 +213,7 @@ def cartella_importazioni():
 
 
 def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore="", anno="", volume="",
-                    unisci=False, sovrascrivi=False, prova=0):
+                    unisci=False, sovrascrivi=False, prova=0, prima_pagina=None, da_pagina=None):
     """Avvia l'importazione (OCR se serve) come processo indipendente; lo stato con importa (azione stato)."""
     import importa
     p = Path(os.path.expandvars(os.path.expanduser((percorso_file or "").strip().strip('"'))))
@@ -229,6 +236,8 @@ def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore=
         comando.append("--sovrascrivi")
     if prova:
         comando += ["--prova", str(int(prova))]
+    if prima_pagina:                                   # pagine stampate dei PDF (numerazione.py)
+        comando += ["--prima-pagina", str(int(prima_pagina)), "--da-pagina", str(int(da_pagina or 1))]
     (d / "richiesta.json").write_text(json.dumps({"comando": comando[3:], "inizio": time.time()},
                                                  ensure_ascii=False), encoding="utf-8")
     opzioni = dict(cwd=CARTELLA, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -490,7 +499,7 @@ def t_leggi_risposta(file="", sezioni=None, dal=None, al=None, da=0, testo_filtr
                 parti[k] = _filtra_testo(parti[k], forme)
     testo = "\n\n".join(parti.get(str(s), "") for s in ["0"] + [str(x) for x in sezioni] if parti.get(str(s)))
     da = max(0, int(da or 0))
-    fine = da + max_caratteri
+    fine = da + min(int(max_caratteri or 7000), spazio_testo())   # così continua_da resta esatto
     tronca = len(testo) > fine
     extra = {"avviso": AVVISO_SINTESI} if senza_sintesi else {}
     if tronca:
@@ -614,7 +623,7 @@ def t_apri_fonte(file, riga, contesto=25, testo="", max_caratteri=6000):
         return {"errore": "File non trovato tra le fonti."}
     righe = p.read_text(encoding="utf-8", errors="replace").splitlines()
     riga, k = int(riga), max(0, min(int(contesto or 25), 80))
-    tetto = max(1000, min(int(max_caratteri or 6000), 12000))
+    tetto = max(1000, min(int(max_caratteri or 6000), 12000, spazio_testo()))
     a, b = max(1, riga - k), min(len(righe), riga + k)
 
     def taglia(t, n, centro=""):
@@ -730,12 +739,12 @@ def t_risposte(azione="leggi", file="", sezioni=None, dal=None, al=None, da=0, t
 
 
 def t_importa(azione="stato", percorso_file="", serie="", data="", numero="", titolo="", autore="", anno="",
-              volume="", unisci=False, sovrascrivi=False, prova=0, id=""):
+              volume="", unisci=False, sovrascrivi=False, prova=0, id="", prima_pagina=None, da_pagina=None):
     if azione == "avvia":
         if not percorso_file or not serie:
             return {"errore": "Per importare servono percorso_file e serie."}
         return t_importa_fonti(percorso_file, serie, data, numero, titolo, autore, anno, volume, unisci, sovrascrivi,
-                               prova)
+                               prova, prima_pagina, da_pagina)
     return t_stato_importazione(id)
 
 
@@ -821,7 +830,11 @@ STRUMENTI = {
                  "serie": _S, "data": dict(_S, description="AAAA-MM-GG, per un solo file"), "numero": _S,
                  "titolo": _S, "autore": dict(_S, description="Cognome, Nome"), "anno": _S, "volume": _S,
                  "unisci": dict(_B, description="tutti i file diventano un solo documento"),
-                 "sovrascrivi": _B, "prova": _I, "id": _S}, ["azione"]),
+                 "sovrascrivi": _B, "prova": _I, "id": _S,
+                 "prima_pagina": dict(_I, description="pagina stampata della pagina da_pagina del PDF, se le pagine "
+                                                      "non si ricavano da sole (la prova dice quale via usa)"),
+                 "da_pagina": dict(_I, description="pagina del PDF che porta prima_pagina (predefinito 1)")},
+                ["azione"]),
     "serie": (t_serie, "Profili delle serie di fonti (serie.ini del progetto): elenca, o crea dopo conferma "
               "dell'utente.",
               {"azione": _azione("elenca", "crea"), "nome": _S, "tipo": _azione("periodico", "volume"),
@@ -908,6 +921,13 @@ AVVISO_LUNGHEZZA = ("Risultato accorciato dal server per stare nel limite del cl
 
 # si accorciano solo se non resta altro: la risposta finale e le indicazioni per il modello
 PROTETTE = {"risposta", "nota", "errore", "messaggio", "prossimo_passo", "avviso"}
+
+
+def spazio_testo(riserva=1500):
+    """Caratteri di testo che uno strumento può restituire lasciando posto a nomi dei campi e indicazioni, entro
+    [mcp] max_caratteri: gli strumenti che paginano (continua_da) devono stare sotto, o l'accorciamento di adatta
+    farebbe saltare un pezzo."""
+    return max(1000, cfg().getint("mcp", "max_caratteri", fallback=LIMITE_CARATTERI) - riserva)
 
 
 def _testo(out):

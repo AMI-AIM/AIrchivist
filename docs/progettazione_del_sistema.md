@@ -114,7 +114,7 @@ Ogni motore produce lo stesso **formato interno**: pagine nell'ordine del file, 
 1. **Ingresso.** Il file originale (o l'esportazione PAGE/ALTO con le immagini) viene copiato nell'archivio degli originali e registrato con la sua impronta (hash). Non viene mai modificato.
 2. **Motore di testo.** Scelto secondo la via d'ingresso e il profilo di serie (sezione 4).
 3. **Formato interno.** Pagine, righe, confidenza.
-4. **Pagine.** Il sistema propone la corrispondenza tra pagina del file e pagina stampata (scarto di base più eccezioni: tavole, pagine non numerate, salti), leggendo i numeri in testa o a piè di pagina. Il ricercatore la conferma.
+4. **Pagine.** Il sistema propone la corrispondenza tra pagina del file e pagina stampata (scarto di base più eccezioni: tavole, pagine non numerate, salti), leggendo i numeri in testa o a piè di pagina. Il ricercatore la conferma. Fatto per i PDF il 25/10/2026 (`numerazione.py`): indicazione dell'operatore (`--prima-pagina`/`--da-pagina`), poi etichette di pagina del PDF, poi numeri stampati con scarto costante (stato «dedotto», pagine senza numero annotate «dedotta»). Non ancora: eccezioni dentro lo stesso documento (più scarti, tavole fuori testo), e la stessa deduzione per le immagini e le esportazioni PAGE/ALTO che non dichiarano la pagina.
 5. **Divisione dei contenitori.** Solo quando un file contiene più contenitori, come un'annata rilegata: il ricercatore indica gli intervalli di pagine una volta sola.
 6. **Metadati proposti.** Dal profilo di serie, dal frontespizio, dalla sequenza dei numeri e delle date, dai file METS. Ogni campo arriva con il suo stato.
 7. **Revisione** in tabella (sezione 3).
