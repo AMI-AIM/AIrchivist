@@ -209,6 +209,7 @@ def misura_campione(dest):
             m["errori_np"] += enp
             m["caratteri_np"] += cnp
             m["per_pagina"][n] = round(100 * e / c, 1) if c else None
+        camp.setdefault("verificato_da", {})[n] = chi
     return camp, out, da_verificare
 
 
@@ -225,6 +226,13 @@ def cmd_misura(args):
                   f"{camp['dpi']} dpi; pagine verificate {len(camp['pagine']) - len(da_verificare)} di "
                   f"{len(camp['pagine'])}" + (f" (da verificare: {', '.join(map(str, da_verificare))})"
                                               if da_verificare else "") + ".", ""]
+        chi = sorted(set(camp.get("verificato_da", {}).values()))
+        if chi:
+            righe += [f"Riferimenti verificati da: {'; '.join(chi)}."]
+            if any("assistita" in c.lower() or "claude" in c.lower() for c in chi):
+                righe += ["Attenzione: almeno un riferimento è una lettura assistita, non una verifica a mano; "
+                          "la misura è provvisoria finché qualcuno non lo controlla sull'immagine."]
+            righe += [""]
         if not out:
             righe += ["Nessuna pagina verificata: nessuna misura.", ""]
         else:

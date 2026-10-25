@@ -87,7 +87,16 @@ Prova dei motori OCR (fase 3, lavoro 11, 25/10/2026, in corso): `pipeline\motori
 - **PaddleOCR 3.7.0** (PaddlePaddle 3.3.1, Python 3.13): su CPU Windows oneDNN si ferma con «ConvertPirAttribute2RuntimeAttribute not support», anche disattivando PIR; senza oneDNN una pagina richiede circa 50 s, con i modelli medium o mobile e qualsiasi limite del rilevatore (Tesseract: 3-4 s). Tempo giudicato inaccettabile: disinstallato con i suoi modelli. RapidOCR (stessi modelli su ONNX Runtime) non provato per scelta.
 - **Kraken**: non provato, non funziona su Windows senza WSL (da installare come amministratore).
 - **Tesseract 5.5.3** (`chi_sim`, `sqi`): psm 1, 3 e 6.
-Campioni preparati in `risultati\_prove\ocr\`: `cina_icm` (国际共产主义运动史.pdf, pp. 50, 200, 320, scansione con un vecchio strato di testo) e `albania_guerilas` (Guerilas made in Albania.pdf, pp. 30, 90, 150). Sono stampe recenti, non stampa d'epoca. Manca la verifica a mano dei riferimenti, poi la misura.
+Campioni in `risultati\_prove\ocr\`: `cina_icm` (国际共产主义运动史.pdf, pp. 50, 200, 320, scansione con un vecchio strato di testo) e `albania_guerilas` (Guerilas made in Albania.pdf, pp. 30, 90, 150). Sono stampe recenti, non stampa d'epoca. Misura del 25/10 (`misure_2026-10-25.md`), su riferimenti preparati da Claude come lettura assistita sulle immagini, non verificati a mano e nati dalla correzione della lettura di Tesseract psm 1 (quindi possibilmente favorevoli a Tesseract):
+
+| Campione | Motore | CER | CER senza punteggiatura | Secondi per pagina |
+|---|---|---|---|---|
+| cina_icm | Tesseract chi_sim psm 6 | 1,4% | 0,7% | 2,8 |
+| cina_icm | Tesseract chi_sim psm 1 / psm 3 | 1,5% | 0,8% | 3,9 / 2,9 |
+| cina_icm | strato di testo del PDF | 1,9% | 1,6% | 0 |
+| albania_guerilas | Tesseract sqi psm 1 / 3 / 6 | 0,5% | 0,3% | 2,0 / 1,4 / 1,3 |
+
+Esito provvisorio: su stampa recente pulita Tesseract basta per cinese e albanese; la segmentazione non cambia la qualità (psm 6 è la più rapida); lo strato di testo di quel PDF è un po' peggiore di un OCR rifatto, mentre `importa.py` oggi lo preferisce sempre quando c'è. Gli errori di Tesseract sul cinese sono soprattutto virgolette di chiusura lette come d'apertura e caratteri simili (遗/遍, 帐/帮, 人/入). Restano da fare: verifica a mano dei riferimenti, campioni di stampa d'epoca (Renmin Ribao, Zëri i Popullit), Kraken con WSL. I due libri non sono serie di `serie.ini`: nessun profilo aggiornato.
 
 Requisiti di sistema (da installare): Tesseract UB Mannheim con la lingua Albanian (sqi), PyMuPDF. Nessun modello OCR dentro la cartella del progetto.
 
