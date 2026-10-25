@@ -157,7 +157,7 @@ def main():
         (dest / f"prova_{ora}_{nome_f}.json").write_text(json.dumps(
             {"modello": modello, "risposto_da": chi, "errore": errore, "chiamate": chiamate, "risposta": testo,
              "punteggio": p, "messaggi": messaggi}, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
-        segno = lambda v: "sì" if v else "no"
+        segno = (lambda v: "—") if errore else (lambda v: "sì" if v else "no")     # errore del servizio: non misurato
         righe.append(f"| {modello} | {', '.join(chi) or errore[:60]} | {p['totale'] if not errore else '—'} | "
                      + " | ".join(segno(p[k]) for k in ("guida_per_primo", "procedura", "nessuna_ricostruzione",
                                                        "chiede_conferma", "forme_cinesi", "niente_file_righe",

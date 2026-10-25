@@ -452,6 +452,23 @@ python valuta.py "Nuova Unità" --modelli "glm-4.7; nemotron-3-ultra"   (uno per
 ```
 Lo script confronta lo smistamento dei modelli con la lettura di riferimento in `risultati\_riferimenti\nuova_unita`. Quel riferimento è una lettura assistita da Claude, non verificata a mano. Le prove vanno in `risultati\_prove\` e non toccano l'archivio. Obiettivo: richiamo ≥ 95%. Un modello entra nella catena `ricerca` solo dopo questa prova.
 
+## Prova dei modelli della chat
+
+I modelli della chat (catena `chat` di FreeLLMAPI, usata da Jan) non leggono i passaggi: usano gli strumenti. Per
+sceglierli, `prova_chat.py` simula il client su una domanda vera (strumenti veri, quelli che scrivono simulati:
+non modifica nulla) e calcola un punteggio su 8: guida chiamata per primo, procedura seguita, nessuna risposta
+ricostruita con apri_fonte, conferma chiesta, forma cinese attesa, niente file o righe, niente «corpus», testo
+senza caratteri estranei.
+
+```
+python prova_chat.py --modelli "auto:chat; gpt-oss-120b; nemotron-3-ultra"
+python prova_chat.py --modelli "gpt-oss-120b" --domanda "..." --forma 格里巴 --istruzioni-complete
+```
+
+Risultati e conversazioni in `risultati\_prove\chat\`. Il punteggio misura la procedura e la pulizia del testo, non
+la bontà delle scelte: le risposte vanno lette (per esempio, un modello può proporre come forma del nome un'altra
+persona trovata con l'allineamento).
+
 ## Misure su un insieme verificato a mano
 
 `valutazione.py` costruisce un insieme di riferimento verificato da te e misura su quello sia l'estrazione sia le
