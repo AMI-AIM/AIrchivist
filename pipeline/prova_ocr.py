@@ -27,11 +27,11 @@ import json
 import re
 import sys
 import time
-import unicodedata
 from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
+from confronto_testi import cer, distanza, normalizza, senza_punteggiatura  # noqa: E402,F401
 VERIFICA = "# VERIFICATO_DA:"
 ISTRUZIONI_RIF = ("# Riferimento per la prova OCR: correggi il testo sotto la riga «# ---» guardando l'immagine {img}\n"
                   "# (stesso ordine di lettura e stesse righe dell'originale; non correggere gli errori di stampa).\n"
@@ -55,38 +55,6 @@ def leggi_config():
 def file_motore(nome):
     """Nome del motore nei nomi di file: «tesseract:6» -> «tesseract_psm6» (i due punti non valgono su Windows)."""
     return nome.replace(":", "_psm")
-
-
-def normalizza(testo, lingua):
-    t = unicodedata.normalize("NFKC", testo or "")
-    if lingua in ("zh", "ja"):
-        return re.sub(r"\s+", "", t)
-    return re.sub(r"\s+", " ", t).strip()
-
-
-def senza_punteggiatura(testo):
-    return "".join(ch for ch in testo if not unicodedata.category(ch).startswith("P"))
-
-
-def distanza(a, b):
-    """Distanza di Levenshtein (sostituzioni, inserimenti, cancellazioni)."""
-    if len(a) < len(b):
-        a, b = b, a
-    prec = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        cor = [i]
-        for j, cb in enumerate(b, 1):
-            cor.append(min(prec[j] + 1, cor[j - 1] + 1, prec[j - 1] + (ca != cb)))
-        prec = cor
-    return prec[-1]
-
-
-def cer(letto, riferimento, lingua, punteggiatura=True):
-    """(errori, caratteri del riferimento)."""
-    r, l = normalizza(riferimento, lingua), normalizza(letto, lingua)
-    if not punteggiatura:
-        r, l = senza_punteggiatura(r), senza_punteggiatura(l)
-    return distanza(l, r), len(r)
 
 
 def leggi_riferimento(f):

@@ -261,6 +261,18 @@ python importa.py importa "C:\scansioni\ZP 1967" --serie "Zëri i Popullit"
   `registro.csv` e nell'intestazione (`[OCR_CONFIDENCE]`). Sotto 70 conviene controllare a campione o
   rifare la scansione (300 dpi, in scala di grigi).
 
+**PDF scansionati con uno strato di testo.** Molti PDF d'archivio contengono già un vecchio OCR, spesso
+scadente. Se le pagine sono scansioni (un'immagine copre la pagina) e hanno uno strato di testo, `importa.py`
+rifà l'OCR su 3 pagine del corpo del volume (al 25%, 50% e 75%) e lo confronta con lo strato:
+- se concordano entro il 2% dei caratteri, tiene lo strato (non serve rifare l'OCR);
+- se discordano e l'OCR è sicuro (confidenza media almeno 85), scarta lo strato e rifà l'OCR di tutto il
+  documento, riusando le pagine già lette;
+- se discordano ma l'OCR è poco sicuro, tiene lo strato e lo segnala negli avvisi come da controllare.
+
+La scelta compare in `TEXT_METHOD`, negli avvisi e nel registro. Un PDF con testo nativo (senza scansioni) si usa
+com'è. Opzioni: `--campione N` (pagine del confronto; 0 = nessun confronto), `--ocr strato` (usa sempre lo
+strato, come prima), `--ocr sempre` (rifà sempre l'OCR).
+
 **Esportazioni PAGE XML e ALTO XML** (Transkribus, eScriptorium e altri strumenti): non serve l'OCR.
 Indica la cartella dell'esportazione o il suo archivio `.zip`, che non va estratto:
 

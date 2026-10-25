@@ -24,7 +24,13 @@ Opzioni di importa:
   --data AAAA-MM-GG  data del documento (per un solo file; altrimenti dal nome del file o dalla prima pagina)
   --numero, --titolo, --autore, --anno, --volume, --luogo, --editore   metadati del documento
   --metadati file.csv   metadati file per file: colonne file, data, numero, titolo, autore, anno, volume...
-  --ocr auto|sempre  auto (predefinito) = usa il testo del PDF quando c'è; sempre = rifà l'OCR di ogni pagina
+  --ocr auto|sempre|strato
+                     auto (predefinito) = usa il testo del PDF quando c'è; se le pagine sono scansioni con un
+                     vecchio strato di testo, lo confronta con un OCR rifatto su --campione pagine (3) e lo tiene
+                     solo se concorda (entro il 2% dei caratteri) o se l'OCR è poco sicuro (confidenza < 85,
+                     con avviso); altrimenti rifà l'OCR di tutto il documento.
+                     sempre = rifà l'OCR di ogni pagina; strato = usa lo strato quando c'è, senza confronto
+  --campione N       pagine del confronto tra strato e OCR (0 = nessun confronto)
   --unisci           tutti i file indicati diventano un solo documento (es. le foto delle pagine di un numero)
   --sovrascrivi      sostituisce i documenti già importati con lo stesso nome
   --processi N       pagine lette in parallelo (predefinito: metà dei processori)
@@ -77,6 +83,10 @@ for _n, _nomi in enumerate([
         MESI[_m] = _n
 SOGLIA_TESTO_PDF = 200       # caratteri alfanumerici per pagina sotto i quali il testo del PDF non basta
 SOGLIA_DEBOLE = 60           # confidenza media dell'OCR sotto la quale una pagina va controllata
+# Strato di testo di un PDF scansionato (un vecchio OCR) contro un OCR rifatto su un campione di pagine:
+PAGINE_CAMPIONE = 3          # pagine confrontate (--campione N; 0 = nessun confronto)
+SOGLIA_CONCORDANZA = 2.0     # % di caratteri diversi entro cui strato e OCR sono equivalenti: si tiene lo strato
+SOGLIA_OCR_SICURO = 85       # confidenza media oltre cui un OCR che discorda dallo strato è il più affidabile
 
 
 # ---------------------------------------------------------------- configurazione
@@ -246,7 +256,77 @@ def testo_utile(t):
     return sum(1 for ch in t if ch.isalnum())
 
 
-def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stampa=print, max_pagine=None):
+def e_scansione(pag):
+    """Vero se un'immagine copre almeno metà della pagina: scansione (lo strato di testo, se c'è, è un OCR)."""
+    area = pag.rect.width * pag.rect.height
+    for info in pag.get_image_info():
+        x0, y0, x1, y1 = info["bbox"]
+        if area and (x1 - x0) * (y1 - y0) >= 0.5 * area:
+            return True
+    return False
+
+
+def pagine_campione(candidate, n):
+    """n pagine distribuite nel corpo del volume (per 3: al 25%, 50% e 75%), senza ripetizioni: prima e ultima
+    pagina sono spesso frontespizio, indice o colophon e non rappresentano il testo."""
+    if n <= 0 or not candidate:
+        return []
+    return sorted({candidate[min(len(candidate) - 1, (i + 1) * len(candidate) // (n + 1))] for i in range(n)})
+
+
+def decidi_strato(discordanza, confidenza):
+    """Regola della scelta: 'strato' se strato e OCR concordano entro SOGLIA_CONCORDANZA (%), 'ocr' se
+    discordano e l'OCR è sicuro (confidenza media >= SOGLIA_OCR_SICURO), altrimenti 'strato (incerto)'."""
+    if discordanza <= SOGLIA_CONCORDANZA:
+        return "strato"
+    if confidenza is not None and confidenza >= SOGLIA_OCR_SICURO:
+        return "ocr"
+    return "strato (incerto)"
+
+
+def scegli_strato(doc, ocr_fn, tmp, campione=PAGINE_CAMPIONE, stampa=print):
+    """Per un PDF scansionato con strato di testo: (scelta, dettagli, letture del campione {pagina: (testo, conf)}).
+    Un PDF senza scansioni ha testo nativo: si usa com'è (scelta 'strato', dettagli vuoti)."""
+    from confronto_testi import cer, lingua_da_ocr
+    candidate = [k for k, pag in enumerate(doc, 1)
+                 if testo_utile(pag.get_text("text")) >= SOGLIA_TESTO_PDF and e_scansione(pag)]
+    if not candidate:
+        return "strato", {}, {}
+    fitz = carica_pymupdf()
+    lingua = lingua_da_ocr(ocr_fn.lingue)
+    letti, errori, caratteri, pesate = {}, 0, 0, []
+    scelte = pagine_campione(candidate, campione)
+    stampa(f"  Strato di testo su pagine scansionate: confronto con l'OCR sulle pagine {', '.join(map(str, scelte))}")
+    for k in scelte:
+        img = tmp / f"campione_{k:05d}.png"
+        doc[k - 1].get_pixmap(dpi=ocr_fn.dpi, colorspace=fitz.csGRAY).save(img)
+        try:
+            testo, conf, _ = ocr_fn.leggi_immagine(img)
+        finally:
+            img.unlink(missing_ok=True)
+        letti[k] = (testo, conf)
+        e, c = cer(doc[k - 1].get_text("text"), testo, lingua)
+        errori, caratteri = errori + e, caratteri + c
+        pesate.append((conf, c))
+    discordanza = round(100 * errori / caratteri, 1) if caratteri else 100.0
+    peso = sum(c for _, c in pesate)
+    confidenza = round(sum(conf * c for conf, c in pesate) / peso, 1) if peso else None
+    scelta = decidi_strato(discordanza, confidenza)
+    stampa(f"  discordanza strato/OCR {discordanza}%, confidenza OCR {confidenza}: {scelta}")
+    return scelta, {"pagine_campione": scelte, "discordanza": discordanza, "confidenza_ocr": confidenza,
+                    "scelta": scelta, "pagine_con_strato": len(candidate)}, letti
+
+
+def nota_scelta(s):
+    """Frase per gli avvisi e per TEXT_METHOD sulla scelta tra strato e OCR."""
+    base = f"discordanza dall'OCR {s['discordanza']}% su {len(s['pagine_campione'])} pagine, confidenza OCR {s['confidenza_ocr']}"
+    return {"strato": f"strato di testo del PDF tenuto ({base})",
+            "ocr": f"strato di testo del PDF scartato, OCR rifatto ({base})",
+            "strato (incerto)": f"strato di testo del PDF tenuto ma da controllare: OCR poco sicuro ({base})"}[s["scelta"]]
+
+
+def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stampa=print, max_pagine=None,
+                    campione=PAGINE_CAMPIONE):
     """Legge uno o più file (unendoli nell'ordine dato). Restituisce (testo, rapporto).
     Le pagine senza testo si rendono come immagini e si passano a Tesseract poche alla volta (in parallelo),
     così anche un volume di centinaia di pagine non riempie il disco; le pagine già lette restano nella cache
@@ -254,6 +334,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
     from collections import deque
     pagine = []          # [chiave, testo, metodo, confidenza]
     motori, stampate, ignorati = [], [], []     # dalle esportazioni PAGE/ALTO
+    scelte = []                                 # scelte tra strato di testo del PDF e OCR rifatto
     tmp = Path(tempfile.mkdtemp(prefix="importa_"))
     attesa = deque()
     stato = {"fatti": 0, "t0": time.time(), "annunciato": False}
@@ -315,13 +396,25 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                 elif ext in PDF:
                     fitz = carica_pymupdf()
                     with fitz.open(p) as doc:
+                        modo_file, letti = modo, {}
+                        if modo == "auto" and ocr_fn and campione:
+                            # scansione con un vecchio strato di testo: lo si tiene solo se non è peggiore di
+                            # un OCR rifatto su alcune pagine (progettazione, sezione 4, punto 4)
+                            scelta, dettagli, letti = scegli_strato(doc, ocr_fn, tmp, campione, stampa)
+                            if dettagli:
+                                scelte.append(dict(dettagli, file=p.name))
+                            if scelta == "ocr":
+                                modo_file = "sempre"
                         for k, pag in enumerate(doc, 1):
                             if max_pagine and len(pagine) >= max_pagine:
                                 break
                             chiave = f"{p.name} p.{k}"
-                            t = pag.get_text("text") if modo != "sempre" else ""
+                            t = pag.get_text("text") if modo_file != "sempre" else ""
                             if testo_utile(t) >= SOGLIA_TESTO_PDF:
                                 pagine.append([chiave, t.strip(), "testo del PDF", None])
+                                continue
+                            if k in letti:                    # già letta con l'OCR nel campione
+                                pagine.append([chiave, letti[k][0], "ocr", letti[k][1]])
                                 continue
                             if cache and (cache / f"{k:05d}.conf").exists():
                                 pagine.append([chiave, (cache / f"{k:05d}.txt").read_text(encoding="utf-8"), "ocr",
@@ -346,7 +439,9 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                 "confidenza": round(sum(confs) / len(confs), 1) if confs else None,
                 "pagine_deboli": [k for k, _, _, c in pagine if c is not None and c < SOGLIA_DEBOLE],
                 "pagine_vuote": [k for k, t, _, _ in pagine if not (t or "").strip()],
-                "metodo_testo": " + ".join(METODI_TESTO.get(m, m) for m in metodi),
+                "metodo_testo": " + ".join(METODI_TESTO.get(m, m) for m in metodi)
+                + "".join(f" ({nota_scelta(s)})" for s in scelte),
+                "scelte_strato": scelte,
                 "motore": "; ".join(dict.fromkeys(motori)),
                 "pagine_stampate": f"{stampate[0]}-{stampate[-1]}" if len(stampate) > 1 else "".join(stampate),
                 "ignorati": ignorati}
@@ -592,7 +687,7 @@ def cmd_importa(args, stampa=print):
     if args.prova:
         g = gruppi[0]
         stampa(f"Prova su {g['origine']}: prime {args.prova} pagine")
-        testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova)
+        testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova, args.campione)
         v = valori_documento(args.serie, scheda, args, metadati.get(g["nome"], {}), g["nome"], testo)
         stampa(f"\nMetodo: {rap['metodo']}; confidenza media: {rap['confidenza']}; "
                f"pagine deboli: {rap['pagine_deboli'] or 'nessuna'}"
@@ -600,6 +695,8 @@ def cmd_importa(args, stampa=print):
                + (f"; pagine stampate: {rap['pagine_stampate']}" if rap["pagine_stampate"] else ""))
         if rap["ignorati"]:
             stampa(f"File XML ignorati (non PAGE né ALTO): {', '.join(rap['ignorati'][:10])}")
+        for s in rap["scelte_strato"]:
+            stampa(f"{s['file']}: {nota_scelta(s)}")
         stampa(f"Data: {v['data_iso'] or 'non trovata'} ({v['stato_data'] or '-'}); citazione: {v['citazione']}")
         stampa(f"File che verrebbe scritto: {dest / nome_file(scheda, args.serie, v, g['base'])}")
         stampa("\n--- inizio del testo ---\n" + testo[:3000] + "\n--- fine dell'estratto ---")
@@ -614,7 +711,7 @@ def cmd_importa(args, stampa=print):
         cache = cache_radice / firma
         cache.mkdir(parents=True, exist_ok=True)
         try:
-            testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa)
+            testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa, campione=args.campione)
         except Exception as e:
             problemi.append(f"{origine}: {type(e).__name__}: {e}")
             stampa(f"  ERRORE: {type(e).__name__}: {e}")
@@ -631,6 +728,7 @@ def cmd_importa(args, stampa=print):
         avvisi = []
         if rap["ignorati"]:
             avvisi.append(f"{len(rap['ignorati'])} file XML ignorati (non PAGE né ALTO, es. METS)")
+        avvisi += [nota_scelta(s) for s in rap["scelte_strato"] if s["scelta"] != "strato"]
         if out.exists() and not args.sovrascrivi:
             saltati.append(nome)
             stampa(f"  già presente: {out.relative_to(dati)} (usa --sovrascrivi per sostituirlo)")
@@ -839,7 +937,8 @@ def main(argv=None):
     a.add_argument("--serie", required=True)
     for k in ("data", "numero", "titolo", "autore", "anno", "volume", "luogo", "editore", "metadati", "lingue"):
         a.add_argument(f"--{k}")
-    a.add_argument("--ocr", choices=["auto", "sempre"], default="auto")
+    a.add_argument("--ocr", choices=["auto", "sempre", "strato"], default="auto")
+    a.add_argument("--campione", type=int, default=PAGINE_CAMPIONE)
     a.add_argument("--unisci", action="store_true")
     a.add_argument("--sovrascrivi", action="store_true")
     a.add_argument("--processi", type=int)

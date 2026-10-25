@@ -98,7 +98,7 @@ Ogni motore produce lo stesso **formato interno**: pagine nell'ordine del file, 
 - Per il cinese, motore da scegliere dopo una prova sul corpus: PaddleOCR o Kraken. Da verificare se i modelli Kraken addestrati in eScriptorium si possano usare in locale.
 
 **4. Testi nativi digitali.**
-- PDF con strato di testo: si misura la qualità dello strato e lo si usa solo se non è peggiore di un nuovo OCR (molti PDF d'archivio hanno un vecchio OCR scadente).
+- PDF con strato di testo: si misura la qualità dello strato e lo si usa solo se non è peggiore di un nuovo OCR (molti PDF d'archivio hanno un vecchio OCR scadente). Fatto il 25/10/2026 in `importa.py`: confronto con un OCR rifatto su 3 pagine del corpo; strato tenuto se concorda entro il 2% dei caratteri o se l'OCR è poco sicuro (con avviso), altrimenti OCR di tutto il documento. Solo per le pagine scansionate: il testo nativo si usa com'è.
 - Word e TXT: estrazione diretta; il campo `WITNESS` dichiara se si tratta di trascrizione, traduzione, edizione.
 
 **Confronto tra motori.** Sugli stessi campioni il sistema misura quale motore funziona meglio per ciascuna serie e lo registra nel profilo di serie.
