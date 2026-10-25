@@ -17,6 +17,8 @@ sys.path.insert(0, str(PIPELINE))
 import cronologia as CR  # noqa: E402
 import date_interne as D  # noqa: E402
 import sintesi as S  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from prova import setUpModule, tearDownModule  # noqa: E402,F401  profili delle serie di prova
 
 
 def date(testo):

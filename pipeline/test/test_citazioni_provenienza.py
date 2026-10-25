@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import citazioni as C  # noqa: E402
 from archivio import descrivi_provenienza, livello, provenienza, riallinea  # noqa: E402
 import valutazione as V  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from prova import setUpModule, tearDownModule  # noqa: E402,F401  profili delle serie di prova
 
 
 class Citazioni(unittest.TestCase):

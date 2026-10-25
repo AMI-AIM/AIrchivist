@@ -23,7 +23,7 @@ relativi a pipeline, entita.ini e serie.ini in pipeline, indice/lavori/risposte 
 accanto a data.
 
 progetto.ini può contenere [progetto] nome, descrizione; [percorsi] per spostare qualcosa (es. entita =
-pipeline/entita.ini); e qualsiasi altra sezione di config.ini da cambiare solo per questo progetto (es.
+schede/entita.ini); e qualsiasi altra sezione di config.ini da cambiare solo per questo progetto (es.
 [estrazione] finestra = 300).
 
 Uso (nella cartella pipeline):
@@ -148,15 +148,10 @@ esempi di citazione. Le righe che iniziano con «#» non vengono inviate.
 
 
 def serie_vuoto():
-    """serie.ini di un progetto nuovo: la descrizione dei campi presa dal serie.ini del motore, senza serie."""
-    f = CARTELLA / "serie.ini"
-    righe = []
-    if f.exists():
-        for r in f.read_text(encoding="utf-8").splitlines():
-            if r.startswith("[") or (r and not r.startswith("#")):
-                break
-            righe.append(r)
-    return "\n".join(righe).rstrip() + "\n\n# Nessuna serie: aggiungile copiando l'esempio o chiedendo in Jan («crea la serie ...»).\n"
+    """serie.ini di un progetto nuovo: descrizione dei campi ed esempio dal modello del motore, senza serie."""
+    f = CARTELLA / "serie_modello.ini"
+    testo = f.read_text(encoding="utf-8").rstrip() + "\n" if f.exists() else ""
+    return testo + "\n# Nessuna serie: aggiungile copiando l'esempio o chiedendo in Jan («crea la serie ...»).\n"
 
 
 def cmd_nuovo(args):

@@ -138,10 +138,22 @@ class FileEArchivi(unittest.TestCase):
 
 def configurazione(radice):
     """config.ini sostituito: dati, risultati e importazioni nella cartella temporanea."""
+    (radice / "serie.ini").write_text(SERIE, encoding="utf-8")
     cfg = configparser.ConfigParser(interpolation=None)
     cfg["percorsi"] = {"dati": str(radice / "data"), "risultati": str(radice / "risultati"),
-                       "entita": str(PIPELINE / "entita.ini"), "problemi": str(radice / "p.csv")}
+                       "entita": str(radice / "entita.ini"), "serie": str(radice / "serie.ini"),
+                       "problemi": str(radice / "p.csv")}
     return cfg
+
+
+SERIE = """[Zëri i Popullit]
+tipo = periodico
+lingua = sq
+cartella = riviste/zeri_i_popullit
+sigla = ZP
+citazione = Zëri i Popullit, {data}[, n. {numero}]
+chicago = *Zëri i Popullit*[, {numero_lbl}][, {contenitore}], {data_o_anno}[, {pagina}]
+"""
 
 
 class Importazione(unittest.TestCase):

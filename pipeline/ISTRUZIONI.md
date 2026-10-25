@@ -44,7 +44,8 @@ RAG\
     valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
     test\                   test automatici (python -m unittest discover -s pipeline/test)
     registra_analisi.py     usato dalla skill di Claude «ricerca-occorrenze-fonti»
-    config.ini, entita.ini  configurazione e schede delle entità
+    config.ini              configurazione del motore
+    serie_modello.ini       modello di serie.ini per i progetti nuovi
     _backup\                copie precedenti di entita.ini
 ```
 
@@ -129,8 +130,8 @@ Dopo ogni aggiornamento dei programmi, spegni e riaccendi il server «Pipeline»
 Il motore (la cartella `pipeline`, con `config.ini`) è separato dai dati di una ricerca, che stanno in una
 **cartella di progetto**: `data`, `audit_fonti`, `indice`, `risultati`, `risposte`, `lavori`, `importazioni`,
 `entita.ini`, `serie.ini` e `progetto.ini` (nome del progetto ed eventuali impostazioni proprie). Il progetto
-attuale è la cartella che contiene `pipeline`; le sue schede e le sue serie sono rimaste in `pipeline`, come dice il
-suo `progetto.ini`.
+attuale è la cartella che contiene `pipeline`, con `entita.ini`, `serie.ini`, `istruzioni.md` e `progetto.ini` nella
+radice. Questi file sono dati di ricerca: git li ignora, così il repository del motore si può pubblicare senza.
 
 ```
 python progetto.py stato
@@ -306,7 +307,7 @@ oppure copia `<lingua>.traineddata` da https://github.com/tesseract-ocr/tessdata
 (albanese: `sqi`). Se Tesseract o i modelli sono in cartelle diverse da quelle predefinite, indicale in
 `config.ini`, sezione `[ocr]` (`tesseract = ...`, `modelli = ...`).
 
-**Serie.** Ogni testata o raccolta ha una scheda in `pipeline\serie.ini`: tipo (periodico o volume),
+**Serie.** Ogni testata o raccolta ha una scheda nel `serie.ini` del progetto: tipo (periodico o volume),
 lingua, cartella dentro `data\`, sigla dei file e modello della citazione (es. `Zëri i Popullit, {data}[, n.
 {numero}]`, che diventa «Zëri i Popullit, 12 gennaio 1967»). Ci sono già Zëri i Popullit e Rruga e Partisë;
 le altre si aggiungono copiando un blocco o chiedendo in Jan («crea la serie ...»). Il profilo dice anche

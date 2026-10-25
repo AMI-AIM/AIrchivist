@@ -41,8 +41,8 @@ Gli originali di `stato_del_sistema.md` e `progettazione_del_sistema.md` sono ne
 |---|---|
 | `data/` | il corpus (Renmin Ribao, Peking Review, Hongqi, raccolte di documenti, Selected Works); ogni file ha un'intestazione `[CAMPO: valore]` |
 | `audit_fonti/` | registro delle correzioni ai metadati e problemi aperti |
-| `progetto.ini` | progetto di ricerca di questa cartella (nome; `entita.ini`, `serie.ini` e `_backup` restano in `pipeline/`). Il progetto in uso si sceglie in `pipeline/config.ini`, `[progetto] cartella`, o con `AIRCHIVIST_PROGETTO`; `python pipeline/progetto.py stato` |
-| `pipeline/` | motore: codice e `config.ini` (modelli, parametri); qui anche `entita.ini` (schede delle entità) e `serie.ini` (profili delle serie) di questo progetto |
+| `progetto.ini`, `entita.ini`, `serie.ini`, `istruzioni.md` | progetto di ricerca di questa cartella: nome, schede delle entità, profili delle serie, regole per la chat. Fuori dal controllo di versione (non si pubblicano); `_backup` resta in `pipeline/`. Il progetto in uso si sceglie in `pipeline/config.ini`, `[progetto] cartella`, o con `AIRCHIVIST_PROGETTO`; `python pipeline/progetto.py stato` |
+| `pipeline/` | motore: codice, `config.ini` (modelli, parametri), `serie_modello.ini` (modello per i progetti nuovi); i test usano il progetto di prova `pipeline/test/progetto_prova/` |
 | `pipeline/_backup/` | copie precedenti dei file modificati |
 | `indice/` | indice SQLite FTS5 (circa 870 MB, si aggiorna da solo) |
 | `risultati/_archivio/letture.jsonl` | archivio unico dei passaggi già letti |

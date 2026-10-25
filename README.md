@@ -102,8 +102,12 @@ Without PyMuPDF the PDF tests are skipped.
 The tool works on the author's corpus (7,858 files in Chinese and English). Before a general release it still needs
 a hand-verified reference set to measure precision and recall (`pipeline/valutazione.py`), tests on period scans
 and on real Transkribus or eScriptorium exports, a copyright-free example corpus, and an English translation of
-the full manual. The research data in this repository (`entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`)
-belong to the author's project. The corpus (`data/`) is not distributed.
+the full manual. The repository contains only the engine. The author's research data (corpus, entity cards, series
+profiles, chat rules) are not distributed. The tests use their own sample project in `pipeline/test/progetto_prova/`.
+
+A fresh clone has no project yet. Create one with `python pipeline/progetto.py nuovo <folder>`, then select it in
+`pipeline/config.ini` or with `AIRCHIVIST_PROGETTO`. The field descriptions for `serie.ini` come from
+`pipeline/serie_modello.ini`.
 
 ## Licence
 

@@ -46,7 +46,8 @@ Jan usa gli strumenti del server MCP «Pipeline» (`pipeline\mcp_server.py`). Co
 | `risultati\_riferimenti` | letture di riferimento per provare i modelli |
 | `risultati\_sessioni_precedenti` | lavori delle sessioni con Claude |
 | `risultati\_prove` | prove dei modelli |
-| `pipeline` | programmi e `config.ini` (il motore); qui anche `entita.ini` (schede delle entità) e `serie.ini` (serie di fonti) di questo progetto |
+| `pipeline` | programmi e `config.ini` (il motore) |
+| `entita.ini`, `serie.ini`, `istruzioni.md` | schede delle entità, serie di fonti e regole per la chat di questo progetto (fuori dal controllo di versione) |
 | `progetto.ini` | nome e impostazioni di questo progetto di ricerca. Per un'altra ricerca: `python pipeline\progetto.py nuovo <cartella>` (vedi `pipeline\ISTRUZIONI.md`, «Progetti di ricerca») |
 
 ## Per approfondire

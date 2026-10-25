@@ -37,7 +37,7 @@ Il tool si usa attualmente dalla chat del programma Jan (assistente «Ricerca fo
 
 ### Come funziona una ricerca
 
-- Scheda dell'entità in `pipeline\entita.ini` (varianti, contesto, forme ambigue, collegate); fa anche da glossario. Entità nuove: `esplora_nome` propone solo forme attestate (anche per allineamento Peking Review -> Renmin Ribao), poi `crea_scheda` dopo conferma.
+- Scheda dell'entità in `entita.ini` (cartella del progetto) (varianti, contesto, forme ambigue, collegate); fa anche da glossario. Entità nuove: `esplora_nome` propone solo forme attestate (anche per allineamento Peking Review -> Renmin Ribao), poi `crea_scheda` dopo conferma.
 - `avvia_ricerca` lancia un processo indipendente (`lavori.py`; stato in `RAG\lavori\<id>`): estrazione con espressioni regolari tolleranti all'OCR (`estrai_occorrenze.py`), smistamento e analisi con i modelli (`classifica.py`), sintesi (`sintesi.py` / `evoluzione.py`). Attese automatiche quando finiscono le quote (10, 15, 30, poi 60 minuti, fino a 36 ore). Codici d'uscita di classifica: 0 tutto letto, 3 limiti temporanei, 4 errore permanente.
 - Archivio unico dei passaggi già letti (`risultati\_archivio\letture.jsonl`): non si rilegge nulla.
 - La risposta salvata in `risposte\` ha 7 sezioni; Jan presenta «risposta_pronta» (presentazione della pipeline) senza ricostruirla.
@@ -60,7 +60,7 @@ Il tool si usa attualmente dalla chat del programma Jan (assistente «Ricerca fo
 
 ### Profili di serie (fase 3, lavoro 12, 25/10/2026)
 
-Le regole che il codice scriveva per le serie del corpus attuale stanno ora nei profili di `pipeline\serie.ini`, letti da `pipeline\profili.py`. Un file appartiene a un profilo per serie o per cartella (la più specifica).
+Le regole che il codice scriveva per le serie del corpus attuale stanno ora nei profili di `serie.ini` (cartella del progetto), letti da `pipeline\profili.py`. Un file appartiene a un profilo per serie o per cartella (la più specifica).
 - Campi nuovi: `periodo` (primo e ultimo numero: fine delle fonti per i silenzi), `periodicita` (anche con cambi datati, per collocare nel mese le lacune dei fascicoli indicati per numero), `gruppo` (Hongqi + Red Flag; «documenti» per le raccolte), `righe_intere` (il Renmin Ribao: l'indice sceglie con certezza i file da leggere), `allinea_con`/`allinea_giorni` (Peking Review -> Renmin Ribao, 21 giorni, per `esplora_nome`); `pagina_regex` ora vale anche per la pagina dei passaggi e per i riferimenti di `cerca_testo`. Nuovo profilo «Raccolte di documenti» (cartella `fonti_primarie`).
 - Codice: `cronologia.py` (periodici dal profilo; fine delle fonti = ultimo numero tra le serie in cui l'entità compare; lacune di tutte le serie, con il nome della serie; i fascicoli datati all'anno contano nella presenza per anno), `sintesi.py` (lacune e mesi dalle sigle e periodicità dei profili; note dei «Limiti» dal profilo di ogni documento, senza più la frase doppia sulla stampa cinese; frase sulle raccolte solo per i documenti senza data dedotta), `indice.py`, `classifica.py`, `esplora.py`, `ricerca.py`, `mcp_server.py` (fonti selezionabili = gruppi dei profili, compresi «documenti» e le serie albanesi).
 - Corretto un residuo del lavoro 9: `ricerca.py` rifiltrava i passaggi per anno di edizione dopo l'estrazione, così con `--al` le raccolte del 2012-2013 sparivano di nuovo.
@@ -73,7 +73,7 @@ Le regole che il codice scriveva per le serie del corpus attuale stanno ora nei 
 - `pipeline\progetto.py`: il motore (`pipeline`, `config.ini`) è separato dalla cartella di progetto, che contiene `data`, `audit_fonti`, `indice\fonti.sqlite`, `risultati`, `risposte`, `lavori`, `importazioni`, `entita.ini`, `serie.ini`, `_backup` e `progetto.ini`. Il progetto si sceglie in `config.ini`, `[progetto] cartella`, o con la variabile d'ambiente `AIRCHIVIST_PROGETTO` (prevale: in Jan un server MCP per progetto). `progetto.ini` dà il nome, sposta singoli file (`[percorsi]`, relativi al progetto) e può cambiare qualsiasi impostazione di `config.ini` solo per quel progetto. Senza progetto scelto vale la disposizione di prima.
 - Comandi: `python progetto.py stato`, `python progetto.py nuovo <cartella> --nome "..."` (cartelle, CSV di `audit_fonti` con BOM e CRLF, `entita.ini`, `serie.ini` con la descrizione dei campi, `progetto.ini`; non tocca una cartella non vuota).
 - Tutto il codice prende i percorsi da `llm.percorso` (ora in `progetto.py`): tolti i percorsi ricavati a mano per `serie.ini` (`profili.py`, `importa.py`), `importazioni`, `indice`, `lavori`, `risposte`, `_backup`; le prove dei modelli (`valuta.py`, `valutazione.py`) scrivono configurazioni temporanee con tutti i percorsi del progetto, assoluti, e con le sue impostazioni.
-- Questo progetto: `config.ini` sceglie `cartella = ..`; `progetto.ini` nella radice («Comunismo dissidente tra Pechino e Tirana») tiene `entita.ini`, `serie.ini` e `_backup` in `pipeline`. Nessun file del corpus spostato; percorsi risolti identici a prima.
+- Questo progetto: `config.ini` sceglie `cartella = ..`; `progetto.ini` nella radice («Comunismo dissidente tra Pechino e Tirana») tiene `_backup` in `pipeline`; dal 25/10 `entita.ini` e `serie.ini` stanno nella radice (vedi «Dati di ricerca separati dal motore»). Nessun file del corpus spostato; percorsi risolti identici a prima.
 - Prova completa su un progetto nuovo nello scratchpad (variabile d'ambiente): creazione, serie aggiunta, importazione di un'esportazione PAGE/ALTO, indice, `cerca_testo` dal server MCP, scheda creata ed estrazione delle occorrenze; nel progetto vero nessun file toccato. 5 test nuovi.
 
 ### Server MCP generico (fase 4, lavoro 14, 25/10/2026)
@@ -103,7 +103,7 @@ Prova rapida del 22/10 (`valutazione.py modelli`) sui 97 passaggi verificati a m
 
 ### Importazione di nuove fonti
 
-`pipeline\importa.py` + `pipeline\serie.ini` (schede delle serie: Zëri i Popullit, Rruga e Partisë). Testo del PDF se c'è, altrimenti OCR con Tesseract (TSV con confidenza); intestazione standard; registro in `importazioni\registro.csv`; cache delle pagine per riprendere; aggiornamento dell'indice. Comandi: prepara, serie, importa (--prova N, --data, --metadati csv, --unisci, --sovrascrivi), controlla.
+`pipeline\importa.py` + `serie.ini` (schede delle serie: Zëri i Popullit, Rruga e Partisë). Testo del PDF se c'è, altrimenti OCR con Tesseract (TSV con confidenza); intestazione standard; registro in `importazioni\registro.csv`; cache delle pagine per riprendere; aggiornamento dell'indice. Comandi: prepara, serie, importa (--prova N, --data, --metadati csv, --unisci, --sovrascrivi), controlla.
 
 Esportazioni PAGE XML e ALTO XML (fase 3, lavoro 10, 25/10/2026): `pipeline\pagine_xml.py` legge PAGE (qualsiasi versione dello schema; ordine di lettura da ReadingOrder, anche con gruppi annidati, o dall'attributo `readingOrder` di Transkribus; testo delle righe o delle parole; confidenza `conf`) e ALTO v2-v4 (String, SP, HYP; confidenza `WC`; più pagine per file), anche dentro un `.zip` senza estrarlo. `importa.py` fa di una cartella di pagine XML, o di un `.zip`, un documento, con le pagine in ordine naturale; scrive `[[p. N | img K]]` dove il file dichiara la pagina stampata (regione «page-number» in PAGE, `PRINTED_IMG_NR` in ALTO) e nell'intestazione `TEXT_METHOD`, `OCR_ENGINE`, `PAGES`; ignora e segnala i file XML che non sono pagine (METS). Provato su esportazioni costruite sugli schemi PAGE 2019 e ALTO v4 (13 test, compresa un'importazione completa in una cartella temporanea e il controllo delle intestazioni): manca la prova su esportazioni vere di Transkribus ed eScriptorium. Non ancora fatti: metadati proposti dai file METS, numerazione delle pagine dedotta quando il file non la dichiara (progettazione, sezione 5, passo 4).
 
@@ -128,6 +128,14 @@ Esito provvisorio: su stampa recente pulita Tesseract basta per cinese e albanes
 - `requirements.txt` (solo PyMuPDF, facoltativo), `LICENSE` (AGPL-3.0, testo ufficiale di gnu.org), `README.md` in inglese; `LEGGIMI.md` e `ISTRUZIONI.md` con l'installazione.
 - Python minimo 3.10: i 140 test passano con 3.10, 3.13 e 3.14 (senza PyMuPDF i test sui PDF si saltano invece di fallire). Provata un'installazione pulita (copia dei soli file del repository, Python 3.10 senza librerie, progetto nuovo vuoto): controllo superato.
 - Restano: corpus d'esempio libero da diritti (rimandato), traduzione inglese di `ISTRUZIONI.md`, dati di ricerca dell'autore (`entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`) da separare prima di pubblicare il repository.
+
+### Dati di ricerca separati dal motore (fase 4, lavoro 15, 25/10/2026)
+
+- `entita.ini` e `serie.ini` spostati da `pipeline` alla radice del progetto (posizione predefinita); `progetto.ini` non li sposta più. Con `istruzioni.md` e `progetto.ini` sono fuori dal controllo di versione (`.gitignore`, `git rm --cached`): restano sul disco, copie in `pipeline\_backup6-10-25_separazione_dati`.
+- Il motore porta `pipeline\serie_modello.ini` (descrizione dei campi ed esempio), da cui `progetto.py nuovo` scrive il `serie.ini` dei progetti nuovi.
+- I test non leggono più il progetto in uso: i profili delle serie su cui sono scritti stanno in `pipeline	est\progetto_prova` (`prova.py` lo sceglie con `AIRCHIVIST_PROGETTO` per i moduli delle citazioni e della cronologia); le importazioni di prova si scrivono il proprio `serie.ini`. Provato su una copia dei soli file del repository: 140 test con Python 3.10 e 3.14, `installa.py controlla` (segnala schede e serie mancanti e come creare un progetto), server MCP avviato senza progetto (`schede` vuote, `guida`). Sul progetto vero: 92 schede, 8 serie, 0 errori.
+- Restano nella storia di git: le versioni precedenti dei quattro file sono nei commit fino al 25/10. Per pubblicare serve un repository nuovo senza storia o una storia riscritta.
+- Restano da valutare prima della pubblicazione: `CLAUDE.md` e `docs/` (stato, piano, schede) parlano di questa ricerca; `config.ini` ha `cartella = ..`.
 
 Requisiti di sistema (da installare): Tesseract UB Mannheim con la lingua Albanian (sqi), PyMuPDF. Nessun modello OCR dentro la cartella del progetto.
 

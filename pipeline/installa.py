@@ -166,8 +166,9 @@ def controlla_progetto(esito, cfg):
         if p.exists():
             esito("ok", f"  {chiave}", str(p))
         elif necessario:
-            esito("manca", f"  {chiave}", f"{p} non esiste: python progetto.py nuovo <cartella> crea un "
-                                          f"progetto vuoto, oppure scegli il progetto ({VARIABILE})")
+            esito("manca", f"  {chiave}", f"{p} non esiste: crea un progetto vuoto con python progetto.py nuovo "
+                                          f"<cartella> e sceglilo in config.ini ([progetto] cartella) o con "
+                                          f"{VARIABILE}")
         else:
             esito("facoltativo", f"  {chiave}", f"{p} non esiste ancora")
 
