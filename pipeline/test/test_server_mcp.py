@@ -117,5 +117,35 @@ class ServerMcp(unittest.TestCase):
         self.assertIn("Seconda riga", fonte["testo"])
 
 
+
+class Lunghezza(unittest.TestCase):
+    """Risultati entro il limite del client (Jan taglia a 8000 caratteri): si accorciano le parti lunghe."""
+    def setUp(self):
+        import mcp_server
+        self.M = mcp_server
+
+    def test_corto_invariato(self):
+        out = {"finito": True, "risposta": "breve"}
+        self.assertEqual(json.loads(self.M.adatta(out, 7500)), out)
+
+    def test_risposta_pronta_lunga(self):
+        out = {"finito": True, "risposta_pronta": {"risposta": "R" * 2000, "inferenze": "I" * 3500,
+                                                   "dati": "D" * 3600, "limiti": ["L" * 400] * 4, "nota": "N"}}
+        testo = self.M.adatta(out, 7500)
+        d = json.loads(testo)
+        self.assertLessEqual(len(testo), 7500)
+        self.assertEqual(d["risposta_pronta"]["risposta"], "R" * 2000)        # la risposta finale resta intera
+        self.assertEqual(d["risposta_pronta"]["nota"], "N")
+        self.assertTrue(d["risposta_pronta"]["dati"].endswith("…[accorciato]"))
+        self.assertTrue(d["risposta_pronta"]["inferenze"].endswith("…[accorciato]"))
+        self.assertIn("avviso_lunghezza", d)
+
+    def test_elenco_lungo(self):
+        out = {"passaggi": [{"testo": "x" * 500, "n": i} for i in range(40)], "nota": "n"}
+        d = json.loads(self.M.adatta(out, 7500))
+        self.assertLess(len(d["passaggi"]), 40)
+        self.assertEqual([p["n"] for p in d["passaggi"]], list(range(len(d["passaggi"]))))   # tolte le ultime
+
+
 if __name__ == "__main__":
     unittest.main()

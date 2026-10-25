@@ -316,6 +316,12 @@ def compatto(s_):
     for k in ("fase", "avanzamento", "prossimo_tentativo", "messaggio", "risposta"):
         if s_.get(k):
             out[k] = s_[k]
+    if not finito:
+        # 25/10/2026: in Jan il modello ha smesso di attendere dopo 10 minuti di sintesi e ha detto che la ricerca
+        # non finiva; la risposta è arrivata due minuti dopo
+        out["nota"] = ("In corso: richiama ricerca con azione attendi. La sintesi (fase 3/3) può durare 10-20 minuti "
+                       "con i modelli gratuiti. Se smetti di attendere, la ricerca continua da sola: di' all'utente di "
+                       "chiederti più tardi «a che punto è la ricerca?»; non sostituirla con cerca_testo o apri_fonte.")
     if s_.get("stato") == "completata, ma sintesi non generata":
         out["avviso"] = AVVISO_SINTESI
     if s_.get("stato") in ("errore", "interrotta"):
@@ -872,8 +878,8 @@ def gestisci(msg):
             try:
                 out = fn(**{k: v for k, v in argomenti.items() if k in props})
                 errore = isinstance(out, dict) and "errore" in out
-                ris = {"content": [{"type": "text", "text": json.dumps(out, ensure_ascii=False, separators=(",", ":"), default=str)}],
-                       "isError": errore}
+                limite = cfg().getint("mcp", "max_caratteri", fallback=LIMITE_CARATTERI)
+                ris = {"content": [{"type": "text", "text": adatta(out, limite)}], "isError": errore}
             except Exception as e:
                 ris = {"content": [{"type": "text", "text": f"Errore: {type(e).__name__}: {e}"}], "isError": True}
         elif metodo == "prompts/list":
@@ -891,6 +897,63 @@ def gestisci(msg):
         return {"jsonrpc": "2.0", "id": mid, "result": ris}
     except Exception as e:
         return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": str(e)}}
+
+
+LIMITE_CARATTERI = 7500       # sotto gli 8000 a cui Jan taglia il risultato di uno strumento (maxToolOutputChars)
+AVVISO_LUNGHEZZA = ("Risultato accorciato dal server per stare nel limite del client ([mcp] max_caratteri): le parti "
+                    "che finiscono con «…[accorciato]» sono incomplete. Per il resto: risposte con azione leggi e "
+                    "sezioni, oppure gli argomenti da/massimo/dal/al dello strumento. Non trarre conclusioni da ciò che "
+                    "non hai letto.")
+
+
+# si accorciano solo se non resta altro: la risposta finale e le indicazioni per il modello
+PROTETTE = {"risposta", "nota", "errore", "messaggio", "prossimo_passo", "avviso"}
+
+
+def _testo(out):
+    return json.dumps(out, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def adatta(out, limite=LIMITE_CARATTERI):
+    """Testo JSON del risultato entro `limite` caratteri. I client tagliano i risultati lunghi a metà (Jan a 8000
+    caratteri), e il modello riceve un JSON spezzato senza saperlo: qui si accorcia invece la parte più lunga, una
+    alla volta (le stringhe dalla fine, gli elenchi togliendo le ultime voci), e si aggiunge un avviso."""
+    testo = _testo(out)
+    if len(testo) <= limite or not isinstance(out, dict):
+        return testo
+    out = json.loads(testo)                       # copia, solo tipi JSON
+    out["avviso_lunghezza"] = AVVISO_LUNGHEZZA
+
+    def foglie(nodo):
+        voci = nodo.items() if isinstance(nodo, dict) else enumerate(nodo)
+        for k, v in voci:
+            if k == "avviso_lunghezza":
+                continue
+            if isinstance(v, str) or (isinstance(v, list) and v):
+                yield nodo, k, len(_testo(v))
+            if isinstance(v, (dict, list)):
+                yield from foglie(v)
+
+    for _ in range(500):
+        eccesso = len(_testo(out)) - limite
+        if eccesso <= 0:
+            break
+        candidati = list(foglie(out))
+        if not candidati:
+            break
+        liberi = [c for c in candidati if c[1] not in PROTETTE] or candidati
+        liberi.sort(key=lambda c: c[2], reverse=True)
+        nodo, k, n = liberi[0]
+        secondo = liberi[1][2] if len(liberi) > 1 else 0
+        v = nodo[k]
+        if isinstance(v, list):
+            nodo[k] = v[:-1]
+        else:
+            # non sotto la seconda parte più lunga: il taglio si distribuisce fra le parti lunghe
+            taglio = max(min(eccesso + 20, n - secondo + 50), 50)
+            resta = max(0, len(v) - taglio)
+            nodo[k] = v[:resta].rstrip() + "…[accorciato]" if resta else "…[accorciato]"
+    return _testo(out)
 
 
 def scrivi(obj):

@@ -207,7 +207,7 @@ class LLM:
         return self._chiama(sistema, utente, None)
 
     def json(self, sistema, utente, schema):
-        return estrai_json(self._chiama(sistema, utente, schema))
+        return come_oggetto(estrai_json(self._chiama(sistema, utente, schema)), schema)
 
     def _chiama(self, sistema, utente, schema, tentativi=6):
         funzione = {"anthropic": self._anthropic, "openai": self._openai, "ollama": self._ollama}[self.backend]
@@ -233,6 +233,22 @@ class LLM:
                 errore = e
                 time.sleep(5 * (n + 1))
         raise ErroreModello(f"Chiamata al modello fallita dopo {tentativi} tentativi: {errore}")
+
+
+def come_oggetto(dati, schema=None):
+    """Le chiamate si aspettano un oggetto JSON. Alcuni modelli rispondono con un elenco: [{...}] vale come
+    l'oggetto; un elenco di oggetti, se lo schema ha una sola proprietà elenco (es. «risultati»), va sotto di
+    essa. Altre forme sono un errore del passaggio, che si riprova, non della ricerca intera."""
+    if isinstance(dati, dict):
+        return dati
+    if isinstance(dati, list) and all(isinstance(x, dict) for x in dati):
+        elenchi = [k for k, v in ((schema or {}).get("properties") or {}).items()
+                   if isinstance(v, dict) and v.get("type") == "array"]
+        if len((schema or {}).get("properties") or {}) == 1 and len(elenchi) == 1:
+            return {elenchi[0]: dati}
+        if len(dati) == 1:
+            return dati[0]
+    raise ErroreModello(f"Il modello ha risposto con JSON di forma inattesa ({type(dati).__name__}).")
 
 
 def estrai_json(testo):
