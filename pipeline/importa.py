@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Importazione di nuovo materiale nelle fonti: PDF (con o senza testo), scansioni (jpg, png, tif) e testi (.txt).
+Importazione di nuovo materiale nelle fonti: PDF (con o senza testo), scansioni (jpg, png, tif), testi (.txt)
+ed esportazioni PAGE XML / ALTO XML di Transkribus, eScriptorium e altri strumenti (.xml, o un archivio .zip).
 
 Per ogni documento:
   1. prende il testo del PDF quando c'è; altrimenti fa l'OCR della pagina con Tesseract (gratuito, sul tuo PC);
+     le esportazioni PAGE/ALTO si leggono come sono (pagine_xml.py): una cartella di pagine XML o un .zip è un
+     documento; dove il file dichiara la pagina stampata si scrive il marcatore [[p. N | img K]];
   2. scrive in data\\<cartella della serie> un file .txt con l'intestazione dei metadati
      ([SERIES], [DATE], [FULL_CITATION], [LANG]...), come le fonti già presenti;
   3. registra in importazioni\\registro.csv metodo, pagine, qualità dell'OCR e avvisi;
@@ -50,6 +53,11 @@ from estrai_occorrenze import (HDR, STATI_CAMPO, leggi_intestazione, stato_attiv
 PDF = {".pdf"}
 IMMAGINI = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".jp2"}
 TESTI = {".txt"}
+XML = {".xml"}                 # esportazioni PAGE XML / ALTO XML (Transkribus, eScriptorium...): pagine_xml.py
+ARCHIVI = {".zip"}             # archivio di un'esportazione PAGE/ALTO, letto senza estrarlo
+METODI_TESTO = {               # metodo di leggi_documento -> TEXT_METHOD dell'intestazione
+    "ocr": "OCR proprio", "testo del PDF": "strato di testo del PDF", "testo": "file di testo",
+    "PAGE XML": "importazione PAGE XML", "ALTO XML": "importazione ALTO XML"}
 LINGUE_OCR = {"sq": "sqi", "it": "ita", "fr": "fra", "en": "eng", "de": "deu", "es": "spa", "ru": "rus",
               "zh": "chi_sim", "pt": "por", "nl": "nld", "el": "ell", "tr": "tur", "mk": "mkd", "sr": "srp_latn",
               "bg": "bul", "ro": "ron", "pl": "pol", "cs": "ces", "hu": "hun", "sv": "swe", "da": "dan"}
@@ -245,6 +253,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
     e, se l'importazione si interrompe, alla ripresa non si rileggono."""
     from collections import deque
     pagine = []          # [chiave, testo, metodo, confidenza]
+    motori, stampate, ignorati = [], [], []     # dalle esportazioni PAGE/ALTO
     tmp = Path(tempfile.mkdtemp(prefix="importa_"))
     attesa = deque()
     stato = {"fatti": 0, "t0": time.time(), "annunciato": False}
@@ -286,6 +295,20 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                     t = p.read_text(encoding="utf-8", errors="replace")
                     meta, pos = leggi_intestazione(t)
                     pagine.append([p.name, t[pos:].strip(), "testo", None])
+                elif ext in XML | ARCHIVI:
+                    import pagine_xml
+                    lette, scartati = pagine_xml.leggi(p)
+                    ignorati += scartati
+                    for pg in lette:
+                        if max_pagine and len(pagine) >= max_pagine:
+                            break
+                        segno = pagine_xml.marcatore(pg, len(pagine) + 1)   # [[p. N | img K]] se dichiarata
+                        pagine.append([pg["origine"], (segno + "\n" if segno else "") + pg["testo"].strip(),
+                                       pg["formato"], pg["confidenza"]])
+                        if pg["motore"]:
+                            motori.append(pg["motore"])
+                        if pg["pagina_stampata"]:
+                            stampate.append(pg["pagina_stampata"])
                 elif ext in IMMAGINI:
                     invia(ex, p, None, False)
                     pagine[-1][0] = p.name
@@ -317,10 +340,16 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
     testo = "\n\n".join(t for _, t, _, _ in pagine if t)
     confs = [c for *_, c in pagine if c is not None]
     metodi = sorted({m for _, _, m, _ in pagine})
+    if "ocr" in metodi:
+        motori.insert(0, "Tesseract")
     rapporto = {"pagine": len(pagine), "pagine_ocr": len(confs), "metodo": " + ".join(metodi) or "nessuno",
                 "confidenza": round(sum(confs) / len(confs), 1) if confs else None,
                 "pagine_deboli": [k for k, _, _, c in pagine if c is not None and c < SOGLIA_DEBOLE],
-                "pagine_vuote": [k for k, t, _, _ in pagine if not (t or "").strip()]}
+                "pagine_vuote": [k for k, t, _, _ in pagine if not (t or "").strip()],
+                "metodo_testo": " + ".join(METODI_TESTO.get(m, m) for m in metodi),
+                "motore": "; ".join(dict.fromkeys(motori)),
+                "pagine_stampate": f"{stampate[0]}-{stampate[-1]}" if len(stampate) > 1 else "".join(stampate),
+                "ignorati": ignorati}
     return testo, rapporto
 
 
@@ -415,6 +444,9 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("LANG", scheda.get("lingua", "")),
         ("SOURCE_FILE", origine),
         ("METADATA_SOURCE", f"importa.py {dt.date.today().isoformat()} ({rapporto['metodo']})"),
+        ("TEXT_METHOD", rapporto.get("metodo_testo", "")),
+        ("OCR_ENGINE", rapporto.get("motore", "")),
+        ("PAGES", rapporto.get("pagine_stampate", "")),
         ("OCR_CONFIDENCE", "" if rapporto["confidenza"] is None else str(rapporto["confidenza"])),
         ("FULL_CITATION", valori["citazione"]),
     ]
@@ -495,12 +527,39 @@ def raccogli(percorsi):
     for p in percorsi:
         p = Path(p)
         if p.is_dir():
-            out += sorted(f for f in p.rglob("*") if f.suffix.lower() in PDF | IMMAGINI | TESTI)
+            from pagine_xml import chiave_naturale
+            out += sorted((f for f in p.rglob("*") if f.suffix.lower() in PDF | IMMAGINI | TESTI | XML | ARCHIVI),
+                          key=lambda f: chiave_naturale(f.relative_to(p).as_posix()))
         elif p.exists():
             out.append(p)
         else:
             raise SystemExit(f"Non trovo {p}")
     return out
+
+
+def raggruppa_file(file, unisci=False):
+    """Documenti da importare: un file per documento, salvo le pagine XML (PAGE/ALTO), che sono un documento per
+    cartella, e --unisci, che fa di tutti i file un solo documento.
+    Ogni documento: {"origine": nome per il registro, "nome": chiave nel file --metadati e per la data dal nome,
+    "base": base del nome del file .txt, "file": [file]}. Per le pagine XML nome e base sono quelli della cartella
+    (l'esportazione di un documento), non quelli della prima pagina."""
+    if unisci:
+        origine = file[0].name if len(file) == 1 else f"{file[0].name} … {file[-1].name} ({len(file)} file)"
+        return [{"origine": origine, "nome": file[0].name, "base": file[0].stem, "file": file}]
+    gruppi, per_cartella = [], {}
+    for f in file:
+        if f.suffix.lower() in XML:
+            if f.parent not in per_cartella:
+                per_cartella[f.parent] = {"origine": f.parent.name, "nome": f.parent.name, "base": f.parent.name,
+                                          "file": []}
+                gruppi.append(per_cartella[f.parent])          # al posto della sua prima pagina
+            per_cartella[f.parent]["file"].append(f)
+        else:
+            gruppi.append({"origine": f.name, "nome": f.name, "base": f.stem, "file": [f]})
+    for g in per_cartella.values():
+        n = len(g["file"])
+        g["origine"] += f" ({n} {'pagina' if n == 1 else 'pagine'} XML)"
+    return gruppi
 
 
 def cmd_importa(args, stampa=print):
@@ -517,13 +576,13 @@ def cmd_importa(args, stampa=print):
         raise SystemExit("La cartella della serie deve stare dentro data.")
     file = raccogli(args.percorsi)
     if not file:
-        raise SystemExit("Nessun file da importare (PDF, immagini o .txt).")
+        raise SystemExit("Nessun file da importare (PDF, immagini, .txt, esportazioni PAGE/ALTO .xml o .zip).")
     metadati = {}
     if args.metadati:
         with open(args.metadati, encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
                 metadati[Path(r.get("file", "")).name] = {k.strip().lower(): (v or "") for k, v in r.items()}
-    gruppi = [file] if args.unisci else [[f] for f in file]
+    gruppi = raggruppa_file(file, args.unisci)
     lingue = lingue_ocr(scheda, args.lingue)
     ocr = None
     if any(f.suffix.lower() in PDF | IMMAGINI for f in file):
@@ -532,19 +591,23 @@ def cmd_importa(args, stampa=print):
     cache_radice = radice(cfg) / "importazioni" / "_cache"
     if args.prova:
         g = gruppi[0]
-        stampa(f"Prova su {g[0].name}: prime {args.prova} pagine")
-        testo, rap = leggi_documento(g, ocr, args.ocr, processi, None, stampa, args.prova)
-        v = valori_documento(args.serie, scheda, args, metadati.get(g[0].name, {}), g[0].name, testo)
-        stampa(f"\nMetodo: {rap['metodo']}; confidenza media OCR: {rap['confidenza']}; "
-               f"pagine deboli: {rap['pagine_deboli'] or 'nessuna'}")
+        stampa(f"Prova su {g['origine']}: prime {args.prova} pagine")
+        testo, rap = leggi_documento(g["file"], ocr, args.ocr, processi, None, stampa, args.prova)
+        v = valori_documento(args.serie, scheda, args, metadati.get(g["nome"], {}), g["nome"], testo)
+        stampa(f"\nMetodo: {rap['metodo']}; confidenza media: {rap['confidenza']}; "
+               f"pagine deboli: {rap['pagine_deboli'] or 'nessuna'}"
+               + (f"; motore: {rap['motore']}" if rap["motore"] else "")
+               + (f"; pagine stampate: {rap['pagine_stampate']}" if rap["pagine_stampate"] else ""))
+        if rap["ignorati"]:
+            stampa(f"File XML ignorati (non PAGE né ALTO): {', '.join(rap['ignorati'][:10])}")
         stampa(f"Data: {v['data_iso'] or 'non trovata'} ({v['stato_data'] or '-'}); citazione: {v['citazione']}")
-        stampa(f"File che verrebbe scritto: {dest / nome_file(scheda, args.serie, v, g[0].stem)}")
+        stampa(f"File che verrebbe scritto: {dest / nome_file(scheda, args.serie, v, g['base'])}")
         stampa("\n--- inizio del testo ---\n" + testo[:3000] + "\n--- fine dell'estratto ---")
         return 0
     dest.mkdir(parents=True, exist_ok=True)
     scritti, saltati, problemi = [], [], []
-    for k, g in enumerate(gruppi, 1):
-        origine = g[0].name if len(g) == 1 else f"{g[0].name} … {g[-1].name} ({len(g)} file)"
+    for k, doc in enumerate(gruppi, 1):
+        g, origine = doc["file"], doc["origine"]
         stampa(f"[{k}/{len(gruppi)}] {origine}")
         firma = hashlib.sha1("|".join(f"{f.resolve()}|{f.stat().st_size}|{int(f.stat().st_mtime)}" for f in g)
                              .encode("utf-8")).hexdigest()[:16]
@@ -556,10 +619,18 @@ def cmd_importa(args, stampa=print):
             problemi.append(f"{origine}: {type(e).__name__}: {e}")
             stampa(f"  ERRORE: {type(e).__name__}: {e}")
             continue
-        v = valori_documento(args.serie, scheda, args, metadati.get(g[0].name, {}), g[0].name, testo)
-        nome = nome_file(scheda, args.serie, v, g[0].stem)
+        if not rap["pagine"]:
+            problemi.append(f"{origine}: nessuna pagina leggibile"
+                            + (f" (XML ignorati, non PAGE né ALTO: {', '.join(rap['ignorati'][:5])})"
+                               if rap["ignorati"] else ""))
+            stampa("  nessuna pagina leggibile: non importato")
+            continue
+        v = valori_documento(args.serie, scheda, args, metadati.get(doc["nome"], {}), doc["nome"], testo)
+        nome = nome_file(scheda, args.serie, v, doc["base"])
         out = dest / nome
         avvisi = []
+        if rap["ignorati"]:
+            avvisi.append(f"{len(rap['ignorati'])} file XML ignorati (non PAGE né ALTO, es. METS)")
         if out.exists() and not args.sovrascrivi:
             saltati.append(nome)
             stampa(f"  già presente: {out.relative_to(dati)} (usa --sovrascrivi per sostituirlo)")

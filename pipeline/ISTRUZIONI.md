@@ -214,7 +214,7 @@ correzioni conviene ricostruirlo da capo per ripulirlo (`python indice.py costru
 ## Importare nuove fonti
 
 `importa.py` porta nel sistema materiale nuovo (per ora pensato per le fonti albanesi): PDF con testo, PDF
-scansionati, foto o scansioni delle pagine (jpg, png, tif) e file `.txt`. Per ogni documento prende il testo
+scansionati, foto o scansioni delle pagine (jpg, png, tif), file `.txt` ed esportazioni PAGE XML / ALTO XML. Per ogni documento prende il testo
 del PDF quando c'è, altrimenti fa l'**OCR** con Tesseract (gratuito, gira sul tuo PC); scrive in `data\` un
 file `.txt` con l'intestazione dei metadati, come le altre fonti; registra in `importazioni\registro.csv`
 il metodo, le pagine, la qualità dell'OCR e gli avvisi; aggiorna l'indice. Non inserisce marcatori di pagina.
@@ -260,6 +260,27 @@ python importa.py importa "C:\scansioni\ZP 1967" --serie "Zëri i Popullit"
 - **Qualità**: per ogni documento la confidenza media dell'OCR (0-100) e le pagine deboli (sotto 60) sono in
   `registro.csv` e nell'intestazione (`[OCR_CONFIDENCE]`). Sotto 70 conviene controllare a campione o
   rifare la scansione (300 dpi, in scala di grigi).
+
+**Esportazioni PAGE XML e ALTO XML** (Transkribus, eScriptorium e altri strumenti): non serve l'OCR.
+Indica la cartella dell'esportazione o il suo archivio `.zip`, che non va estratto:
+
+```
+python importa.py importa "C:\esportazioni\ZP1967-01-12" --serie "Zëri i Popullit" --prova 3
+python importa.py importa "C:\esportazioni\ZP1967-01-12" --serie "Zëri i Popullit"
+```
+
+- Una cartella di pagine `.xml`, o un `.zip`, diventa **un documento**; le pagine seguono l'ordine naturale dei
+  nomi (2 prima di 10). Il nome della cartella vale come nome del file importato (per i periodici: la data,
+  come `ZP1967-01-12`).
+- Si rispetta l'ordine di lettura delle regioni dichiarato nel file. Le righe vanno a capo come nell'originale;
+  tra due regioni c'è una riga vuota.
+- Dove il file dichiara il numero di pagina stampato (in PAGE la regione «page-number», in ALTO
+  `PRINTED_IMG_NR`) si scrive il marcatore `[[p. 12 | img 3]]` (pagina stampata | immagine dell'esportazione),
+  che le citazioni usano. Senza numero dichiarato non si scrive nessun marcatore.
+- L'intestazione registra `TEXT_METHOD` (importazione PAGE/ALTO), `OCR_ENGINE` (lo strumento indicato nel file:
+  Transkribus, Kraken...), `PAGES` (pagine stampate) e `OCR_CONFIDENCE`: la confidenza del motore d'origine, in
+  scala 0-100, è indicativa e non confrontabile con quella di Tesseract.
+- I file XML che non sono pagine (METS, metadati) si ignorano e compaiono tra gli avvisi.
 
 **Controllo delle intestazioni**: `python importa.py controlla` (o una sottocartella: `controlla
 riviste\zeri_i_popullit`) segnala errori (citazione mancante, data non valida, testo vuoto) e avvisi

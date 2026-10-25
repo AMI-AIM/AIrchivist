@@ -735,8 +735,9 @@ STRUMENTI = {
     "varianti": (t_varianti, "Forme del nome proposte durante la lettura: elenca, aggiungi (dopo conferma), scarta.",
                  {"azione": {"type": "string", "enum": ["elenca", "aggiungi", "scarta"]}, "entita": _S, "forme": _L},
                  ["azione"]),
-    "importa_fonti": (t_importa_fonti, "Importa PDF, scansioni o .txt in una serie (OCR se serve); prova = solo "
-                      "le prime N pagine, senza scrivere. Poi stato_importazione.",
+    "importa_fonti": (t_importa_fonti, "Importa PDF, scansioni, .txt o esportazioni PAGE/ALTO XML (Transkribus, "
+                      "eScriptorium: cartella di pagine .xml o .zip = un documento) in una serie (OCR se serve); "
+                      "prova = solo le prime N pagine, senza scrivere. Poi stato_importazione.",
                       {"percorso_file": dict(_S, description="file o cartella sul computer dell'utente"),
                        "serie": _S, "data": dict(_S, description="AAAA-MM-GG, per un solo file"), "numero": _S,
                        "titolo": _S, "autore": dict(_S, description="Cognome, Nome"), "anno": _S, "volume": _S,
