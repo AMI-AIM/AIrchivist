@@ -150,11 +150,10 @@ def modelli_disponibili(cfg):
 
 
 def config_per_modello(cfg_path, modello, dest):
-    """Copia di config.ini con il router fissato su un solo modello e nessun filtro sui modelli ammessi."""
-    import configparser
-    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
-    cp.optionxform = str
-    cp.read(cfg_path, encoding="utf-8")
+    """Copia della configurazione (config.ini più progetto.ini del progetto in uso) con il router fissato su un
+    solo modello e nessun filtro sui modelli ammessi."""
+    from llm import leggi_config
+    cp = leggi_config(cfg_path)
     cp["modello"]["backend"] = "router"
     for k in ("modello_smistamento", "modello_analisi", "modello_sintesi"):
         cp["router"][k] = modello
@@ -163,11 +162,15 @@ def config_per_modello(cfg_path, modello, dest):
     if not cp.has_section("estrazione"):
         cp.add_section("estrazione")
     cp["estrazione"]["forme_sicure"] = "no"
-    # i percorsi relativi di config.ini si riferiscono alla cartella pipeline: li rendo assoluti
-    from llm import leggi_config, percorso
-    base = leggi_config(cfg_path)
-    for k in cp["percorsi"]:
-        cp["percorsi"][k] = str(percorso(base, k))
+    # tutti i percorsi del progetto in uso, assoluti: la configurazione della prova non dipende da dove sta
+    from llm import leggi_config
+    from progetto import percorsi_assoluti
+    if cp.has_section("progetto"):
+        cp.remove_section("progetto")
+    if not cp.has_section("percorsi"):
+        cp.add_section("percorsi")
+    for k, v in percorsi_assoluti(leggi_config(cfg_path)).items():
+        cp["percorsi"][k] = v
     with open(dest, "w", encoding="utf-8") as f:
         cp.write(f)
 

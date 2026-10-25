@@ -95,15 +95,21 @@ def leggi_config():
     return lc()
 
 
-def radice(cfg):
+def cartella_importazioni(cfg):
+    """Registro, cache e controlli delle importazioni del progetto di ricerca (progetto.py)."""
     from llm import percorso
-    return percorso(cfg, "dati").resolve().parent
+    return percorso(cfg, "importazioni")
+
+
+def file_serie():
+    from llm import percorso
+    return percorso(leggi_config(), "serie")
 
 
 def leggi_serie():
     cp = configparser.ConfigParser(interpolation=None, delimiters=("=",), inline_comment_prefixes=None)
     cp.optionxform = str
-    cp.read(CARTELLA / "serie.ini", encoding="utf-8")
+    cp.read(file_serie(), encoding="utf-8")
     return cp
 
 
@@ -128,8 +134,10 @@ def aggiungi_serie(nome, tipo, lingua, cartella, citazione, sigla="", nota_limit
             righe.append(f"{k} = {v}")
     if nota_limiti:
         righe.append(f"nota_limiti = {nota_limiti}")
-    with open(CARTELLA / "serie.ini", "a", encoding="utf-8") as f:
+    with open(file_serie(), "a", encoding="utf-8") as f:
         f.write("\n".join(righe) + "\n")
+    import profili
+    profili.tutti(ricarica=True)
     return f"Serie «{nome}» aggiunta a serie.ini."
 
 
@@ -604,7 +612,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
 
 
 def registra(cfg, riga):
-    f = radice(cfg) / "importazioni" / "registro.csv"
+    f = cartella_importazioni(cfg) / "registro.csv"
     f.parent.mkdir(parents=True, exist_ok=True)
     nuovo = not f.exists()
     campi = ["quando", "origine", "destinazione", "serie", "metodo", "pagine", "pagine_ocr", "confidenza",
@@ -683,7 +691,7 @@ def cmd_importa(args, stampa=print):
     if any(f.suffix.lower() in PDF | IMMAGINI for f in file):
         ocr = Ocr(cfg, lingue, args.dpi)
     processi = args.processi or max(1, (os.cpu_count() or 2) // 2)
-    cache_radice = radice(cfg) / "importazioni" / "_cache"
+    cache_radice = cartella_importazioni(cfg) / "_cache"
     if args.prova:
         g = gruppi[0]
         stampa(f"Prova su {g['origine']}: prime {args.prova} pagine")
@@ -872,7 +880,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
             tmp.replace(f)
         stampa(f"Migrati {len(migrazioni)} file: stati normalizzati sul vocabolario chiuso, "
                f"provenienza spostata in <CAMPO>_NOTE")
-    out = (dati.parent / "importazioni" / f"controllo_{dt.date.today().isoformat()}.csv")
+    out = cartella_importazioni(cfg) / f"controllo_{dt.date.today().isoformat()}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8-sig", newline="") as fo:
         w = csv.writer(fo)

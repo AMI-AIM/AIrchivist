@@ -28,14 +28,20 @@ CARTELLA = Path(__file__).resolve().parent
 _PROFILI = None
 
 
+def file_serie():
+    """serie.ini del progetto di ricerca in uso (progetto.py)."""
+    from progetto import leggi_config, percorso
+    return percorso(leggi_config(), "serie")
+
+
 def tutti(ricarica=False):
-    """{nome della serie: campi} da serie.ini."""
+    """{nome della serie: campi} dal serie.ini del progetto."""
     global _PROFILI
     if _PROFILI is None or ricarica:
         cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
         cp.optionxform = str
         try:
-            cp.read(CARTELLA / "serie.ini", encoding="utf-8")
+            cp.read(file_serie(), encoding="utf-8")
         except configparser.Error:
             pass
         _PROFILI = {s: {k: v.strip() for k, v in cp[s].items()} for s in cp.sections()}

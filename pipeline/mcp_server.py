@@ -219,7 +219,7 @@ def t_cerca_testo(testo, dal=None, al=None, fonti=None, massimo=8, da=0):
 
 # ---------------------------------------------------------------- importazione di nuovo materiale
 def cartella_importazioni():
-    return percorso(cfg(), "dati").resolve().parent / "importazioni" / "lavori"
+    return percorso(cfg(), "importazioni") / "lavori"
 
 
 def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore="", anno="", volume="",
@@ -287,7 +287,7 @@ def t_elenca_serie():
     import importa
     cp = importa.leggi_serie()
     return {"serie": {s_: dict(cp[s_]) for s_ in cp.sections()},
-            "nota": "Le serie sono descritte in pipeline\\serie.ini."}
+            "nota": f"Le serie sono descritte in {importa.file_serie()}."}
 
 
 def t_crea_serie(nome, tipo, lingua, cartella, citazione, sigla="", nota_limiti="", autore="", titolo="",

@@ -22,14 +22,15 @@ CARTELLA = Path(__file__).resolve().parent
 
 
 def leggi_config(path=None):
-    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
-    cp.read(path or CARTELLA / "config.ini", encoding="utf-8")
-    return cp
+    """config.ini del motore e progetto.ini del progetto di ricerca scelto (progetto.py)."""
+    from progetto import leggi_config as lc
+    return lc(path)
 
 
 def percorso(cfg, chiave):
-    p = Path(cfg.get("percorsi", chiave))
-    return p if p.is_absolute() else (CARTELLA / p).resolve()
+    """Percorso di un file o di una cartella del progetto di ricerca (progetto.py)."""
+    from progetto import percorso as p
+    return p(cfg, chiave)
 
 
 class ErroreModello(Exception):

@@ -551,7 +551,7 @@ def riattribuisci(cfg, vecchio, nuovo, applica=False):
     print(f"Nuove letture da aggiungere sotto «{nuovo}»: {len(voci)}\nPiano: {f_piano}")
     if applica:
         arch = Archivio(ris)
-        dest = Path(__file__).resolve().parent / "_backup" / f"{dt.date.today().isoformat()}_riattribuzione"
+        dest = percorso(cfg, "backup") / f"{dt.date.today().isoformat()}_riattribuzione"
         dest.mkdir(parents=True, exist_ok=True)
         import shutil
         shutil.copy2(arch.file, dest / f"letture_{dt.datetime.now():%H%M%S}.jsonl")

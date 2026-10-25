@@ -40,15 +40,15 @@ SENZA_FINESTRA, NUOVO_GRUPPO, FUORI_DAL_JOB = 0x08000000, 0x00000200, 0x01000000
 # ---------------------------------------------------------------- percorsi e nomi
 def cartella_lavori(cfg):
     from llm import percorso
-    d = percorso(cfg, "risultati").parent / "lavori"
-    d.mkdir(exist_ok=True)
+    d = percorso(cfg, "lavori")
+    d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def cartella_risposte(cfg):
     from llm import percorso
-    d = percorso(cfg, "risultati").parent / "risposte"
-    d.mkdir(exist_ok=True)
+    d = percorso(cfg, "risposte")
+    d.mkdir(parents=True, exist_ok=True)
     return d
 
 

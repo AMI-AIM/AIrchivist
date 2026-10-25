@@ -41,7 +41,8 @@ Gli originali di `stato_del_sistema.md` e `progettazione_del_sistema.md` sono ne
 |---|---|
 | `data/` | il corpus (Renmin Ribao, Peking Review, Hongqi, raccolte di documenti, Selected Works); ogni file ha un'intestazione `[CAMPO: valore]` |
 | `audit_fonti/` | registro delle correzioni ai metadati e problemi aperti |
-| `pipeline/` | codice, `config.ini`, `entita.ini` (schede delle entità), `serie.ini` (serie importabili) |
+| `progetto.ini` | progetto di ricerca di questa cartella (nome; `entita.ini`, `serie.ini` e `_backup` restano in `pipeline/`). Il progetto in uso si sceglie in `pipeline/config.ini`, `[progetto] cartella`, o con `AIRCHIVIST_PROGETTO`; `python pipeline/progetto.py stato` |
+| `pipeline/` | motore: codice e `config.ini` (modelli, parametri); qui anche `entita.ini` (schede delle entità) e `serie.ini` (profili delle serie) di questo progetto |
 | `pipeline/_backup/` | copie precedenti dei file modificati |
 | `indice/` | indice SQLite FTS5 (circa 870 MB, si aggiorna da solo) |
 | `risultati/_archivio/letture.jsonl` | archivio unico dei passaggi già letti |

@@ -7,6 +7,8 @@ risposte/
 lavori/
 importazioni/
 letteratura/
+# altri progetti di ricerca creati qui dentro (python pipeline/progetto.py nuovo progetti/<nome>)
+progetti/
 
 # Copie di sicurezza e file temporanei
 pipeline/_backup/

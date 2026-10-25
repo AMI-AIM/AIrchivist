@@ -721,10 +721,16 @@ def prepara_prova(args, cfg, validi, modello):
     if modello:
         config_per_modello(cfg_base, modello, cfg_file)
         cp.read(cfg_file, encoding="utf-8")
-    else:                                   # configurazione attuale, con i percorsi resi assoluti
-        cp.read(cfg_base, encoding="utf-8")
-        for k in cp["percorsi"]:
-            cp["percorsi"][k] = str(percorso(cfg, k))
+    else:                                   # configurazione attuale, con i percorsi del progetto resi assoluti
+        from llm import leggi_config
+        from progetto import percorsi_assoluti
+        cp = leggi_config(cfg_base)         # config.ini più progetto.ini del progetto in uso
+        if cp.has_section("progetto"):
+            cp.remove_section("progetto")
+        if not cp.has_section("percorsi"):
+            cp.add_section("percorsi")
+        for k, v in percorsi_assoluti(cfg).items():
+            cp["percorsi"][k] = v
     if not cp.has_section("estrazione"):
         cp.add_section("estrazione")
     cp["estrazione"]["forme_sicure"] = "no"

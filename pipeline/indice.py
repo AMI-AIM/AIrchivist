@@ -35,10 +35,7 @@ from profili import serie_breve   # noqa: E402   nome della serie nell'indice (R
 
 def percorso_indice(cfg):
     from llm import percorso
-    try:
-        return percorso(cfg, "indice")
-    except Exception:
-        return percorso(cfg, "risultati").parent / "indice" / "fonti.sqlite"
+    return percorso(cfg, "indice")
 
 
 def prepara(testo):

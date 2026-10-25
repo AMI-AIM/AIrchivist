@@ -93,7 +93,7 @@ Le quote giornaliere di Gemini si rinnovano alle 9 del mattino, ora italiana.
    - Nome: `Pipeline`
    - Tipo: STDIO
    - Command: `python`
-   - Arguments: `C:\Users\ivan_\Desktop\RAG\pipeline\mcp_server.py`
+   - Arguments: `C:\Users\ivan_\Desktop\AIrchivist\pipeline\mcp_server.py`
    - Variabile d'ambiente: `PYTHONUTF8` = `1`
 
    Attiva il server (pallino verde). Se Jan non trova `python`, metti in Command il percorso completo che ottieni con `where python`.
@@ -104,6 +104,31 @@ Le quote giornaliere di Gemini si rinnovano alle 9 del mattino, ora italiana.
 5. **Assistente «Ricerca fonti»**, con le regole di lavoro (fonti, citazioni, traduzioni). Usa sempre questo, con il modello `auto:chat`.
 
 Dopo ogni aggiornamento dei programmi, spegni e riaccendi il server «Pipeline» in Jan.
+
+## Progetti di ricerca
+
+Il motore (la cartella `pipeline`, con `config.ini`) è separato dai dati di una ricerca, che stanno in una
+**cartella di progetto**: `data`, `audit_fonti`, `indice`, `risultati`, `risposte`, `lavori`, `importazioni`,
+`entita.ini`, `serie.ini` e `progetto.ini` (nome del progetto ed eventuali impostazioni proprie). Il progetto
+attuale è la cartella che contiene `pipeline`; le sue schede e le sue serie sono rimaste in `pipeline`, come dice il
+suo `progetto.ini`.
+
+```
+python progetto.py stato
+python progetto.py nuovo "C:\Ricerche\Stampa albanese" --nome "Stampa albanese 1960-1978"
+```
+
+- `stato`: quale progetto è in uso e dove stanno i suoi file.
+- `nuovo`: crea un progetto vuoto, con le cartelle, i due CSV di `audit_fonti`, `entita.ini`, `serie.ini` (con la
+  descrizione dei campi) e `progetto.ini`. Non tocca una cartella che contiene già qualcosa.
+
+**Quale progetto usare**: in `config.ini`, sezione `[progetto]`, voce `cartella`; oppure la variabile d'ambiente
+`AIRCHIVIST_PROGETTO`, che prevale. In Jan si possono avere più server MCP, uno per progetto: stesso comando e
+stessi argomenti, con la variabile d'ambiente `AIRCHIVIST_PROGETTO` che indica la cartella del progetto.
+
+In `progetto.ini` si possono anche cambiare, solo per quel progetto, le impostazioni di `config.ini` (per esempio
+`[estrazione] finestra = 300`) e spostare un file con la sezione `[percorsi]` (percorsi relativi alla cartella del
+progetto).
 
 ## Uso
 

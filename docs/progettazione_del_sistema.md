@@ -207,7 +207,7 @@ Ogni lettura conserva la propria provenienza, su tre livelli distinti: letto da 
 ## 10. Distribuzione
 
 - Pacchetto installabile con un solo comando; requisiti (Tesseract o altro motore OCR, librerie) installati nel sistema, non nella cartella del progetto.
-- Un file di configurazione unico; una cartella per progetto di ricerca (corpus, profili, schede delle entità, glossario, risultati).
+- Un file di configurazione unico; una cartella per progetto di ricerca (corpus, profili, schede delle entità, glossario, risultati). Fatto il 25/10/2026 (`progetto.py`): config.ini del motore più progetto.ini del progetto scelto (config.ini o variabile d'ambiente AIRCHIVIST_PROGETTO); `progetto.py nuovo` crea un progetto vuoto.
 - Istruzioni di collegamento per i client principali; documentazione in italiano e in inglese; licenza; test automatici; corpus d'esempio libero da diritti.
 
 
