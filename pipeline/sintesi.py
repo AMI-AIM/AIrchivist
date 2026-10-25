@@ -431,6 +431,17 @@ JSON.""", SCHEMA_FINALE)
     return dati, inferenze, problemi, r.get("risposta_finale", "").strip(), scartati
 
 
+def da_sessione(path, docs):
+    """Sezioni 3, 4, 7 (e problemi della 5) scritte in sessione: stesse regole dei rimandi del modello."""
+    r = json.loads(Path(path).read_text(encoding="utf-8"))
+    validi = {d["n"] for d in docs}
+    dati, s1 = filtra_rif(r.get("dati_espliciti", []), validi)
+    inferenze, s2 = filtra_rif(r.get("inferenze", []), validi)
+    problemi, s3 = filtra_rif(r.get("problemi_interpretativi", []), validi)
+    da = r.get("da") or "assistente della chat"
+    return dati, inferenze, problemi, (r.get("risposta_finale") or "").strip(), s1 + s2 + s3, f"{da} (in sessione)"
+
+
 # ---------------------------------------------------------------- main
 def avviso_non_letti(cart, out):
     """Se alcuni passaggi trovati non sono stati letti dal modello (errori ripetuti), lo dice nella sezione 5."""
@@ -462,6 +473,9 @@ def main():
     ap.add_argument("entita")
     ap.add_argument("--domanda", default="")
     ap.add_argument("--senza-modello", action="store_true", help="solo le sezioni costruite da Python")
+    ap.add_argument("--sintesi-da", default=None,
+                    help="JSON con dati_espliciti, inferenze, problemi_interpretativi, risposta_finale scritti in "
+                         "sessione (sessione.py documenti), al posto del modello; facoltativo «da»: chi li ha scritti")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
 
@@ -499,7 +513,9 @@ def main():
     m_smista = elenco_modelli(classificati, "modello_smistamento")
     dati, inferenze, problemi_mod, finale, scartati, m_sintesi = [], [], [], "", 0, ""
     errore_sintesi = ""
-    if not args.senza_modello and docs:
+    if args.sintesi_da and docs:
+        dati, inferenze, problemi_mod, finale, scartati, m_sintesi = da_sessione(args.sintesi_da, docs)
+    elif not args.senza_modello and docs:
         from llm import LLM, ErroreModello
         try:
             llm = LLM(cfg, "sintesi")
