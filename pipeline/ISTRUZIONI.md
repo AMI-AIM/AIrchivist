@@ -101,7 +101,9 @@ Le quote giornaliere di Gemini si rinnovano alle 9 del mattino, ora italiana.
    - timeout degli strumenti a **90 secondi**;
    - **smart routing** disattivato;
    - **Web Search** disattivato, così le risposte vengono solo dalle fonti.
-5. **Assistente «Ricerca fonti»**, con le regole di lavoro (fonti, citazioni, traduzioni). Usa sempre questo, con il modello `auto:chat`.
+5. **Assistente «Ricerca fonti»**, con il modello `auto:chat`. Le regole di lavoro (fonti, citazioni, traduzioni)
+   le consegna il server (vedi «Istruzioni per l'IA della chat»): nelle istruzioni dell'assistente basta scrivere
+   «All'inizio di ogni conversazione chiama lo strumento guida e segui le sue istruzioni».
 
 Dopo ogni aggiornamento dei programmi, spegni e riaccendi il server «Pipeline» in Jan.
 
@@ -140,23 +142,38 @@ Nuova chat con l'assistente «Ricerca fonti», poi scrivi la domanda. Esempi:
 - «Quali varianti nuove ci sono per Grippa?»
 - «Il passaggio X non è pertinente: correggilo.»
 
-Strumenti a disposizione del modello della chat:
+Strumenti a disposizione del modello della chat (13; quelli con più operazioni hanno il parametro `azione`):
 
 | Strumento | Cosa fa |
 |---|---|
-| `elenca_entita` | trova il nome esatto della scheda |
+| `guida` | istruzioni di lavoro e fonti del progetto (per i client che non le mostrano al modello) |
+| `schede` | `elenca`: trova il nome esatto della scheda; `crea`: crea la scheda con le forme che hai confermato |
 | `esplora_nome` | per un'entità senza scheda: le forme del nome attestate nelle fonti, con conteggi ed esempi |
-| `crea_scheda` | crea la scheda di un'entità nuova con le forme che hai confermato |
 | `cerca_testo` | ricerca libera di una parola o frase in tutte le fonti (senza valutazione di pertinenza) |
+| `ricerca` | `avvia`, `attendi` (l'avanzamento; attese brevi, `[mcp] attesa_massima`), `ferma`: ricerca completa nelle fonti |
+| `risposte` | `elenca`, `leggi`: le risposte salvate nella cartella `risposte` del progetto, per sezioni |
 | `passaggi_archivio` | passaggi già letti (originale, traduzione, riferimento): risposta immediata |
-| `avvia_ricerca`, `attendi_ricerca`, `ferma_ricerca` | ricerca completa nelle fonti, con l'avanzamento (attese fino a 75 secondi) |
-| `leggi_risposta`, `elenca_risposte` | le risposte salvate in `RAG\risposte\`, per sezioni |
-| `copertura_fonti` | quanti numeri di ogni periodico ci sono in un periodo e quali giorni mancano |
+| `copertura_fonti` | quanti numeri di ogni periodico (profili di serie) ci sono in un periodo e quali mancano |
 | `apri_fonte` | il testo del file sorgente attorno a una riga |
 | `varianti` | forme del nome proposte durante la lettura: elenca, aggiungi, scarta |
 | `correggi_passaggio` | registra una tua correzione: vale per tutte le ricerche successive |
+| `importa` | `avvia`, `stato`: importazione di nuove fonti (vedi «Importare nuove fonti») |
+| `serie` | `elenca`, `crea`: profili delle serie del progetto |
 
-Ogni ricerca completa salva la risposta in `RAG\risposte\` con data e domanda nel nome del file. La
+I nomi usati fino al 25/10/2026 (`elenca_entita`, `avvia_ricerca`, `leggi_risposta`...) restano accettati, così un
+assistente che li nomina continua a funzionare.
+
+### Istruzioni per l'IA della chat
+
+Il server le compone ogni volta (`istruzioni.py`) da tre parti: le regole generali del motore (come usare gli
+strumenti, come citare, cosa non fare), l'elenco delle fonti ricavato da `serie.ini` con nome e descrizione da
+`progetto.ini`, e le regole proprie del progetto scritte in `istruzioni.md` nella cartella del progetto
+(argomento, carattere delle fonti, convenzioni su nomi e cariche, esempi di citazione; le righe con `#` non si
+inviano). Le consegna in tre modi, perché non tutti i client le mostrano al modello: nel campo `instructions` del
+protocollo MCP, come prompt MCP `istruzioni` e con lo strumento `guida`. Lingua delle risposte e attesa massima:
+`config.ini` (o `progetto.ini`), sezione `[mcp]`.
+
+Ogni ricerca completa salva la risposta nella cartella `risposte` del progetto, con data e domanda nel nome del file. La
 risposta ha otto sezioni:
 1. Documenti
 2. Passaggi originali

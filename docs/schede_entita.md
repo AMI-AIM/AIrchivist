@@ -73,7 +73,7 @@ Il legame si dichiara in tutte e due le schede, quando vale in tutte e due le di
 
 ## 6. Provenienza delle forme
 
-- Si aggiungono solo forme attestate nel corpus. `esplora_nome` propone le forme trovate, e il ricercatore le conferma prima di `crea_scheda`.
+- Si aggiungono solo forme attestate nel corpus. `esplora_nome` propone le forme trovate, e il ricercatore le conferma prima di `schede` (azione `crea`).
 - Le forme ipotetiche (trascrizioni non ancora trovate) si segnano nelle `note` come «ipotesi», con la loro origine.
 - Le forme sfuggite all'estrazione si trovano con `valutazione.py candidati`. Ogni forma aggiunta si registra nelle `note`, con la fonte in cui è attestata.
 

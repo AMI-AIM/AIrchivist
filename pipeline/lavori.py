@@ -2,10 +2,10 @@
 """
 Gestore delle ricerche come lavori indipendenti dalla chat.
 
-Ogni ricerca avviata da Jan (strumento avvia_ricerca) gira in un processo a sé, che sopravvive al riavvio del
-server MCP o di Jan, e tiene il proprio stato su disco in RAG/lavori/<id>/:
+Ogni ricerca avviata dalla chat (strumento ricerca, azione avvia) gira in un processo a sé, che sopravvive al
+riavvio del server MCP o del client, e tiene il proprio stato su disco nella cartella lavori/<id>/ del progetto:
   richiesta.json   parametri della ricerca
-  stato.json       stato attuale (lo legge attendi_ricerca), aggiornato ogni pochi secondi
+  stato.json       stato attuale (lo legge ricerca con azione attendi), aggiornato ogni pochi secondi
   registro.txt     tutti i messaggi della ricerca
   ferma            (file vuoto) chiede al lavoro di fermarsi
 

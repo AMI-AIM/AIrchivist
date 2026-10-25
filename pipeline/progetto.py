@@ -9,6 +9,7 @@ cartella di progetto:
     progetto.ini            nome del progetto ed eventuali impostazioni proprie (vedi sotto)
     entita.ini              schede delle entità
     serie.ini               profili delle serie
+    istruzioni.md           regole proprie del progetto per l'IA della chat (le invia il server MCP)
     data/                   le fonti
     audit_fonti/            registro_modifiche.csv, problemi_residui.csv
     indice/fonti.sqlite     indice delle fonti
@@ -51,6 +52,7 @@ PERCORSI = {
     "lavori": "lavori",
     "importazioni": "importazioni",
     "backup": "_backup",
+    "istruzioni": "istruzioni.md",     # regole proprie del progetto per l'IA della chat (server MCP)
 }
 
 
@@ -105,7 +107,7 @@ def percorso(cfg, chiave):
                "entita": CARTELLA / "entita.ini", "serie": CARTELLA / "serie.ini",
                "problemi": CARTELLA.parent / "audit_fonti" / "problemi_residui.csv",
                "registro_modifiche": CARTELLA.parent / "audit_fonti" / "registro_modifiche.csv",
-               "backup": CARTELLA / "_backup"}
+               "backup": CARTELLA / "_backup", "istruzioni": CARTELLA.parent / "istruzioni.md"}
     if chiave in storici:
         return storici[chiave].resolve()
     if chiave in ("indice", "lavori", "risposte"):
@@ -133,7 +135,15 @@ INTESTAZIONE_CSV = {
 }
 ENTITA_VUOTO = """# Schede delle entità del progetto: una sezione per entità.
 # Campi: varianti (forme del nome, separate da ;), tipo, forma_estesa, contesto, forme_ambigue, collegate, note.
-# Le schede si creano anche dalla chat (esplora_nome, poi crea_scheda). Regole: docs/schede_entita.md.
+# Le schede si creano anche dalla chat (esplora_nome, poi schede con azione crea). Regole: docs/schede_entita.md.
+"""
+
+
+ISTRUZIONI_VUOTO = """# Regole proprie di questo progetto per l'IA della chat
+
+Il server MCP le aggiunge alle regole generali e all'elenco delle fonti (ricavato da serie.ini). Scrivi qui solo
+ciò che vale per questa ricerca: argomento e taglio, carattere delle fonti, convenzioni sui nomi e sulle cariche,
+esempi di citazione. Le righe che iniziano con «#» non vengono inviate.
 """
 
 
@@ -160,6 +170,7 @@ def cmd_nuovo(args):
     for k, testa in INTESTAZIONE_CSV.items():          # CSV con BOM UTF-8 e CRLF, come quelli del corpus
         (radice / PERCORSI[k]).write_bytes(("﻿" + testa + "\r\n").encode("utf-8"))
     (radice / "entita.ini").write_text(ENTITA_VUOTO, encoding="utf-8")
+    (radice / "istruzioni.md").write_text(ISTRUZIONI_VUOTO, encoding="utf-8")
     (radice / "serie.ini").write_text(serie_vuoto(), encoding="utf-8")
     (radice / "progetto.ini").write_text(
         f"[progetto]\nnome = {args.nome or radice.name}\ndescrizione = {args.descrizione or ''}\n"

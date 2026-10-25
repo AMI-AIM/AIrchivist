@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Motore della ricerca: estrazione esaustiva -> smistamento e analisi con il modello -> risposta finale
-(risposta.md). Di norma lo avvia il server MCP (strumento avvia_ricerca, dalla chat di Jan); a mano serve
+(risposta.md). Di norma lo avvia il server MCP (strumento ricerca, azione avvia, dalla chat); a mano serve
 solo per prove e manutenzione.
 
 Uso:

@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
 Server MCP (Model Context Protocol) della pipeline: collega la ricerca nelle fonti all'interfaccia di chat di
-un LLM (Jan, LM Studio, Open WebUI, ...). Solo libreria standard di Python.
+un LLM: qualsiasi client MCP (Jan, Claude Desktop, LM Studio, Open WebUI, ...). Solo libreria standard di Python.
+
+Istruzioni per il modello della chat: composte da istruzioni.py (regole generali, fonti del progetto, istruzioni.md
+del progetto) e consegnate in tre modi, perché non tutti i client le mostrano al modello: campo «instructions» di
+initialize, prompt MCP «istruzioni», strumento «guida». Strumenti: 13, quelli con più operazioni hanno «azione»;
+i nomi di prima del lavoro 14 restano accettati (ALIAS).
 
 Il modello della chat NON legge le fonti: usa questi strumenti. La lettura dei passaggi resta alla pipeline
 (archivio unico + modelli configurati in config.ini); alla chat arrivano solo risultati con citazioni verificate.
 
 Avvio:
-  python mcp_server.py                 (stdio: lo avvia Jan; vedi ISTRUZIONI.md)
+  python mcp_server.py                 (stdio: lo avvia il client; vedi ISTRUZIONI.md)
   python mcp_server.py --http 8766     (HTTP "Streamable", per Open WebUI: http://127.0.0.1:8766/mcp)
 """
 import argparse
@@ -44,50 +49,10 @@ import profili                                  # noqa: E402
 # fonti selezionabili dalla chat: i gruppi dei profili di serie (Hongqi = Hongqi + Red Flag; documenti = raccolte)
 FONTI_SCELTE = sorted({profili.gruppo(n) for n in profili.tutti()})
 
-ISTRUZIONI = """Assistente di ricerca di uno storico (Cina maoista, maoismo italiano e internazionale). Rispondi in
-italiano. Le fonti (Renmin Ribao, Peking Review, Hongqi/Red Flag, raccolte, Selected Works, 1963-1980) le conosci
-solo attraverso questi strumenti: stampa ufficiale cinese (e albanese, se importata), fonti primarie di
-carattere propagandistico.
-
-Procedura:
-1. elenca_entita. Senza scheda: esplora_nome (indizi in cinese e in inglese, tue trascrizioni come candidate),
-   mostra forme, conteggi ed esempi, e dopo conferma dell'utente crea_scheda con le sole forme attestate.
-2. Per ogni domanda sulle fonti avvia_ricerca (con i passaggi già in archivio è rapida), poi attendi_ricerca
-   finché finito è vero (ogni chiamata attende fino a 75 s; la ricerca continua anche se la chat si chiude e,
-   se le quote finiscono, riprende da sola: dillo all'utente).
-3. Presenta la risposta della pipeline (risposta_pronta, oppure leggi_risposta senza sezioni): puoi riordinarla,
-   abbreviarla e tradurla, ma i fatti, le date, le cariche e i riferimenti sono quelli; conserva le avvertenze.
-   Non ricostruire tu la risposta dai passaggi. passaggi_archivio, apri_fonte e cerca_testo servono a mostrare
-   un passaggio o a verificare un punto quando l'utente lo chiede.
-
-Regole:
-- Ogni affermazione viene da un passaggio degli strumenti, citato con il "riferimento" così com'è, in stile
-  Chicago (es. "*Renmin ribao* 人民日报, 20 aprile 1963, 4", "*Peking Review* 10, no. 11 (10 marzo 1967)"):
-  la citazione si ferma alla pagina, e la pagina si indica solo se il riferimento la contiene. Non indicare mai file né righe nella risposta ("file_e_riga" serve solo per
-  apri_fonte). Mai rimandi tipo [12].
-- Per i fatti principali: testo originale invariato, poi «Traduzione:» (senza dire chi l'ha fatta).
-- Nessun fatto né cifra che non venga dagli strumenti, anche se lo conosci (semmai a parte, come ipotesi da
-  verificare). Non spostare date o cariche da un passaggio a un altro; cariche con la formula del passaggio
-  (书记 segretario del CC, 总书记 segretario generale). Se un dato manca, dillo.
-- Per un periodo preciso avvia la ricerca con dal/al. Prima di interpretare un'assenza usa copertura_fonti; i
-  silenzi di entità con molti passaggi incerti dipendono dalla classificazione.
-- Distingui dati espliciti e inferenze, graduate con prudenza. Nomi nella forma delle fonti; le forme
-  occidentali ricostruite da una trascrizione cinese vanno segnalate come tali.
-- Se la ricerca si interrompe o la sintesi non è generata, dillo e non scrivere tu la ricostruzione mancante;
-  se usi una risposta salvata prima, indicane la data.
-- Citazioni in stile Chicago con le virgole ("Renmin Ribao, 9 luglio 1971, p. 5"). Mai la parola "corpus".
-- Applica queste regole senza enunciarle: non scrivere frasi come "cito in stile Chicago", "riporto
-  l'originale e la traduzione" o "non uso conoscenze esterne".
-- Se il nome cercato è solo una variante nella scheda di un'altra entità (es. una persona nella scheda del
-  suo partito), dillo: i risultati riguardano tutta quell'entità; filtra i passaggi con testo_filtro e, per una
-  ricerca sulla persona, proponi esplora_nome e una scheda propria.
-- Distingui la data della fonte (pubblicazione) dalla data dell'evento riferito.
-- Usa solo gli strumenti di questo server: niente shell né lettura diretta dei file.
-- Correzioni dell'utente: correggi_passaggio; nuove forme del nome: varianti (aggiungi), dopo conferma.
-- Nuovo materiale: importa_fonti (prima con prova se la serie o la scansione è nuova: mostra qualità e data
-  letta), poi stato_importazione finché finita. Serie nuova: elenca_serie, poi crea_serie con i dati che
-  l'utente conferma. Le forme albanesi proposte da esplora_nome sono ipotesi: entrano nella scheda solo dopo
-  conferma."""
+def istruzioni():
+    """Istruzioni per l'IA della chat (istruzioni.py): regole generali, fonti del progetto, regole del progetto."""
+    from istruzioni import componi
+    return componi(cfg())
 
 
 def cfg():
@@ -140,7 +105,7 @@ def t_elenca_entita(filtro=""):
                     "varianti": var[:6], "collegate": schede.dividi(cp.get(s, "collegate", fallback="")),
                     "nota": re.split(r"(?<=[.;])\s", nota)[0][:150] if nota else ""})
     return {"schede": out, "totale": len(out),
-            "nota": "Per un'entità senza scheda usa crea_scheda (dopo aver chiesto conferma all'utente)."}
+            "nota": "Per un'entità senza scheda usa schede con azione crea (dopo aver chiesto conferma all'utente)."}
 
 
 def t_crea_scheda(nome, varianti, descrizione="", contesto=None, forme_ambigue=None, collegate=None, tipo="",
@@ -224,14 +189,14 @@ def cartella_importazioni():
 
 def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore="", anno="", volume="",
                     unisci=False, sovrascrivi=False, prova=0):
-    """Avvia l'importazione (OCR se serve) come processo indipendente; lo stato con stato_importazione."""
+    """Avvia l'importazione (OCR se serve) come processo indipendente; lo stato con importa (azione stato)."""
     import importa
     p = Path(os.path.expandvars(os.path.expanduser((percorso_file or "").strip().strip('"'))))
     if not p.exists():
         return {"errore": f"Non trovo «{percorso_file}» su questo computer."}
     if not importa.leggi_serie().has_section(serie):
         return {"errore": f"La serie «{serie}» non è in serie.ini.", "serie": importa.leggi_serie().sections(),
-                "nota": "Per una serie nuova usa crea_serie, dopo aver chiesto all'utente i dati."}
+                "nota": "Per una serie nuova usa serie con azione crea, dopo aver chiesto all'utente i dati."}
     d = cartella_importazioni() / (dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4])
     d.mkdir(parents=True)
     comando = [sys.executable, "-u", str(CARTELLA / "importa.py"), "--lavoro", str(d), "importa", str(p),
@@ -258,7 +223,7 @@ def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore=
     else:
         subprocess.Popen(comando, start_new_session=True, **opzioni)
     return {"id": d.name, "avviata": True, "prova": bool(prova),
-            "nota": "Controlla con stato_importazione (l'OCR richiede da pochi secondi a un minuto per pagina)."}
+            "nota": "Controlla con importa (azione stato) (l'OCR richiede da pochi secondi a un minuto per pagina)."}
 
 
 def t_stato_importazione(id=""):
@@ -319,9 +284,9 @@ def t_avvia_ricerca(entita, collegate=None, modalita="occorrenze", dal=None, al=
     if d:
         if s_.get("parametri") == i:
             return {"avviata": True, "gia_in_corso": True, **compatto(s_)}
-        return {"errore": "C'è già una ricerca in corso: attendi_ricerca o ferma_ricerca.", **compatto(s_)}
+        return {"errore": "C'è già una ricerca in corso: ricerca con azione attendi o ferma.", **compatto(s_)}
     d, s_ = lavori.avvia(c, i, (domanda or "").strip() or f"Occorrenze di {entita}", CONFIG)
-    return {"avviata": True, "parametri": i, "nota": "Chiama attendi_ricerca finché finito è vero."}
+    return {"avviata": True, "parametri": i, "nota": "Chiama ricerca con azione attendi finché finito è vero."}
 
 
 def compatto(s_):
@@ -344,7 +309,7 @@ def compatto(s_):
     return out
 
 
-def t_attendi_ricerca(secondi=75):
+def t_attendi_ricerca(secondi=None):
     c = cfg()
     d, s_ = lavori.attivo(c)
     if not d:
@@ -352,7 +317,8 @@ def t_attendi_ricerca(secondi=75):
         if not d:
             return {"errore": "Nessuna ricerca avviata."}
         return compatto(s_)
-    fine = time.time() + max(1, min(int(secondi or 75), 75))
+    massimo = c.getint("mcp", "attesa_massima", fallback=75)   # sotto il tempo che il client concede a uno strumento
+    fine = time.time() + max(1, min(int(secondi or massimo), massimo))
     iniziale = s_.get("stato")
     while time.time() < fine:
         time.sleep(2)
@@ -392,8 +358,11 @@ def _filtra_anni(sezione, dal, al):
     return "\n".join(r for r in righe if not re.match(r"^\s*(\[\d+\]|\d+\.|-|\|)", r) or _anno_ok(r, dal, al))
 
 
+ANNO = re.compile(r"(?<!\d)(1[5-9]\d\d|20\d\d)(?!\d)")
+
+
 def _anno_ok(testo, dal, al):
-    m = re.search(r"\b(19[4-9]\d)\b", testo)
+    m = ANNO.search(testo)
     if not m:
         return False
     anno = int(m.group(1))
@@ -448,7 +417,7 @@ def presentazione(f, testo_filtro="", max_dati=3500):
     out = {"file": f.name,
            "risposta": _risolvi(corpo("7"), mappa),
            "inferenze": _risolvi(corpo("4"), mappa),
-           "dati": dati[:max_dati] + ("\n[…altri dati: leggi_risposta sezioni=[3]]" if len(dati) > max_dati else ""),
+           "dati": dati[:max_dati] + ("\n[…altri dati: risposte con azione leggi e sezioni=[3]]" if len(dati) > max_dati else ""),
            "limiti": limiti[:6],
            "nota": "Presenta questa risposta: puoi riordinare, abbreviare e tradurre, non aggiungere fatti né "
                    "cambiare date, cariche o attribuzioni; conserva i riferimenti e le avvertenze sui limiti."}
@@ -479,7 +448,7 @@ def t_leggi_risposta(file="", sezioni=None, dal=None, al=None, da=0, testo_filtr
             tutti = sorted(c.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True)
             f = tutti[0] if tutti else None
     if not f or not f.is_file():
-        return {"errore": "Risposta non trovata. Usa elenca_risposte."}
+        return {"errore": "Risposta non trovata. Usa risposte con azione elenca."}
     if not sezioni:               # risposta pronta da presentare (risposta finale, inferenze, dati, limiti)
         return presentazione(f, testo_filtro)
     grezzo = f.read_text(encoding="utf-8")
@@ -571,13 +540,14 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
         out.append(v)
     return {"entita": entita, "totale": len(sel), "mostrati": f"{da + 1}-{da + len(out)}" if out else "0",
             "passaggi": out,
-            "nota": ("Solo passaggi già letti in ricerche precedenti; per una copertura completa usa avvia_ricerca. "
+            "nota": ("Solo passaggi già letti in ricerche precedenti; per una copertura completa avvia una ricerca (ricerca, azione avvia). "
                      "Se totale supera i mostrati, richiama con da=" + str(da + massimo)) if sel else
-                    "Nessun passaggio di questa entità nell'archivio: usa avvia_ricerca."}
+                    "Nessun passaggio di questa entità nell'archivio: avvia una ricerca (ricerca, azione avvia)."}
 
 
 def t_copertura_fonti(dal, al=None):
-    """Quanti numeri di ciascuna serie periodica sono presenti negli anni richiesti, e le lacune registrate."""
+    """Quanti numeri di ciascuna serie periodica (profili di serie) sono presenti negli anni richiesti, dall'anno
+    nel nome dei file della sua cartella, e le lacune registrate in problemi_residui.csv."""
     import csv
     from collections import Counter, defaultdict
     c = cfg()
@@ -585,23 +555,24 @@ def t_copertura_fonti(dal, al=None):
     al = int(al or dal)
     anni = range(int(dal), al + 1)
     conta = defaultdict(Counter)
-    for d in sorted((dati / "riviste").iterdir()) if (dati / "riviste").is_dir() else []:
-        if not d.is_dir():
+    for nome, p in sorted(profili.tutti().items()):
+        cartella = dati / (p.get("cartella") or "")
+        if p.get("tipo") != "periodico" or not p.get("cartella") or not cartella.is_dir():
             continue
-        for f in d.iterdir():
-            m = re.search(r"(19[4-9]\d)", f.name)
+        for f in cartella.rglob("*.txt"):
+            m = ANNO.search(f.name)
             if m and int(m.group(1)) in anni:
-                conta[d.name][int(m.group(1))] += 1
+                conta[nome][int(m.group(1))] += 1
     lacune = Counter()
     fp = percorso(c, "problemi")
     if Path(fp).exists():
         with open(fp, encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
-                m = re.search(r"(19[4-9]\d)", r.get("file", ""))
-                if m and int(m.group(1)) in anni and r.get("problema") == "giorno mancante":
+                m = ANNO.search(r.get("file") or "")
+                if m and int(m.group(1)) in anni and r.get("problema") in ("giorno mancante", "numero mancante"):
                     lacune[(r.get("serie", ""), int(m.group(1)))] += 1
     return {"numeri_presenti": {serie: {str(a): n.get(a, 0) for a in anni} for serie, n in conta.items()},
-            "giorni_mancanti": {f"{s_} {a}": n for (s_, a), n in sorted(lacune.items())},
+            "numeri_mancanti_registrati": {f"{s_} {a}": n for (s_, a), n in sorted(lacune.items())},
             "nota": "Un numero basso per una serie può dipendere dall'uscita irregolare della testata in quegli anni "
                     "(non necessariamente da una lacuna dell'archivio)."}
 
@@ -692,71 +663,147 @@ def t_correggi_passaggio(id, entita, pertinente=None, traduzione=None, nota=""):
     return {"corretto": True, "nota": "La correzione vale per tutte le ricerche successive che ritrovano il passaggio."}
 
 
+# ---------------------------------------------------------------- strumenti unificati (lavoro 14)
+def t_guida():
+    """Istruzioni complete e quadro del progetto: per i client che non mostrano al modello le istruzioni del server."""
+    import profili
+    from progetto import nome
+    c = cfg()
+    return {"progetto": nome(c), "istruzioni": istruzioni(),
+            "fonti_selezionabili": FONTI_SCELTE,
+            "serie": {n: {k: p.get(k, "") for k in ("tipo", "lingua", "periodo", "gruppo") if p.get(k)}
+                      for n, p in profili.tutti().items()}}
+
+
+def t_schede(azione="elenca", filtro="", nome="", varianti=None, descrizione="", contesto=None, forme_ambigue=None,
+             collegate=None, tipo="", forma_estesa=""):
+    if azione == "crea":
+        if not nome or not varianti:
+            return {"errore": "Per creare una scheda servono nome e varianti (le forme confermate dall'utente)."}
+        return t_crea_scheda(nome, varianti, descrizione, contesto, forme_ambigue, collegate, tipo, forma_estesa)
+    return t_elenca_entita(filtro)
+
+
+def t_ricerca(azione="attendi", entita="", collegate=None, modalita="occorrenze", dal=None, al=None, fonti=None,
+              domanda="", secondi=None):
+    if azione == "avvia":
+        if not entita:
+            return {"errore": "Per avviare una ricerca serve entita (nome esatto della scheda)."}
+        return t_avvia_ricerca(entita, collegate, modalita, dal, al, fonti, domanda)
+    if azione == "ferma":
+        return t_ferma_ricerca()
+    return t_attendi_ricerca(secondi)
+
+
+def t_risposte(azione="leggi", file="", sezioni=None, dal=None, al=None, da=0, testo_filtro="", quante=20):
+    if azione == "elenca":
+        return t_elenca_risposte(quante)
+    return t_leggi_risposta(file, sezioni, dal, al, da, testo_filtro)
+
+
+def t_importa(azione="stato", percorso_file="", serie="", data="", numero="", titolo="", autore="", anno="",
+              volume="", unisci=False, sovrascrivi=False, prova=0, id=""):
+    if azione == "avvia":
+        if not percorso_file or not serie:
+            return {"errore": "Per importare servono percorso_file e serie."}
+        return t_importa_fonti(percorso_file, serie, data, numero, titolo, autore, anno, volume, unisci, sovrascrivi,
+                               prova)
+    return t_stato_importazione(id)
+
+
+def t_serie(azione="elenca", nome="", tipo="", lingua="", cartella="", citazione="", sigla="", nota_limiti="",
+            autore="", titolo="", luogo="", editore=""):
+    if azione == "crea":
+        if not all((nome, tipo, lingua, cartella, citazione)):
+            return {"errore": "Per creare una serie servono nome, tipo, lingua, cartella e citazione."}
+        return t_crea_serie(nome, tipo, lingua, cartella, citazione, sigla, nota_limiti, autore, titolo, luogo,
+                            editore)
+    return t_elenca_serie()
+
+
 _S, _I, _B = {"type": "string"}, {"type": "integer"}, {"type": "boolean"}
 _L = {"type": "array", "items": _S}
 _F = {"type": "array", "items": {"type": "string", "enum": FONTI_SCELTE}}
 _SEZ = {"type": "array", "items": _I, "description": "1 Documenti 2 Passaggi 3 Dati 4 Inferenze 5 Limiti "
                                                      "6 Copertura 7 Risposta finale 8 Dati tecnici"}
 
+
+def _azione(*valori):
+    return {"type": "string", "enum": list(valori)}
+
+
 STRUMENTI = {
-    "elenca_entita": (t_elenca_entita, "Nome esatto della scheda di una persona, partito o testata.",
-                      {"filtro": _S}, []),
+    "guida": (t_guida, "Istruzioni di lavoro e fonti del progetto. Chiamalo all'inizio se non hai ricevuto le "
+              "istruzioni del server.", {}, []),
+    "schede": (t_schede, "Schede delle entità (persone, organizzazioni, testate): elenca (filtro = nome da cercare) "
+               "o crea, con le sole forme confermate dall'utente.",
+               {"azione": _azione("elenca", "crea"), "filtro": _S, "nome": _S, "varianti": _L, "contesto": _L,
+                "forme_ambigue": _L, "collegate": _L, "descrizione": _S,
+                "tipo": {"type": "string", "enum": list(schede.TIPI)},
+                "forma_estesa": dict(_S, description="nome per esteso, se il nome della scheda è una sigla")},
+               ["azione"]),
     "esplora_nome": (t_esplora_nome, "Entità senza scheda: forme del nome attestate nelle fonti, con conteggi ed "
-                     "esempi. Prima di crea_scheda.",
-                     {"nome": _S, "indizi": dict(_L, description="paese e partito in cinese e inglese (比利时, Belgium)"),
-                      "candidate": dict(_L, description="tue trascrizioni cinesi da verificare"), "dal": _I, "al": _I},
+                     "esempi. Prima di schede (azione crea).",
+                     {"nome": _S,
+                      "indizi": dict(_L, description="parole che accompagnano il nome nelle fonti (paese, partito), "
+                                                     "nelle lingue delle fonti"),
+                      "candidate": dict(_L, description="tue trascrizioni del nome da verificare nelle fonti"),
+                      "dal": _I, "al": _I},
                      ["nome"]),
-    "crea_scheda": (t_crea_scheda, "Crea la scheda con le forme confermate dall'utente.",
-                    {"nome": _S, "varianti": _L, "contesto": _L, "forme_ambigue": _L, "collegate": _L,
-                     "descrizione": _S,
-                     "tipo": {"type": "string", "enum": list(schede.TIPI)},
-                     "forma_estesa": dict(_S, description="nome per esteso, se il nome della scheda è una sigla")},
-                    ["nome", "varianti"]),
     "cerca_testo": (t_cerca_testo, "Ricerca libera di parole in tutte le fonti (senza valutazione di pertinenza).",
                     {"testo": _S, "dal": _I, "al": _I, "fonti": _F, "massimo": _I, "da": _I}, ["testo"]),
-    "avvia_ricerca": (t_avvia_ricerca, "Ricerca completa nelle fonti (processo indipendente); poi attendi_ricerca.",
-                      {"entita": _S, "collegate": dict(_L, description="altre schede: modalità evoluzione"),
-                       "modalita": {"type": "string", "enum": ["occorrenze", "evoluzione"]}, "dal": _I, "al": _I,
-                       "fonti": _F, "domanda": dict(_S, description="la domanda dell'utente per intero")}, ["entita"]),
-    "attendi_ricerca": (t_attendi_ricerca, "Attende fino a 75 s un cambiamento e dà lo stato della ricerca.",
-                        {"secondi": _I}, []),
-    "ferma_ricerca": (t_ferma_ricerca, "Ferma la ricerca in corso.", {}, []),
-    "leggi_risposta": (t_leggi_risposta, "Legge una risposta salvata (l'ultima se file è vuoto), per sezioni; "
-                       "dal/al e testo_filtro (forme separate da ;) filtrano le sezioni 1 e 2, da continua.",
-                       {"file": _S, "sezioni": _SEZ, "dal": _I, "al": _I, "da": _I, "testo_filtro": _S}, []),
-    "elenca_risposte": (t_elenca_risposte, "Risposte già salvate.", {"quante": _I}, []),
+    "ricerca": (t_ricerca, "Ricerca completa nelle fonti, come processo indipendente: avvia, poi attendi finché "
+                "finito è vero (ogni attesa è breve); ferma.",
+                {"azione": _azione("avvia", "attendi", "ferma"), "entita": _S,
+                 "collegate": dict(_L, description="altre schede: modalità evoluzione"),
+                 "modalita": _azione("occorrenze", "evoluzione"), "dal": _I, "al": _I, "fonti": _F,
+                 "domanda": dict(_S, description="la domanda dell'utente per intero"), "secondi": _I},
+                ["azione"]),
+    "risposte": (t_risposte, "Risposte salvate: elenca, o leggi (l'ultima se file è vuoto; senza sezioni la risposta "
+                 "pronta da presentare; dal/al e testo_filtro, forme separate da ;, filtrano le sezioni 1 e 2; da "
+                 "continua).",
+                 {"azione": _azione("elenca", "leggi"), "file": _S, "sezioni": _SEZ, "dal": _I, "al": _I, "da": _I,
+                  "testo_filtro": _S, "quante": _I}, ["azione"]),
     "passaggi_archivio": (t_passaggi_archivio, "Passaggi già letti di un'entità, con originale, traduzione e "
                           "riferimento. Immediato; da per scorrere.",
                           {"entita": _S, "dal": _I, "al": _I, "fonti": _F, "solo_pertinenti": _B, "massimo": _I,
                            "da": _I}, ["entita"]),
-    "copertura_fonti": (t_copertura_fonti, "Numeri presenti di ogni periodico e giorni mancanti in un periodo.",
+    "copertura_fonti": (t_copertura_fonti, "Numeri presenti di ogni periodico e lacune registrate in un periodo.",
                         {"dal": _I, "al": _I}, ["dal"]),
     "apri_fonte": (t_apri_fonte, "Testo del file sorgente attorno a una riga; testo centra la riga su una parola.",
                    {"file": _S, "riga": _I, "contesto": _I, "testo": _S}, ["file", "riga"]),
     "varianti": (t_varianti, "Forme del nome proposte durante la lettura: elenca, aggiungi (dopo conferma), scarta.",
-                 {"azione": {"type": "string", "enum": ["elenca", "aggiungi", "scarta"]}, "entita": _S, "forme": _L},
-                 ["azione"]),
-    "importa_fonti": (t_importa_fonti, "Importa PDF, scansioni, .txt o esportazioni PAGE/ALTO XML (Transkribus, "
-                      "eScriptorium: cartella di pagine .xml o .zip = un documento) in una serie (OCR se serve); "
-                      "prova = solo le prime N pagine, senza scrivere. Poi stato_importazione.",
-                      {"percorso_file": dict(_S, description="file o cartella sul computer dell'utente"),
-                       "serie": _S, "data": dict(_S, description="AAAA-MM-GG, per un solo file"), "numero": _S,
-                       "titolo": _S, "autore": dict(_S, description="Cognome, Nome"), "anno": _S, "volume": _S,
-                       "unisci": dict(_B, description="tutti i file diventano un solo documento"),
-                       "sovrascrivi": _B, "prova": _I}, ["percorso_file", "serie"]),
-    "stato_importazione": (t_stato_importazione, "Avanzamento ed esito di un'importazione (l'ultima se id è vuoto).",
-                           {"id": _S}, []),
-    "elenca_serie": (t_elenca_serie, "Serie di fonti importabili (serie.ini).", {}, []),
-    "crea_serie": (t_crea_serie, "Aggiunge una serie a serie.ini, dopo conferma dell'utente.",
-                   {"nome": _S, "tipo": {"type": "string", "enum": ["periodico", "volume"]},
-                    "lingua": dict(_S, description="sq, it, fr, en..."),
-                    "cartella": dict(_S, description="dentro data, es. riviste/zeri_i_popullit"),
-                    "citazione": dict(_S, description="modello, es. Zëri i Popullit, {data}[, n. {numero}]"),
-                    "sigla": _S, "nota_limiti": _S, "autore": _S, "titolo": _S, "luogo": _S, "editore": _S},
-                   ["nome", "tipo", "lingua", "cartella", "citazione"]),
+                 {"azione": _azione("elenca", "aggiungi", "scarta"), "entita": _S, "forme": _L}, ["azione"]),
     "correggi_passaggio": (t_correggi_passaggio, "Registra una correzione dell'utente su un passaggio.",
-                           {"id": _S, "entita": _S, "pertinente": {"type": "string", "enum": ["sì", "no", "incerto"]},
+                           {"id": _S, "entita": _S, "pertinente": _azione("sì", "no", "incerto"),
                             "traduzione": _S, "nota": _S}, ["id", "entita"]),
+    "importa": (t_importa, "Nuove fonti in una serie: avvia (PDF, scansioni, .txt, esportazioni PAGE/ALTO XML: una "
+                "cartella di pagine .xml o un .zip è un documento; OCR se serve; prova = prime N pagine senza "
+                "scrivere) o stato (l'ultima se id è vuoto).",
+                {"azione": _azione("avvia", "stato"),
+                 "percorso_file": dict(_S, description="file o cartella sul computer dell'utente"),
+                 "serie": _S, "data": dict(_S, description="AAAA-MM-GG, per un solo file"), "numero": _S,
+                 "titolo": _S, "autore": dict(_S, description="Cognome, Nome"), "anno": _S, "volume": _S,
+                 "unisci": dict(_B, description="tutti i file diventano un solo documento"),
+                 "sovrascrivi": _B, "prova": _I, "id": _S}, ["azione"]),
+    "serie": (t_serie, "Profili delle serie di fonti (serie.ini del progetto): elenca, o crea dopo conferma "
+              "dell'utente.",
+              {"azione": _azione("elenca", "crea"), "nome": _S, "tipo": _azione("periodico", "volume"),
+               "lingua": dict(_S, description="codice di due o tre lettere: sq, it, fr, en, zh..."),
+               "cartella": dict(_S, description="dentro data, es. riviste/nome_testata"),
+               "citazione": dict(_S, description="modello, es. Nome della testata, {data}[, n. {numero}]"),
+               "sigla": _S, "nota_limiti": _S, "autore": _S, "titolo": _S, "luogo": _S, "editore": _S},
+              ["azione"]),
+}
+
+# nomi degli strumenti fino al lavoro 13: accettati (assistenti e prompt già scritti), ma non più elencati
+ALIAS = {
+    "elenca_entita": ("schede", {"azione": "elenca"}), "crea_scheda": ("schede", {"azione": "crea"}),
+    "avvia_ricerca": ("ricerca", {"azione": "avvia"}), "attendi_ricerca": ("ricerca", {"azione": "attendi"}),
+    "ferma_ricerca": ("ricerca", {"azione": "ferma"}),
+    "leggi_risposta": ("risposte", {"azione": "leggi"}), "elenca_risposte": ("risposte", {"azione": "elenca"}),
+    "importa_fonti": ("importa", {"azione": "avvia"}), "stato_importazione": ("importa", {"azione": "stato"}),
+    "elenca_serie": ("serie", {"azione": "elenca"}), "crea_serie": ("serie", {"azione": "crea"}),
 }
 
 
@@ -776,8 +823,9 @@ def gestisci(msg):
         if metodo == "initialize":
             richiesta = (msg.get("params") or {}).get("protocolVersion", VERSIONI_PROTOCOLLO[0])
             ver = richiesta if richiesta in VERSIONI_PROTOCOLLO else VERSIONI_PROTOCOLLO[0]
-            ris = {"protocolVersion": ver, "capabilities": {"tools": {"listChanged": False}},
-                   "serverInfo": {"name": NOME, "version": VERSIONE}, "instructions": ISTRUZIONI}
+            ris = {"protocolVersion": ver,
+                   "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
+                   "serverInfo": {"name": NOME, "version": VERSIONE}, "instructions": istruzioni()}
         elif metodo == "ping":
             ris = {}
         elif metodo == "tools/list":
@@ -785,6 +833,9 @@ def gestisci(msg):
         elif metodo == "tools/call":
             p = msg.get("params") or {}
             nome, argomenti = p.get("name"), p.get("arguments") or {}
+            if nome in ALIAS:                             # nome di prima del lavoro 14
+                nome, fissi = ALIAS[nome]
+                argomenti = {**argomenti, **fissi}
             if nome not in STRUMENTI:
                 return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": f"Strumento sconosciuto: {nome}"}}
             fn, _, props, _ = STRUMENTI[nome]
@@ -795,8 +846,16 @@ def gestisci(msg):
                        "isError": errore}
             except Exception as e:
                 ris = {"content": [{"type": "text", "text": f"Errore: {type(e).__name__}: {e}"}], "isError": True}
-        elif metodo in ("resources/list", "prompts/list"):
-            ris = {metodo.split("/")[0]: []}
+        elif metodo == "prompts/list":
+            ris = {"prompts": [{"name": "istruzioni", "description": "Istruzioni di lavoro e fonti del progetto "
+                                                                     "di ricerca, da dare al modello della chat."}]}
+        elif metodo == "prompts/get":
+            if (msg.get("params") or {}).get("name") != "istruzioni":
+                return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "Prompt sconosciuto"}}
+            ris = {"description": "Istruzioni di lavoro e fonti del progetto di ricerca",
+                   "messages": [{"role": "user", "content": {"type": "text", "text": istruzioni()}}]}
+        elif metodo == "resources/list":
+            ris = {"resources": []}
         else:
             return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"Metodo non supportato: {metodo}"}}
         return {"jsonrpc": "2.0", "id": mid, "result": ris}
