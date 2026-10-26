@@ -41,6 +41,7 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
                             parti dell'importazione: XML, numeri di pagina, ordine delle colonne nei giornali,
                             motori OCR, confronto dei testi
     citazioni.py            citazioni Chicago autore-data dalle intestazioni e dai profili di serie
+    documento.py            la risposta come documento HTML autonomo, da aprire nel browser e stampare
     sessione.py             lettura dei passaggi in sessione (skill source-search)
     chat.py                 comandi della skill source-search (chat.py ambiente: dove si trova)
     valuta.py               prova rapida dei modelli su una lettura di riferimento
@@ -320,7 +321,14 @@ risposta ha otto sezioni:
 7. Risposta finale
 8. Dati tecnici per la verifica (file e righe, che non entrano nelle citazioni)
 
-In chat compaiono per prime le sezioni 3, 4 e 7; le altre si chiedono a parte.
+Accanto a ogni risposta (`.md`) c'è lo stesso testo come **documento HTML** (`.html`, un solo file, senza nulla
+da internet): si apre con un doppio clic nel browser e si stampa (anche in PDF, dal comando Stampa del browser).
+Ha le stesse sezioni; i rimandi [n] portano al passaggio citato. In chat, a ricerca finita, compaiono un riassunto
+(la risposta finale, il numero dei documenti, i primi limiti) e il percorso del documento: la risposta completa si
+legge lì, e il modello della chat non la riscrive. Le altre sezioni si chiedono a parte (strumento `risposte`).
+
+Da riga di comando: `python ricerca.py "Nome" --apri` apre il documento a fine ricerca; `python documento.py
+<risposta.md o cartella>` scrive il documento delle risposte salvate prima (`--apri` per aprirlo).
 
 Le citazioni sono in stile Chicago, 17ª edizione, sistema autore-data: la voce della bibliografia, con la pagina
 citata in coda quando il file la indica («*Renmin ribao* 人民日报. 1965. 28 giugno 1965, p. 4.»). La voce nasce

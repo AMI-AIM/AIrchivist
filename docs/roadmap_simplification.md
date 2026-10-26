@@ -189,6 +189,8 @@ Completo quando: un profilo con tre campi produce citazioni Chicago corrette per
 
 Completo quando: la risposta di una ricerca già fatta (per esempio Franz Strobl) produce un HTML con lo stesso contenuto di `risposta.md` (test di confronto) e il server MCP restituisce percorso e riassunto entro `[mcp] max_caratteri`.
 
+**Stato (26/10/2026): fatto** (`documento.py`, `tests/test_documento.py`; prova sulle 12 risposte salvate del progetto e su Franz Strobl in `stato_del_sistema.md`, «La risposta come documento»).
+
 
 
 ### 32. Documentazione per utenti esterni

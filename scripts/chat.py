@@ -435,7 +435,8 @@ def consegna(args):
     dest = Path(args.dest) if args.dest else cartella_consegna()
     dest.mkdir(parents=True, exist_ok=True)
     copiati = []
-    for f, nome in ((cart / "risposta.md", f"risposta_{cart.name}.md"), (percorso("entita"), "entities.ini"),
+    for f, nome in ((cart / "risposta.md", f"risposta_{cart.name}.md"),
+                    (cart / "risposta.html", f"risposta_{cart.name}.html"), (percorso("entita"), "entities.ini"),
                     (percorso("serie"), "series.ini")):
         if f.exists():
             shutil.copyfile(f, dest / nome)

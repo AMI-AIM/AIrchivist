@@ -128,7 +128,8 @@ class CorpusCaricato(unittest.TestCase):
         uscite = Path(self.tmp.name) / "uscite"
         consegnati = json.loads(self.chat("consegna", "enrico_berlinguer", "--dest", uscite))["consegnati"]
         self.assertEqual(sorted(Path(f).name for f in consegnati),
-                         ["entities.ini", "risposta_enrico_berlinguer.md", "series.ini"])
+                         ["entities.ini", "risposta_enrico_berlinguer.html", "risposta_enrico_berlinguer.md",
+                          "series.ini"])
 
     @unittest.skipUnless(pdf_di_prova(Path(tempfile.gettempdir()) / "_prova_chat.pdf"), "serve PyMuPDF")
     def test_pdf_senza_tesseract_e_in_italiano(self):

@@ -8,6 +8,7 @@ Uso:
   python ricerca.py "Nuova Unità"                     (l'entità deve avere una scheda in entities.ini)
   python ricerca.py "Nuova Unità" --domanda "Come compare Nuova Unità nel Renmin Ribao?"
   python ricerca.py "Nuova Unità" --solo-estrazione   (nessun modello: solo passaggi.csv)
+  python ricerca.py "Nuova Unità" --apri              (a fine ricerca apre la risposta, documento HTML, nel browser)
   python ricerca.py "Nuova Unità" --rifai             (rilegge tutto con il modello, ignorando l'archivio unico)
   python ricerca.py "Jacques Grippa" --evoluzione     (evoluzione nel tempo, con le entità del campo "collegate")
   python ricerca.py "Osvaldo Pesce" --collegate "Angiolo Gracci"   (evoluzione con entità collegate scelte qui)
@@ -196,6 +197,7 @@ def main():
     ap.add_argument("--rileggi-modello", default=None, metavar="NOME",
                     help="rimanda al modello attuale i passaggi letti da un modello il cui nome contiene NOME "
                          "(la lettura nuova sostituisce la vecchia nell'archivio)")
+    ap.add_argument("--apri", action="store_true", help="a fine ricerca apre la risposta (documento HTML) nel browser")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
     if args.collegate:
@@ -270,7 +272,11 @@ def main():
     else:
         esegui("sintesi.py", cart, ini, *dom, *extra)
     chiudi_profili(cart)
-    print(f"\nFatto. Apri {cart / 'risposta.md'}")
+    documento = cart / "risposta.html"
+    print(f"\nFatto. Risposta: {documento if documento.exists() else cart / 'risposta.md'}")
+    if args.apri and documento.exists():
+        from documento import apri
+        apri(documento)
 
 
 if __name__ == "__main__":

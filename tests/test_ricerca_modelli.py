@@ -154,6 +154,9 @@ class CambioDiModello(unittest.TestCase):
         risposta = (self.cart / "risposta.md").read_text(encoding="utf-8")
         limiti = risposta[risposta.index("## 5."):risposta.index("## 6.")]
         self.assertIn("letti dal modello modello-a: non misurato su queste fonti", limiti)
+        documento = (self.cart / "risposta.html").read_text(encoding="utf-8")     # lavoro 31
+        self.assertIn("<h2>5. Limiti e problemi interpretativi</h2>", documento)
+        self.assertIn("Berlinguer a Pechino.", documento)
 
         # 3. ricerca nuova: usa «b»; i passaggi già letti non si rileggono, il modello scrive solo la sintesi
         Servizio.modelli.clear()

@@ -387,7 +387,34 @@ def compatto(s_):
     if finito and s_.get("risposta"):
         f = lavori.cartella_risposte(cfg()) / s_["risposta"]
         if f.is_file():
-            out["risposta_pronta"] = presentazione(f)
+            out["risposta_pronta"] = riassunto(f)
+    return out
+
+
+def riassunto(f, max_risposta=1500):
+    """Consegna di una risposta alla chat (lavoro 31): un riassunto breve e il percorso del documento completo
+    (HTML, si apre con il browser e si stampa), perché il modello della chat non riscriva la risposta."""
+    p = presentazione(f)
+    html_ = f.with_suffix(".html")
+    if not html_.exists():
+        from documento import scrivi_html
+        try:
+            scrivi_html(f)
+        except OSError:
+            pass
+    testo = f.read_text(encoding="utf-8")
+    documenti = re.search(r"documenti pertinenti: (\d+)", testo)
+    risposta = p["risposta"]
+    out = {"documento": str(html_) if html_.exists() else str(f), "file": f.name,
+           "documenti_pertinenti": int(documenti.group(1)) if documenti else None,
+           "risposta": risposta[:max_risposta] + ("…[segue nel documento]" if len(risposta) > max_risposta else ""),
+           "limiti": p["limiti"][:3],
+           "nota": "Mostra all'utente questo riassunto così com'è e il percorso del documento: la risposta completa "
+                   "(documenti, passaggi originali con traduzione, dati, inferenze, limiti, copertura) è lì, si apre "
+                   "con il browser e si stampa. Non riscriverla e non aggiungere fatti; se l'utente chiede una "
+                   "parte, risposte (azione leggi, sezioni)."}
+    if p.get("avviso"):
+        out["avviso"] = p["avviso"]
     return out
 
 
@@ -878,7 +905,7 @@ STRUMENTI = {
                     "e presenta la sua risposta. Non citare file né righe.",
                     {"testo": _S, "dal": _I, "al": _I, "fonti": _F, "massimo": _I, "da": _I}, ["testo"]),
     "ricerca": (t_ricerca, "Il modo di rispondere a ogni domanda sulle fonti: avvia (entita = nome esatto della "
-                "scheda), poi attendi finché finito è vero (ogni attesa è breve); ferma. Presenta risposta_pronta "
+                "scheda), poi attendi finché finito è vero (ogni attesa è breve); ferma. Mostra risposta_pronta "
                 "così com'è nei fatti e nei riferimenti, senza aggiungere nulla.",
                 {"azione": _azione("avvia", "attendi", "ferma"), "entita": _S,
                  "collegate": dict(_L, description="altre schede: modalità evoluzione"),

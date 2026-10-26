@@ -95,7 +95,8 @@ def comando_ricerca(i, domanda, config=None, accetta_incompleti=False):
 
 
 def salva_risposta(cfg, i, domanda):
-    """Copia risposta.md della ricerca in results/answers/ con data e domanda nel nome. Restituisce il percorso."""
+    """Copia risposta.md della ricerca in results/answers/ con data e domanda nel nome, e accanto il documento HTML
+    (documento.py). Restituisce il percorso del .md."""
     risposta = cartella_ricerca(cfg, i) / "risposta.md"
     if not risposta.exists():
         return None
@@ -106,6 +107,8 @@ def salva_risposta(cfg, i, domanda):
               + (f" | al {i['al']}" if i["al"] else "")
               + (f" | fonti: {'; '.join(i['fonti'])}" if i["fonti"] else "") + " -->\n\n")
     dest.write_text(intest + risposta.read_text(encoding="utf-8"), encoding="utf-8")
+    from documento import scrivi_html
+    scrivi_html(dest)
     return dest
 
 

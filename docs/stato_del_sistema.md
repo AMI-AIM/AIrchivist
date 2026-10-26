@@ -365,6 +365,15 @@ Su indicazione di Ivan le citazioni non sono più note a piè di pagina ma voci 
 - Verifiche: test 291, tutti superati (attese aggiornate); risposta di prova su Franz Strobl rigenerata senza modello con le serie convertite (sezioni 1 e 2 in forma autore-data).
 - Aperto: un autore scritto senza virgola nell'intestazione («K.H. Fan») resta com'è, perché non si sa quale parte sia il cognome; va corretto nell'intestazione («Fan, K. H.»).
 
+### La risposta come documento (fase 7, lavoro 31, 26/10/2026)
+
+- `scripts/documento.py`: converte il Markdown delle risposte (titoli, paragrafi con le righe come sono, citazioni, elenchi anche annidati, tabelle, corsivo, grassetto, codice; i commenti restano commenti) in un HTML autonomo: un solo file, stile incluso (anche scuro e per la stampa), nessuno script né risorsa esterna. I rimandi [n] portano al passaggio «### [n]» della sezione 2. Nei passaggi originali (>) gli asterischi non diventano corsivo: nei testi OCR sono testo.
+- Scritto da `sintesi.py` ed `evoluzione.py` accanto a `risposta.md` (anche per «Nessun documento»), da `lavori.py` accanto alla risposta salvata in `results/answers/`, e consegnato dalla skill (`chat.py consegna`). `python documento.py <md o cartella>` per le risposte salvate prima: le 12 del progetto convertite il 26/10.
+- Server MCP: a ricerca finita `risposta_pronta` è un riassunto (risposta finale fino a 1500 caratteri, documenti pertinenti, primi tre limiti, avvisi) con il percorso del documento e la nota di non riscrivere la risposta; le istruzioni della chat dicono lo stesso. Le sezioni si leggono a parte con `risposte`.
+- `ricerca.py --apri` apre il documento a fine ricerca.
+
+Verifiche (26/10): test 297, tutti superati (`tests/test_documento.py`: stesso testo del `.md`, struttura, passaggi intatti, nessuna risorsa esterna, riassunto entro il limite dei caratteri; la ricerca completa di prova scrive anche `risposta.html`). Confronto del testo sulle 12 risposte salvate del progetto (Markdown senza sintassi contro HTML senza tag): identico in tutte. Risposta di prova su Franz Strobl rigenerata con `sintesi.py --senza-modello`: `risposta.html` di 17 kB accanto al `.md`. Non provato: la consegna in Jan con un modello vero.
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).

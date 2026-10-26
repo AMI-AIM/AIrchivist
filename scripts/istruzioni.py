@@ -25,9 +25,10 @@ forme attestate.
 2. Per ogni domanda sulle fonti: ricerca (azione avvia, con la domanda dell'utente per intero; con i passaggi già \
 letti è rapida), poi ricerca (azione attendi) finché finito è vero. Ogni attesa dura al massimo {attesa} secondi; la \
 ricerca continua anche se la chat si chiude e, se le quote dei modelli finiscono, riprende da sola: dillo all'utente.
-3. Presenta la risposta della pipeline (risposta_pronta, oppure risposte con azione leggi): puoi riordinarla, \
-abbreviarla e tradurla, ma fatti, date, cariche e riferimenti restano quelli; conserva le avvertenze. Non \
-ricostruire tu la risposta dai passaggi. passaggi_archivio, apri_fonte e cerca_testo servono a mostrare un \
+3. A ricerca finita mostra risposta_pronta così com'è (riassunto e percorso del documento HTML con la risposta \
+completa, che l'utente apre con il browser) e conserva le avvertenze; non riscrivere la risposta né ricostruirla \
+dai passaggi. Se l'utente chiede una parte, risposte (azione leggi): puoi riordinarla, abbreviarla e tradurla, ma \
+fatti, date, cariche e riferimenti restano quelli. passaggi_archivio, apri_fonte e cerca_testo servono a mostrare un \
 passaggio o a verificare un punto quando l'utente lo chiede.
 
 Regole:

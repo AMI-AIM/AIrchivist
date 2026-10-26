@@ -184,6 +184,8 @@ def main():
                 + "Nelle fonti, nel periodo e nelle serie richieste non ci sono occorrenze delle forme del nome "
                   "registrate in entities.ini. Se pensi che manchino, controlla le varianti della scheda o "
                   "allarga il periodo o le fonti.\n", encoding="utf-8")
+            from documento import scrivi_html
+            scrivi_html(cart / "risposta.md")
             print("Nessuna occorrenza nel periodo o nelle fonti richieste: risposta vuota scritta.")
             return
         sys.exit("Nessun passaggio classificato: esegui prima classifica.py")
@@ -264,6 +266,8 @@ def main():
     out += ["## 7. Risposta finale", "", finale or ("*(non generata: vedi l'avviso in testa)*" if errore_sintesi else "*(non generata)*"), ""]
     out += sez_tecnica(docs, incerti)
     (cart / "risposta.md").write_text("\n".join(out), encoding="utf-8")
+    from documento import scrivi_html                 # la stessa risposta come documento HTML (lavoro 31)
+    scrivi_html(cart / "risposta.md")
     print(f"Risposta: {(cart / 'risposta.md').resolve()}")
 
 
