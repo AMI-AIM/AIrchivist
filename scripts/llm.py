@@ -106,8 +106,29 @@ def profilo_precedente(cfg, ruolo, servizio=None):
     return p
 
 
+# File dei profili fissati all'avvio di una ricerca (ricerca.py lo indica ai suoi sottoprocessi): una ricerca
+# interrotta riprende con i profili con cui era partita, anche se nel frattempo la scelta è cambiata.
+VARIABILE_FISSATI = "AIRCHIVIST_PROFILI_RICERCA"
+
+
+def profili_fissati():
+    """{ruolo: {"nome", "voci"}} del file indicato in AIRCHIVIST_PROFILI_RICERCA; {} se non c'è."""
+    f = os.environ.get(VARIABILE_FISSATI, "").strip()
+    if not f:
+        return {}
+    try:
+        return json.loads(Path(f).read_text(encoding="utf-8")).get("ruoli") or {}
+    except (OSError, ValueError):
+        return {}
+
+
 def profilo(cfg, ruolo, nome=None):
-    """(nome, voci) del profilo da usare per un ruolo. Con nome: quel profilo di models.ini, qualunque sia la scelta."""
+    """(nome, voci) del profilo da usare per un ruolo: quello fissato all'avvio della ricerca in corso, altrimenti
+    quello scelto nella configurazione. Con nome: quel profilo di models.ini, qualunque sia la scelta."""
+    if not nome:
+        fissato = profili_fissati().get(ruolo)
+        if fissato and fissato.get("voci"):
+            return fissato["nome"], dict(fissato["voci"])
     nome = nome or nome_scelto(cfg, ruolo)
     if not nome:
         servizio = cfg.get("modello", "backend", fallback="anthropic").strip().lower()

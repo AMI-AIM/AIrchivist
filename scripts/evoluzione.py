@@ -256,7 +256,8 @@ def main():
     out += [f"- *Inferenza (fondatezza {i.get('fondatezza', '?')}):* {i['testo']} {rif(i)}" for i in inferenze] \
         or ["*(nessuna)*"]
     out += [""]
-    out += sez_limiti(docs, incerti, scartati, percorso(cfg, "problemi"), m_analisi, problemi_mod)
+    out += sez_limiti(docs, incerti, scartati, percorso(cfg, "problemi"), m_analisi, problemi_mod, classificati,
+                      percorso(cfg, "risultati"))
     out = avviso_non_letti(cart, out)
     modelli = ", ".join(x for x in (f"analisi {m_analisi}", f"sintesi {m_sintesi}" if m_sintesi else "") if x)
     out += sez_copertura(scheda_tutte, cart, classificati, modelli)

@@ -269,8 +269,56 @@ def note_limiti(fonte, file):
     return [x.strip() for x in profili.di(fonte, file).get("nota_limiti", "").split(" | ") if x.strip()]
 
 
-def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None):
+def modelli_misurati(risultati):
+    """Modelli che hanno risposto nelle prove su passaggi verificati a mano di questo progetto (valutazione.py
+    modelli e prova rapida), con almeno un passaggio misurato."""
+    ris = Path(risultati)
+    nomi = set()
+    for f in list((ris / "evaluation").glob("*/modelli_*.jsonl")) + list((ris / "trials").glob("prova_rapida_*/*.jsonl")):
+        try:
+            righe = f.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for r in righe:
+            try:
+                r = json.loads(r)
+            except ValueError:
+                continue
+            if isinstance(r, dict) and r.get("misure") and r.get("letti"):
+                nomi |= {x.strip() for x in (r.get("risposto") or "").split(",") if x.strip()}
+    return nomi
+
+
+def misurato(modello, misurati):
+    """Lo stesso modello può avere un nome con o senza il servizio davanti (groq/qwen/qwen3.8-27b, qwen/qwen3.8-27b)."""
+    m = modello.lower()
+    return any(m == x.lower() or m.endswith("/" + x.lower()) or x.lower().endswith("/" + m) for x in misurati)
+
+
+def righe_modelli_limiti(classificati, misurati):
+    """Per la sezione «Limiti»: quali modelli hanno deciso o letto i passaggi, quanti ciascuno, e se sono misurati
+    su queste fonti."""
+    from archivio import modelli_lettori
+    conta = Counter()
+    for c in classificati or []:
+        if not c["analisi"].get("assorbito_da"):
+            conta.update(modelli_lettori(c["analisi"]))
+    if not conta:
+        return []
+
+    def stato(m):
+        return ("misurato su passaggi verificati a mano di queste fonti" if misurato(m, misurati) else
+                "non misurato su queste fonti (valutazione.py modelli)")
+    if len(conta) == 1:
+        m, n = next(iter(conta.items()))
+        return [f"- I passaggi ({n}) sono stati letti dal modello {m}: {stato(m)}."]
+    return ["- I passaggi sono stati letti da modelli diversi, che possono decidere in modo diverso sugli stessi "
+            "casi: " + "; ".join(f"{m}, {n} passaggi, {stato(m)}" for m, n in conta.most_common()) + "."]
+
+
+def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None, classificati=None, risultati=None):
     righe = ["## 5. Limiti e problemi interpretativi", ""]
+    righe += righe_modelli_limiti(classificati, modelli_misurati(risultati) if risultati else set())
     for p in problemi_mod or []:
         righe.append(f"- *Problema interpretativo:* {p['testo']} {''.join(f'[{r}]' for r in p['rif'])}")
     if incerti:
@@ -547,7 +595,8 @@ def main():
     out += [f"- *Inferenza (fondatezza {i.get('fondatezza', '?')}):* {i['testo']} "
             f"{''.join(f'[{r}]' for r in i['rif'])}" for i in inferenze] or ["*(nessuna)*"]
     out += [""]
-    out += sez_limiti(docs, incerti, scartati, percorso(cfg, "problemi"), m_analisi, problemi_mod)
+    out += sez_limiti(docs, incerti, scartati, percorso(cfg, "problemi"), m_analisi, problemi_mod, classificati,
+                      percorso(cfg, "risultati"))
     out = avviso_non_letti(cart, out)
     modelli = ", ".join(x for x in (f"smistamento {m_smista}" if m_smista else "",
                                      f"analisi {m_analisi}", f"sintesi {m_sintesi}" if m_sintesi else "") if x)

@@ -277,6 +277,22 @@ def provenienza(a):
     return {"decisione": dec, "lettura": let}
 
 
+def modelli_lettori(a):
+    """Modelli che hanno deciso o letto il passaggio (dalla provenienza), senza regole né sessioni."""
+    p = provenienza(a)
+    return {x["da"] for x in (p.get("decisione"), p.get("lettura"))
+            if x and x.get("livello") == "modello" and x.get("da")}
+
+
+def letto_da(a, nome):
+    """Vero se un modello il cui nome contiene «nome» ha deciso o letto il passaggio. Le correzioni manuali no:
+    non si rileggono mai con un modello."""
+    nome = (nome or "").strip().lower()
+    if not nome or not a or a.get("corretto_a_mano"):
+        return False
+    return any(nome in m.lower() for m in modelli_lettori(a))
+
+
 def descrivi_provenienza(prov):
     """Frase per le risposte: «pertinenza decisa per regola (forma inequivocabile); traduzione del modello X»."""
     def parte(p, cosa):

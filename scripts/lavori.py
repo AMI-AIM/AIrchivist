@@ -5,13 +5,14 @@ Gestore delle ricerche come lavori indipendenti dalla chat.
 Ogni ricerca avviata dalla chat (strumento ricerca, azione avvia) gira in un processo a sé, che sopravvive al
 riavvio del server MCP o del client, e tiene il proprio stato su disco nella cartella system/jobs/<id>/ del progetto:
   richiesta.json   parametri della ricerca
-  stato.json       stato attuale (lo legge ricerca con azione attendi), aggiornato ogni pochi secondi
+  stato.json       stato attuale (lo legge ricerca con azione attendi), aggiornato ogni pochi secondi; «profili»:
+                   i profili di modello della ricerca, fissati al suo avvio (ricerca.py, modelli.json)
   registro.txt     tutti i messaggi della ricerca
   ferma            (file vuoto) chiede al lavoro di fermarsi
 
 Se le quote dei servizi gratuiti si esauriscono, il lavoro non si ferma: aspetta e riprova (dopo 10, 15, 30,
-poi ogni 60 minuti, per al massimo 36 ore). La ricerca riparte da dove era: i passaggi già letti sono
-nell'archivio. Se manca solo la sintesi, la riprova allo stesso modo.
+poi ogni 60 minuti, per al massimo 36 ore). La ricerca riparte da dove era, con gli stessi profili di modello
+anche se nel frattempo la scelta è cambiata: i passaggi già letti sono nell'archivio. Se manca solo la sintesi, la riprova allo stesso modo.
 
 Uso interno: python lavori.py esegui <id>   (lo lancia il server)
 """
@@ -241,6 +242,11 @@ class Esecutore:
                 self.proc.terminate()
         return self.proc.wait()
 
+    def profili(self):
+        """{ruolo: profilo} con cui la ricerca legge i passaggi (modelli.json della sua cartella, ricerca.py)."""
+        s = leggi_json(cartella_ricerca(self.cfg, self.req["interpretazione"]) / "modelli.json") or {}
+        return {r: v.get("nome", "") for r, v in (s.get("ruoli") or {}).items()}
+
     def non_letti(self):
         f = cartella_ricerca(self.cfg, self.req["interpretazione"]) / "non_letti.json"
         s = leggi_json(f) if f.exists() else None
@@ -279,6 +285,7 @@ class Esecutore:
             # pochi passaggi che falliscono sempre (risposte del modello malformate): dopo due tentativi senza
             # progressi la risposta si scrive lo stesso, segnalandoli; con molti passaggi rimasti si aspetta
             codice = self.lancia(accetta_incompleti=senza_progresso >= 2 and self.pochi(precedenti))
+            self.aggiorna(profili=self.profili())
             if self.fermato():
                 return self.aggiorna(stato="fermata", messaggio="Ricerca fermata su richiesta.")
             i = self.req["interpretazione"]

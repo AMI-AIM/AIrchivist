@@ -13,6 +13,9 @@ quindi è sempre testuale. Il modello la traduce e la commenta.
 
 Uso:
   python classifica.py <cartella_risultati> <entities.ini> [--limite N] [--solo-rapporto] [--config config.ini]
+Con --rileggi-modello NOME i passaggi letti da un modello il cui nome contiene NOME tornano al modello attuale:
+la lettura nuova si aggiunge in fondo a classificati.jsonl e all'archivio e sostituisce la vecchia, che resta
+nella storia dei file.
 Riprende da dove si era fermato. Output nella cartella: classificati.jsonl, classificati.csv, rapporto.md
 """
 import argparse
@@ -28,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from estrai_occorrenze import carica_entita, is_cjk
 from glossario import blocco, carica_glossario
 from llm import ErroreModello, ModelloNonAmmesso
-from archivio import append_jsonl, apri, escluso, provenienza
+from archivio import append_jsonl, apri, escluso, letto_da, modelli_lettori, provenienza
 
 
 def riga_json(rec):
@@ -505,6 +508,8 @@ def main():
                     help="rilegge con il modello anche i passaggi già presenti nell'archivio unico")
     ap.add_argument("--accetta-incompleti", action="store_true",
                     help="finisce normalmente anche se alcuni passaggi non sono stati letti (errori ripetuti)")
+    ap.add_argument("--rileggi-modello", default=None, metavar="NOME",
+                    help="rilegge con il modello attuale i passaggi letti da un modello il cui nome contiene NOME")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
     # codici di uscita: 0 = tutto letto; 3 = passaggi rimasti da leggere per limiti temporanei (quote, rete):
@@ -546,6 +551,18 @@ def main():
             if corrette:
                 append_jsonl(p_out, corrette)   # blocco inter-processo + fsync (archivio.append_jsonl)
                 print(f"Correzioni manuali applicate: {len(corrette)}")
+        # letture di un modello da rifare (--rileggi-modello): il passaggio torna da leggere; nell'archivio vale
+        # una lettura più recente di un altro lettore, se c'è
+        if args.rileggi_modello:
+            correnti = {p["id"]: p for p in passaggi if p["entita"] in schede and not p.get("assorbito_da")}
+            rileggere = [pid for pid, rec in fatti.items() if pid in correnti and letto_da(rec["analisi"], args.rileggi_modello)]
+            nomi = sorted({m for pid in rileggere for m in modelli_lettori(fatti[pid]["analisi"])
+                           if args.rileggi_modello.lower() in m.lower()})
+            for pid in rileggere:
+                del fatti[pid]
+                da_fare.append(correnti[pid])
+            print(f"Da rileggere perché letti da «{args.rileggi_modello}»: {len(rileggere)} passaggi"
+                  + (f" ({'; '.join(nomi)})" if nomi else ""))
         # letture incomplete (pertinenti mai tradotti, incerti solo per regola): tornano al modello
         gia_pertinenti = {}
         decisione_prec = {}      # provenienza della decisione ripresa da una lettura precedente
@@ -567,6 +584,9 @@ def main():
             resto = []
             for p in da_fare:
                 a, come = arch.cerca(p)
+                if letto_da(a, args.rileggi_modello):
+                    resto.append(p)
+                    continue
                 k = None if args.solo_smistamento else da_completare(a)
                 if k == "analisi":
                     gia_pertinenti[p["id"]] = a.get("motivazione") or "pertinente (lettura precedente)"
@@ -599,6 +619,10 @@ def main():
                 sys.exit(4 if PERMANENTE.search(str(e)) else 3)
             print(f"Modelli: smistamento {llm_s.modello} ({llm_s.profilo}) | analisi {llm_a.modello} ({llm_a.profilo})"
                   + (f" | modelli ammessi: {'; '.join(llm_s.ammessi)}" if llm_s.ammessi else ""))
+            if args.rileggi_modello and any(args.rileggi_modello.lower() in m.lower()
+                                            for m in (llm_s.modello, llm_a.modello)):
+                print(f"ATTENZIONE: il modello attuale corrisponde a «{args.rileggi_modello}»: la rilettura usa lo "
+                      "stesso modello. Scegli prima un altro profilo (python installa.py modello usa <profilo>).")
         else:
             llm_s = llm_a = None
             print("Nessun passaggio nuovo da leggere: il modello non serve.")

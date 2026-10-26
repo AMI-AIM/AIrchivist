@@ -12,6 +12,12 @@ Uso:
   python ricerca.py "Jacques Grippa" --evoluzione     (evoluzione nel tempo, con le entità del campo "collegate")
   python ricerca.py "Osvaldo Pesce" --collegate "Angiolo Gracci"   (evoluzione con entità collegate scelte qui)
   python ricerca.py "Nuova Unità" --dal 1973 --al 1976 --fonti "Renmin Ribao"   (solo un periodo e alcune fonti)
+  python ricerca.py "Nuova Unità" --rileggi-modello gpt-oss-20b   (rilegge con il modello attuale i passaggi letti
+                                                                    da un modello che si è rivelato inaffidabile)
+
+Profili di modello: una ricerca usa quelli scelti al suo avvio (registrati in modelli.json della sua cartella).
+Se si interrompe (quote, rete) e la si rilancia, riprende con gli stessi profili anche se nel frattempo la scelta è
+cambiata; --usa-modello-attuale la fa proseguire con quelli scelti adesso.
 
 Se l'entità non esiste, viene aggiunta a entities.ini una scheda da completare con le varianti del nome.
 """
@@ -109,6 +115,57 @@ def filtra_passaggi(cart, dal=None, al=None, fonti=None):
     print(f"Filtro ({descr}): {len(tenuti)} passaggi su {len(P)}")
 
 
+FILE_MODELLI = "modelli.json"
+MARCATORE_SINTESI = "<!-- sintesi: non generata -->"
+
+
+def fissa_profili(cart, cfg, usa_attuale=False):
+    """Profili di modello della ricerca, in <cartella>/modelli.json, indicati ai sottoprocessi con
+    AIRCHIVIST_PROFILI_RICERCA. Una ricerca interrotta (stato «in corso») riprende con i profili con cui era
+    partita; una ricerca nuova, o con usa_attuale, usa quelli scelti adesso. Restituisce {ruolo: nome}."""
+    import datetime as dt
+    import json
+    import os
+    from llm import RUOLI, VARIABILE_FISSATI, ErroreModello, profilo
+    os.environ.pop(VARIABILE_FISSATI, None)
+    f = cart / FILE_MODELLI
+    try:
+        prec = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    except ValueError:
+        prec = None
+    try:
+        attuali = {r: profilo(cfg, r) for r in RUOLI}
+    except ErroreModello as e:
+        attuali = None
+        print(f"ATTENZIONE: profili di modello non validi ({e}).")
+    if prec and prec.get("stato") == "in corso" and prec.get("ruoli") and not usa_attuale:
+        ruoli = {r: v["nome"] for r, v in prec["ruoli"].items()}
+        print(f"Ricerca ripresa con i profili con cui era partita il {prec.get('inizio', '?')}: "
+              + ", ".join(f"{r} {n}" for r, n in ruoli.items()) + ".")
+        if attuali and any(attuali[r][0] != ruoli.get(r) for r in RUOLI):
+            print("  (la scelta attuale è diversa: per usarla in questa ricerca, --usa-modello-attuale)")
+        os.environ[VARIABILE_FISSATI] = str(f)
+        return ruoli
+    if attuali is None:
+        return {}
+    dati = {"stato": "in corso", "inizio": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "ruoli": {r: {"nome": n, "voci": v} for r, (n, v) in attuali.items()}}
+    f.write_text(json.dumps(dati, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.environ[VARIABILE_FISSATI] = str(f)
+    return {r: n for r, (n, _) in attuali.items()}
+
+
+def chiudi_profili(cart):
+    """Ricerca finita con la risposta completa: la prossima userà i profili scelti in quel momento."""
+    import json
+    f, risposta = cart / FILE_MODELLI, cart / "risposta.md"
+    if not f.exists() or not risposta.exists() or MARCATORE_SINTESI in risposta.read_text(encoding="utf-8"):
+        return
+    dati = json.loads(f.read_text(encoding="utf-8"))
+    dati["stato"] = "completata"
+    f.write_text(json.dumps(dati, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def esegui(*argomenti):
     r = subprocess.run([sys.executable, *map(str, argomenti)], cwd=CARTELLA)
     if r.returncode != 0:
@@ -133,6 +190,12 @@ def main():
     ap.add_argument("--dal", type=int, default=None, help="solo i documenti da quest'anno")
     ap.add_argument("--al", type=int, default=None, help="solo i documenti fino a quest'anno")
     ap.add_argument("--fonti", default=None, help="solo queste fonti, separate da ';' (es. \"Renmin Ribao; Peking Review\")")
+    ap.add_argument("--usa-modello-attuale", action="store_true",
+                    help="una ricerca interrotta prosegue con i profili di modello scelti adesso, non con quelli "
+                         "con cui era partita")
+    ap.add_argument("--rileggi-modello", default=None, metavar="NOME",
+                    help="rimanda al modello attuale i passaggi letti da un modello il cui nome contiene NOME "
+                         "(la lettura nuova sostituisce la vecchia nell'archivio)")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
     if args.collegate:
@@ -190,9 +253,11 @@ def main():
     if args.rifai and (cart / "classificati.jsonl").exists():
         (cart / "classificati.jsonl").unlink()
     extra = ["--config", args.config] if args.config else []
+    fissa_profili(cart, cfg, args.usa_modello_attuale or args.rifai or bool(args.rileggi_modello))
     print("== 2/3 Smistamento e analisi dei passaggi")
     esegui("classifica.py", cart, ini, *extra, *(["--senza-archivio"] if args.rifai else []),
-           *(["--accetta-incompleti"] if args.accetta_incompleti else []))
+           *(["--accetta-incompleti"] if args.accetta_incompleti else []),
+           *(["--rileggi-modello", args.rileggi_modello] if args.rileggi_modello else []))
     print("== 3/3 Risposta finale")
     dom = ["--domanda", args.domanda] if args.domanda else []
     if args.evoluzione:
@@ -202,6 +267,7 @@ def main():
                *fino, *dom, *extra)
     else:
         esegui("sintesi.py", cart, ini, *dom, *extra)
+    chiudi_profili(cart)
     print(f"\nFatto. Apri {cart / 'risposta.md'}")
 
 
