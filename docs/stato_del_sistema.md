@@ -316,7 +316,7 @@ Verifiche (26/10):
 - usa `mcpServers` per tutti i client; aggiorna la voce col nome che ha già («Pipeline» resta «Pipeline»), conserva i campi propri del client e per Jan la accende (`active: true`, `type: stdio`);
 - per Jan porta `mcpSettings` a timeout ≥ 90 s, smart routing spento, risultati ≥ 8000 caratteri (i valori già sufficienti restano) e spegne la ricerca web in `settings.json`; copia di sicurezza di ciascun file, una sola conferma;
 - non scrive se Jan è aperto (alla chiusura riscriverebbe i file), e lo dice.
-Sul Jan di questo PC le tre impostazioni sono già giuste; `client jan` senza `--scrivi` propone solo di aggiornare il comando della voce «Pipeline» (`python` -> percorso completo dell'interprete). Il file reale non è stato modificato.
+Sul Jan di questo PC le tre impostazioni sono già giuste; `client jan` senza `--scrivi` propone solo di aggiornare il comando della voce «Pipeline» (`python` -> percorso completo dell'interprete). Il file reale non è stato modificato. Poi, a Jan chiuso, `client jan --scrivi` sul file reale (copia in `mcp_config.json.airchivist-2026-10-26.bak` nella stessa cartella): voce «Pipeline» con l'interprete `C:\Python314\python.exe`, accesa, altre sei voci e `mcpSettings` invariati; `client --verifica` riuscito (14 strumenti). Da fare: aprire Jan e controllare che il server «Pipeline» parta e risponda a una domanda.
 
 ### Avvio guidato (fase 7, lavoro 28, 26/10/2026)
 
