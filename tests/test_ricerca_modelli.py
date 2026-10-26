@@ -236,6 +236,13 @@ class Limiti(unittest.TestCase):
         self.assertIn("groq/qwen/qwen3.8-27b, 3 passaggi, misurato su passaggi verificati", righe[0])
         self.assertIn("qwen3.5:9b, 1 passaggi, non misurato", righe[0])
 
+    def test_stesso_modello_con_e_senza_servizio(self):
+        voci = [self.lettura("groq/qwen/qwen3.8-27b")] * 2 + [self.lettura("qwen/qwen3.8-27b")] * 4
+        righe = S.righe_modelli_limiti(voci, set())
+        self.assertEqual(righe, ["- I passaggi (6) sono stati letti dal modello qwen/qwen3.8-27b (anche come "
+                                 "groq/qwen/qwen3.8-27b): non misurato su queste fonti (valutazione.py misura "
+                                 "--profili)."])
+
     def test_solo_sessione_niente_riga(self):
         self.assertEqual(S.righe_modelli_limiti([{"analisi": {"pertinente": "sì", "classificato_da": "lettura manuale"}}],
                                                 set()), [])
@@ -248,6 +255,12 @@ class Limiti(unittest.TestCase):
             json.dumps({"modello": "x", "risposto": "groq/a, groq/b", "letti": 5, "misure": {"n": 5}}) + "\n" +
             json.dumps({"modello": "y", "risposto": "groq/c", "letti": 0, "misure": None}) + "\n", encoding="utf-8")
         self.assertEqual(S.modelli_misurati(ris), {"groq/a", "groq/b"})
+        # i rapporti in Markdown contano anche senza le cartelle di prova
+        (d / "prova_rapida_20261023_1407.md").write_text(
+            "# Prova\n\n| modello richiesto | ha risposto | passaggi letti | richiamo |\n|---|---|---|---|\n"
+            "| m1 | ollama/gemma4:31b | 97/97 | 97% |\n| m2 | — | 0/97 | — |\n\nTesto.\n", encoding="utf-8")
+        self.assertEqual(S.modelli_misurati(ris), {"groq/a", "groq/b", "ollama/gemma4:31b"})
+        self.assertTrue(S.misurato("gemma4:31b", S.modelli_misurati(ris)))
 
 
 if __name__ == "__main__":

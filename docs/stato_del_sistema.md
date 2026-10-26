@@ -280,6 +280,26 @@ Verifiche (26/10):
 7. Server MCP avviato in stdio sul progetto nuovo: 13 strumenti; `schede`, `passaggi_archivio`, `risposte`, `serie` rispondono. Domanda di prova in Jan: da fare.
 8. `skills\package.py`: `source-search-claude.zip`, `claude-code\`, `source-search-chatgpt.zip` in `skills\build\`.
 
+### Profili di modello (fase 7, lavoro 26, 26/10/2026)
+
+Istruzioni in `roadmap_simplification.md`, lavoro 26. Il modello che legge i passaggi si sceglie e si cambia in ogni momento.
+
+- **Profili**: `scripts\models.ini` (fuori da git; esempi e voci in `models_template.ini`), un profilo per modello: servizio (`anthropic`, `openai`, `router`, `ollama`), modello, indirizzo, nome della variabile della chiave, parametri propri (`pausa_secondi`, `max_token[_ruolo]`, `timeout`, `json`, `parametri_extra`, `num_ctx`, `modelli_ammessi`). Scelta in `[modello]` di `config.ini` o `project.ini` (prevale): `profilo` per tutti i ruoli, `smistamento`/`analisi`/`sintesi` per uno. Senza scelta vale la configurazione precedente (`backend` e sezioni dei servizi).
+- **Comandi**: `installa.py modello nuovo | elenca | usa | prova | togli | converti`. `usa` prova il collegamento con una richiesta minima e cambia la scelta solo se riesce; annota il cambio in `system\model_changes.csv` del progetto. `controlla` verifica i profili in uso. Strumento MCP `modello` (elenca, prova, usa); i profili nuovi solo da riga di comando, perché la chiave non passi dalla chat.
+- **Ricerche**: `ricerca.py` fissa i profili all'avvio in `modelli.json` della cartella della ricerca (variabile `AIRCHIVIST_PROFILI_RICERCA` per i sottoprocessi); una ricerca interrotta riprende con quelli, salvo `--usa-modello-attuale`; `lavori.py` li riporta nello stato. `--rileggi-modello NOME` rimanda al modello attuale i passaggi letti da quel modello (la lettura vecchia resta nella storia dell'archivio). Stesse opzioni nello strumento `ricerca` (`usa_modello_attuale`, `rileggi_modello`).
+- **«Limiti»**: la sezione 5 elenca i modelli che hanno letto i passaggi, quanti ciascuno, e se sono misurati su queste fonti (righe di `modelli_<data>.jsonl` e delle prove rapide, e tabelle dei rapporti `misure_*.md` e `prova_rapida_*.md` in `results\evaluation`). Lo stesso modello con e senza il servizio davanti (`qwen/qwen3.8-27b`, `groq/qwen/qwen3.8-27b`) conta una volta.
+- **Misure per profilo**: `valutazione.py misura <insieme> --profili "p1; p2"` prova profili di qualsiasi servizio; ogni riga registra profilo, servizio e modello; la cartella di prova fissa il profilo, così un `project.ini` che ne sceglie un altro non cambia il modello misurato. `elenca` dice per ogni profilo: misurato «questo profilo», «stesso modello, altro servizio» o «no».
+- **Configurazione di questo PC**: convertita il 26/10 con `installa.py modello converti` (copia in `scripts\config.ini.airchivist-2026-10-26.bak`): sei profili (`freellmapi-auto-ricerca`, `groq-qwen3.8-27b`, `claude-haiku-5-5`, `claude-sonnet-5-5`, `ollama-qwen3.5-4b`, `ollama-qwen3.5-9b`); in uso `freellmapi-auto-ricerca` per tutti i ruoli, come prima. Misurati sul progetto, dalle prove rapide del 22-23/10: i modelli che rispondono con quei nomi (gpt-oss-20b e -120b, gemma4:31b, nemotron, ministral, gemini flash...); nessun profilo è misurato come profilo; qwen3.8-27b non è misurato.
+
+Verifiche (26/10):
+1. Test: 247, tutti superati (servizi finti in locale: profili, cambio riuscito e rifiutato, ricerca interrotta e ripresa con il primo profilo, `--rileggi-modello`, «Limiti» con più modelli, strumento MCP, misure per profilo).
+2. Copia pulita del repository (`git archive`) con un progetto nuovo: procedura guidata, scelta «servizio con una chiave» (Groq, qwen/qwen3.8-27b) -> profilo, prova riuscita, scelta, `installa.py controlla` superato. Ollama non è installato su questo PC e non c'è una chiave Anthropic: per queste due scelte la procedura salva il profilo, la prova fallisce con la spiegazione («Ollama non risponde…», «Manca la chiave…») e la scelta in uso non cambia; `controlla` superato con queste due scelte non è verificato.
+3. Prova reale del cambio a metà progetto, su una copia di pochi file del progetto (`projects\dissident_communism\results\trials\prova_cambio_modello_20261026\`, con archivio proprio: l'archivio del progetto non è stato toccato), Franz Strobl:
+   - prima ricerca con `freellmapi-auto-ricerca`, 5 numeri del Renmin Ribao: 4 passaggi, letti da groq/qwen/qwen3.8-27b (2) e google/gemini-flash-lite-latest (2): la catena del router aveva già mescolato due modelli; `modelli.json` «completata»;
+   - cambio con `installa.py modello usa groq-qwen3.8-27b --progetto` (prova riuscita, tre righe in `model_changes.csv`); aggiunti 3 numeri della Peking Review;
+   - seconda ricerca: i 4 passaggi già letti non si rileggono, i 4 nuovi li legge qwen/qwen3.8-27b direttamente da Groq; sintesi con lo stesso modello. «Limiti»: «qwen/qwen3.8-27b (anche come groq/qwen/qwen3.8-27b), 6 passaggi, non misurato…; google/gemini-flash-lite-latest, 2 passaggi, non misurato…».
+   Il cambio da o verso Ollama, chiesto dalla roadmap, non è provato: Ollama non è installato.
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).

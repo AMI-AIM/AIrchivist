@@ -443,7 +443,7 @@ def prova_profilo(cfg, nome, stampa):
     try:
         risposto = LLM(cfg, "analisi", nome).prova()
     except ErroreModello as e:
-        stampa(f"Collegamento con «{nome}» non riuscito: {e}.")
+        stampa(f"Collegamento con «{nome}» non riuscito: {str(e).rstrip('.')}.")
         return False
     stampa(f"Collegamento con «{nome}» riuscito (ha risposto {risposto}).")
     return True

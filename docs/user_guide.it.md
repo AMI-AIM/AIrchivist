@@ -679,7 +679,10 @@ python valutazione.py misura prova1 --modelli "gemma4; nemotron-3-ultra"
    lavoro Excel (`campione.xlsx`, `candidati.xlsx`): vale il file salvato per ultimo.
 4. `misura`: calcola richiamo e precisione, con un intervallo di confidenza al 95%, e scrive `misure_<data>.md`.
    Le misure riguardano le letture dell'archivio (per livello di provenienza), i modelli indicati (in
-   `results\trials\`, senza archivio) e l'estrazione.
+   `results\trials\`, senza archivio) e l'estrazione. `--profili "groq-qwen; ollama-qwen-9b"` misura i tuoi
+   profili di modello, di qualsiasi servizio (non solo FreeLLMAPI): ogni misura registra profilo, servizio e
+   modello, così `installa.py modello elenca` e lo strumento `modello` dicono se un profilo è misurato su queste
+   fonti («questo profilo», «stesso modello, altro servizio» o «no»).
 
 Per confrontare rapidamente tutti i modelli attivi in FreeLLMAPI (pochi minuti):
 ```

@@ -285,6 +285,24 @@ def misure_salvate(risultati):
                 continue
             if isinstance(r, dict) and r.get("misure") and r.get("letti"):
                 yield r
+    # le tabelle dei rapporti (misure_<data>.md, prova_rapida_<data>.md) restano anche quando le cartelle di prova
+    # sono state tolte: colonne «ha risposto» e «passaggi letti» (n/totale)
+    for f in list((ris / "evaluation").glob("*/misure_*.md")) + list((ris / "evaluation").glob("*/prova_rapida_*.md")):
+        try:
+            righe = f.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        colonne = None
+        for r in righe:
+            celle = [c.strip() for c in r.strip().strip("|").split("|")] if r.startswith("|") else None
+            if not celle:
+                colonne = None
+            elif "ha risposto" in celle and "passaggi letti" in celle:
+                colonne = (celle.index("ha risposto"), celle.index("passaggi letti"))
+            elif colonne and len(celle) > max(colonne):
+                letti = re.match(r"(\d+)\s*/", celle[colonne[1]])
+                if letti and int(letti.group(1)):
+                    yield {"risposto": celle[colonne[0]], "letti": int(letti.group(1)), "misure": True}
 
 
 def modelli_misurati(risultati):
@@ -314,15 +332,26 @@ def righe_modelli_limiti(classificati, misurati):
             conta.update(modelli_lettori(c["analisi"]))
     if not conta:
         return []
+    # lo stesso modello con e senza il servizio davanti (qwen/qwen3.8-27b letto direttamente da Groq,
+    # groq/qwen/qwen3.8-27b attraverso FreeLLMAPI) si conta una volta, con il nome più breve
+    gruppi = {}
+    for m in sorted(conta, key=len):
+        base = next((b for b in gruppi if m.lower().endswith("/" + b.lower())), m)
+        gruppi.setdefault(base, []).append(m)
+    conta = Counter({b: sum(conta[m] for m in nomi) for b, nomi in gruppi.items()})
+    altri = {b: [m for m in nomi if m != b] for b, nomi in gruppi.items()}
+
+    def nome(m):
+        return m + (f" (anche come {', '.join(altri[m])})" if altri.get(m) else "")
 
     def stato(m):
-        return ("misurato su passaggi verificati a mano di queste fonti" if misurato(m, misurati) else
-                "non misurato su queste fonti (valutazione.py modelli)")
+        return ("misurato su passaggi verificati a mano di queste fonti" if any(misurato(x, misurati) for x in gruppi[m])
+                else "non misurato su queste fonti (valutazione.py misura --profili)")
     if len(conta) == 1:
         m, n = next(iter(conta.items()))
-        return [f"- I passaggi ({n}) sono stati letti dal modello {m}: {stato(m)}."]
+        return [f"- I passaggi ({n}) sono stati letti dal modello {nome(m)}: {stato(m)}."]
     return ["- I passaggi sono stati letti da modelli diversi, che possono decidere in modo diverso sugli stessi "
-            "casi: " + "; ".join(f"{m}, {n} passaggi, {stato(m)}" for m, n in conta.most_common()) + "."]
+            "casi: " + "; ".join(f"{nome(m)}, {n} passaggi, {stato(m)}" for m, n in conta.most_common()) + "."]
 
 
 def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None, classificati=None, risultati=None):
