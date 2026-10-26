@@ -17,6 +17,10 @@ Per ogni documento:
 Le serie (testate, raccolte) sono descritte in series.ini.
 
 Uso:
+  python importa.py proponi <cartella di file>       propone serie e metadati in una tabella da controllare
+                                                     (audit/review_<data>.csv), senza importare: revisione.py
+  python importa.py applica audit/review_<data>.csv  crea le serie e importa con i valori della tabella
+  python importa.py rivedi [--serie ...]             la stessa tabella per i documenti già importati
   python importa.py prepara                          controlla Tesseract, PyMuPDF e le lingue dell'OCR
   python importa.py serie                            elenca le serie di series.ini
   python importa.py importa <file o cartella> --serie "Zëri i Popullit" [opzioni]
@@ -757,6 +761,13 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
         v["numero"] = numero_da_nome(Path(origine).stem)
         if v["numero"]:
             v["stato_numero"], v["nota_numero"] = "dedotto", "ricavato dal nome del file"
+    # stati indicati dalla tabella di revisione (revisione.py applica): un valore lasciato come proposto resta
+    # «dedotto» o «da verificare», uno corretto a mano è verificato (None)
+    if getattr(args, "stato_data", None) is not None:
+        stato, provenienza = args.stato_data, getattr(args, "nota_data", "") or provenienza
+    if getattr(args, "stato_numero", None) is not None and v.get("numero"):
+        v["stato_numero"] = args.stato_numero
+        v["nota_numero"] = "dalla tabella di revisione" if args.stato_numero else ""
     v["data_iso"], v["stato_data"], v["nota_data"] = data, stato, provenienza
     if not v.get("anno") and data[:4].isdigit():
         v["anno"] = data[:4]
@@ -1025,6 +1036,8 @@ def cmd_importa(args, stampa=print):
         tmp.replace(out)
         shutil.rmtree(cache, ignore_errors=True)
         scritti.append(nome)
+        if getattr(args, "esiti", None) is not None:            # revisione.py: dove è finito il documento
+            args.esiti.append({"origine": origine, "destinazione": out.relative_to(dati).as_posix()})
         stampa(f"  -> {out.relative_to(dati)} ({rap['pagine']} pagine, {rap['metodo']}"
                + (f", confidenza {rap['confidenza']}" if rap["confidenza"] is not None else "") + ")"
                + ("; " + "; ".join(avvisi) if avvisi else ""))
@@ -1073,7 +1086,9 @@ def cmd_controlla(args, stampa=print, cfg=None):
         if not meta.get("FULL_CITATION"):
             righe.append((rel, "errore", "manca [FULL_CITATION]"))
         d = meta.get("DATE", "")
-        if d and not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) and valida(*d.split("-"))):
+        # anche al mese (AAAA-MM: periodici mensili, date note solo al mese), come le scrive l'importazione
+        if d and not ((re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) and valida(*d.split("-"))) or
+                      (re.fullmatch(r"\d{4}-\d{2}", d) and 1 <= int(d[5:]) <= 12)):
             righe.append((rel, "errore", f"[DATE] non valida: {d}"))
         if meta.get("YEAR") and not re.fullmatch(r"\d{4}", meta["YEAR"]):
             righe.append((rel, "avviso", f"[YEAR] non è un anno: {meta['YEAR']}"))
@@ -1235,6 +1250,20 @@ def main(argv=None):
     p = sub.add_parser("prepara")
     p.add_argument("--lingue")
     sub.add_parser("serie")
+    pr = sub.add_parser("proponi", help="propone serie e metadati in una tabella, senza importare")
+    pr.add_argument("percorsi", nargs="+")
+    pr.add_argument("--serie", help="una serie per tutti i file (esistente o nuova)")
+    pr.add_argument("--out", help="file della tabella (predefinito: audit/review_<data>.csv)")
+    ap_ = sub.add_parser("applica", help="crea le serie e importa (o corregge) con i valori della tabella")
+    ap_.add_argument("tabella")
+    ap_.add_argument("--prova", action="store_true", help="controlla la tabella e dice che cosa farebbe")
+    ap_.add_argument("--sovrascrivi", action="store_true", help="sostituisce i documenti già importati")
+    rv = sub.add_parser("rivedi", help="tabella delle intestazioni dei documenti già importati")
+    rv.add_argument("--serie")
+    rv.add_argument("--cartella", help="solo i file di questa cartella dentro data")
+    rv.add_argument("--solo-dubbi", action="store_true", dest="solo_dubbi",
+                    help="solo i documenti con valori dedotti, da verificare o mancanti")
+    rv.add_argument("--out")
     ap.add_argument("--lavoro", help=argparse.SUPPRESS)      # cartella del lavoro avviato dalla chat
     args = ap.parse_args(argv)
     if args.lavoro:
@@ -1247,8 +1276,10 @@ def main(argv=None):
         pass
     codice, errore = 4, ""
     try:
+        import revisione
         codice = {"importa": cmd_importa, "controlla": cmd_controlla, "prepara": cmd_prepara,
-                  "serie": cmd_serie}[args.comando](args) or 0
+                  "serie": cmd_serie, "proponi": revisione.cmd_proponi, "applica": revisione.cmd_applica,
+                  "rivedi": revisione.cmd_rivedi}[args.comando](args) or 0
     except SystemExit as e:
         if isinstance(e.code, str):
             print(e.code)

@@ -222,8 +222,7 @@ def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore=
     if not importa.leggi_serie().has_section(serie):
         return {"errore": f"La serie «{serie}» non è in series.ini.", "serie": importa.leggi_serie().sections(),
                 "nota": "Per una serie nuova usa serie con azione crea, dopo aver chiesto all'utente i dati."}
-    d = cartella_importazioni() / (dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4])
-    d.mkdir(parents=True)
+    d = nuova_importazione()
     comando = [sys.executable, "-u", str(CARTELLA / "importa.py"), "--lavoro", str(d), "importa", str(p),
                "--serie", serie]
     for k, v in (("data", data), ("numero", numero), ("titolo", titolo), ("autore", autore), ("anno", anno),
@@ -238,6 +237,19 @@ def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore=
         comando += ["--prova", str(int(prova))]
     if prima_pagina:                                   # pagine stampate dei PDF (numerazione.py)
         comando += ["--prima-pagina", str(int(prima_pagina)), "--da-pagina", str(int(da_pagina or 1))]
+    avvia_importazione(d, comando)
+    return {"id": d.name, "avviata": True, "prova": bool(prova),
+            "nota": "Controlla con importa (azione stato) (l'OCR richiede da pochi secondi a un minuto per pagina)."}
+
+
+def nuova_importazione():
+    d = cartella_importazioni() / (dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4])
+    d.mkdir(parents=True)
+    return d
+
+
+def avvia_importazione(d, comando):
+    """Lancia importa.py come processo indipendente dalla chat; registro ed esito nella cartella d."""
     (d / "richiesta.json").write_text(json.dumps({"comando": comando[3:], "inizio": time.time()},
                                                  ensure_ascii=False), encoding="utf-8")
     opzioni = dict(cwd=CARTELLA, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -249,8 +261,35 @@ def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore=
             subprocess.Popen(comando, creationflags=0x08000000 | 0x00000200, **opzioni)
     else:
         subprocess.Popen(comando, start_new_session=True, **opzioni)
-    return {"id": d.name, "avviata": True, "prova": bool(prova),
-            "nota": "Controlla con importa (azione stato) (l'OCR richiede da pochi secondi a un minuto per pagina)."}
+
+
+def t_tabella_importazione(azione, percorso_file="", serie="", prova=False, sovrascrivi=False):
+    """Importazione guidata (revisione.py): proponi scrive la tabella da controllare in Excel o LibreOffice,
+    applica la usa (prima con prova), rivedi esporta le intestazioni dei documenti già importati."""
+    import importa
+    d = nuova_importazione()
+    base = [sys.executable, "-u", str(CARTELLA / "importa.py"), "--lavoro", str(d)]
+    if azione in ("proponi", "applica"):
+        p = Path(os.path.expandvars(os.path.expanduser((percorso_file or "").strip().strip('"'))))
+        if not p.exists():
+            return {"errore": f"Non trovo «{percorso_file}» su questo computer."}
+    if azione == "proponi":
+        comando = base + ["proponi", str(p)] + (["--serie", serie] if serie else [])
+        nota = ("Quando è finita (importa, azione stato) il registro indica la tabella: di' all'utente di aprirla "
+                "con Excel o LibreOffice, controllare le righe con «da_controllare», salvarla e dirtelo. Non "
+                "compilarla tu.")
+    elif azione == "applica":
+        comando = base + ["applica", str(p)] + (["--prova"] if prova else []) + (["--sovrascrivi"] if sovrascrivi else [])
+        nota = ("Prima con prova = true (controlla la tabella senza scrivere); poi, se l'utente conferma, senza. "
+                "Lo stato con importa (azione stato).")
+    else:
+        if serie and not importa.leggi_serie().has_section(serie):
+            return {"errore": f"La serie «{serie}» non è in series.ini.", "serie": importa.leggi_serie().sections()}
+        comando = base + ["rivedi", "--solo-dubbi"] + (["--serie", serie] if serie else [])
+        nota = ("La tabella elenca i documenti con valori dedotti, da verificare o mancanti: l'utente la corregge e "
+                "poi importa (azione applica, percorso_file = la tabella).")
+    avvia_importazione(d, comando)
+    return {"id": d.name, "avviata": True, "nota": nota}
 
 
 def t_stato_importazione(id=""):
@@ -780,6 +819,11 @@ def t_risposte(azione="leggi", file="", sezioni=None, dal=None, al=None, da=0, t
 
 def t_importa(azione="stato", percorso_file="", serie="", data="", numero="", titolo="", autore="", anno="",
               volume="", unisci=False, sovrascrivi=False, prova=0, id="", prima_pagina=None, da_pagina=None):
+    if azione in ("proponi", "applica", "rivedi"):
+        if azione != "rivedi" and not percorso_file:
+            return {"errore": f"Per {azione} serve percorso_file ("
+                              + ("la cartella dei documenti)." if azione == "proponi" else "la tabella compilata).")}
+        return t_tabella_importazione(azione, percorso_file, serie, bool(prova), sovrascrivi)
     if azione == "avvia":
         if not percorso_file or not serie:
             return {"errore": "Per importare servono percorso_file e serie."}
@@ -874,11 +918,14 @@ STRUMENTI = {
     "correggi_passaggio": (t_correggi_passaggio, "Registra una correzione dell'utente su un passaggio.",
                            {"id": _S, "entita": _S, "pertinente": _azione("sì", "no", "incerto"),
                             "traduzione": _S, "nota": _S}, ["id", "entita"]),
-    "importa": (t_importa, "Nuove fonti in una serie: avvia (PDF, scansioni, .txt, esportazioni PAGE/ALTO XML: una "
-                "cartella di pagine .xml o un .zip è un documento; OCR se serve; prova = prime N pagine senza "
-                "scrivere) o stato (l'ultima se id è vuoto).",
-                {"azione": _azione("avvia", "stato"),
-                 "percorso_file": dict(_S, description="file o cartella sul computer dell'utente"),
+    "importa": (t_importa, "Nuove fonti. Per una cartella di documenti: proponi (serie e metadati in una tabella "
+                "che l'utente controlla in Excel o LibreOffice), poi applica con prova, poi applica. Per un file "
+                "in una serie che c'è già: avvia (OCR se serve; prova = prime N pagine senza scrivere). rivedi: "
+                "tabella delle intestazioni dubbie dei documenti già importati. stato: l'ultima operazione se id è "
+                "vuoto.",
+                {"azione": _azione("proponi", "applica", "rivedi", "avvia", "stato"),
+                 "percorso_file": dict(_S, description="file o cartella sul computer dell'utente; per applica, la "
+                                                       "tabella compilata"),
                  "serie": _S, "data": dict(_S, description="AAAA-MM-GG, per un solo file"), "numero": _S,
                  "titolo": _S, "autore": dict(_S, description="Cognome, Nome"), "anno": _S, "volume": _S,
                  "unisci": dict(_B, description="tutti i file diventano un solo documento"),
