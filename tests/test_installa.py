@@ -149,6 +149,23 @@ class Client(unittest.TestCase):
         self.assertEqual(len(copie), 1)
         self.assertEqual(json.loads(copie[0].read_text(encoding="utf-8")), base)
 
+    def test_non_interattiva_eof_non_scrive(self):
+        """--scrivi senza --si con tastiera assente (EOFError): deve annullare con codice 0, non esplodere."""
+        base = {"mcpServers": {"altro": {"command": "x"}}}
+        f = self.cartella / "eof.json"
+        f.write_text(json.dumps(base), encoding="utf-8")
+        args = argparse.Namespace(nome="claude", scrivi=True, verifica=False, si=False, file=str(f),
+                                  voce={"command": "py", "args": ["server.py"], "env": {}})
+        righe = []
+
+        def chiedi_che_esplode(_t):
+            raise EOFError
+
+        codice = I.cmd_client_scrivi(args, righe.append, chiedi=chiedi_che_esplode)
+        self.assertEqual(codice, 0)
+        self.assertIn("Annullato", "\n".join(righe))
+        self.assertEqual(json.loads(f.read_text(encoding="utf-8")), base)   # file intatto
+
     def test_senza_scrivi_mostra_solo(self):
         f = self.cartella / "c.json"
         args = argparse.Namespace(nome="claude", scrivi=False, verifica=False, si=False, file=str(f), voce=None)

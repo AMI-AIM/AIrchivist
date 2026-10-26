@@ -299,10 +299,15 @@ def passaggi_manuali_jan(stampa):
 
 
 def conferma_domanda(testo, chiedi):
-    """Domanda di conferma: «testo [S/n] » risponde sì anche a vuoto, «testo [s/N] » no a vuoto."""
+    """Domanda di conferma: «testo [S/n] » risponde sì anche a vuoto, «testo [s/N] » no a vuoto.
+    Se non c'è nessuno da interrogare (tastiera assente o pipe chiusa: EOFError) la risposta è «no»,
+    così --scrivi senza --si in modalità non interattiva non scrive nulla invece di interrompersi."""
     m = re.search(r"\[(s[Nn])\]\s*$", testo)
     default = m and m.group(1) == "sN"
-    r = chiedi(testo).strip().lower()
+    try:
+        r = chiedi(testo).strip().lower()
+    except EOFError:
+        return False
     if not r:
         return not default
     return r in ("s", "si", "sì", "y", "yes")
