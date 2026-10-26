@@ -4,6 +4,7 @@ temporaneo, serie e scheda create dalla chat, nessun archivio delle letture), im
 senza Tesseract, lettura dei PDF con pypdf quando manca PyMuPDF, costruzione dello zip della skill.
 """
 import json
+import re
 import os
 import subprocess
 import sys
@@ -188,6 +189,90 @@ class ZipDellaSkill(unittest.TestCase):
             self.assertIn(f"ricerca-fonti/motore/{m}.py", nomi)
         for m in ("mcp_server", "lavori", "valutazione", "installa"):          # non servono nella chat
             self.assertNotIn(f"ricerca-fonti/motore/{m}.py", nomi)
+
+    def test_fonte_unica(self):
+        """Lo zip prende SKILL.md dalla fonte unica; ogni comando di chat.py che SKILL.md richiama esiste e la
+        skill non nomina un provider."""
+        fonte = PIPELINE.parent / "skills" / "ricerca-fonti" / "SKILL.md"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "skill.zip"
+            from contextlib import redirect_stdout
+            import io
+            with redirect_stdout(io.StringIO()):
+                crea_skill_chat.main(["--out", str(out)])
+            self.assertEqual(zipfile.ZipFile(out).read("ricerca-fonti/SKILL.md"), fonte.read_bytes())
+        testo = fonte.read_text(encoding="utf-8")
+        richiamati = set(re.findall(r"chat\.py ([a-z-]+)", testo))
+        aiuto = subprocess.run([sys.executable, str(PIPELINE / "chat.py"), "--help"], capture_output=True,
+                               text=True, encoding="utf-8").stdout
+        comandi = set(re.search(r"\{([a-z,-]+)\}", aiuto).group(1).split(","))
+        self.assertTrue(richiamati, "SKILL.md non richiama chat.py")
+        self.assertEqual(richiamati - comandi, set())
+        for nome in ("Claude", "ChatGPT", "OpenAI", "Anthropic"):
+            self.assertNotIn(nome, testo)
+        descrizione = re.search(r"^description: (.*)$", testo, re.M).group(1)
+        self.assertLessEqual(len(descrizione), 1024)
+
+
+class Ambiente(unittest.TestCase):
+    def esegui(self, chat_py, *argomenti, env=None, cwd=None, codice=0):
+        r = subprocess.run([sys.executable, str(chat_py), *map(str, argomenti)], cwd=cwd, env=env,
+                           capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(r.returncode, codice, r.stdout + r.stderr)
+        return r.stdout + r.stderr
+
+    def test_sistema_completo(self):
+        import chat
+        with tempfile.TemporaryDirectory() as tmp:
+            motore = Path(tmp) / "AIrchivist" / "pipeline"
+            (motore.parent / "docs").mkdir(parents=True)
+            motore.mkdir()
+            vecchio = os.environ.pop("AIRCHIVIST_MOTORE", None)
+            try:
+                self.assertIsNone(chat.sistema_completo(motore.parent / "docs"))
+                for f in ("mcp_server.py", "sessione.py", "config.ini"):
+                    (motore / f).write_text("", encoding="utf-8")
+                self.assertEqual(chat.sistema_completo(motore.parent / "docs"), motore.resolve())
+                self.assertEqual(chat.sistema_completo(motore), motore.resolve())
+            finally:
+                if vecchio is not None:
+                    os.environ["AIRCHIVIST_MOTORE"] = vecchio
+
+    def test_skill_fuori_dal_sistema(self):
+        """Il motore copiato nella skill, lanciato fuori da un'installazione completa: nessuna fonte, progetto
+        temporaneo."""
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            out = t / "skill.zip"
+            from contextlib import redirect_stdout
+            import io
+            with redirect_stdout(io.StringIO()):
+                crea_skill_chat.main(["--out", str(out)])
+            zipfile.ZipFile(out).extractall(t / "skill")
+            env = {k: v for k, v in os.environ.items() if k != "AIRCHIVIST_MOTORE"}
+            env.update(AIRCHIVIST_PROGETTO=str(t / "progetto"), PYTHONIOENCODING="utf-8")
+            esito = json.loads(self.esegui(t / "skill" / "ricerca-fonti" / "motore" / "chat.py", "ambiente",
+                                           env=env, cwd=t))
+            self.assertEqual(esito["modo"], "nessuna_fonte")
+            self.assertTrue(esito["temporaneo"])
+            self.assertIn(esito["pdf"], ("PyMuPDF", "pypdf", "nessuno"))
+            self.assertEqual(Path(esito["consegna"]), t / "progetto" / "consegna")
+
+    def test_progetto_del_sistema_protetto(self):
+        """Nel motore completo, su un progetto vero (progetto.ini senza il segno dei progetti della chat), apri,
+        importa, serie-crea e consegna si rifiutano."""
+        with tempfile.TemporaryDirectory() as tmp:
+            radice = Path(tmp) / "vero"
+            radice.mkdir()
+            (radice / "progetto.ini").write_text("[progetto]\nnome = vero\n", encoding="utf-8")
+            env = dict(os.environ, AIRCHIVIST_PROGETTO=str(radice), PYTHONIOENCODING="utf-8")
+            for argomenti in (["apri", tmp], ["importa", tmp, "--serie", "X"],
+                              ["serie-crea", "X", "--tipo", "volume", "--lingua", "it", "--cartella", "volumi/x",
+                               "--citazione", "x"], ["consegna", "x"]):
+                self.assertIn("non si usa sul progetto del sistema completo",
+                              self.esegui(PIPELINE / "chat.py", *argomenti, env=env, codice=1))
+            self.assertFalse((radice / "data").exists())
+            self.assertFalse((radice / "serie.ini").exists())
 
 
 if __name__ == "__main__":

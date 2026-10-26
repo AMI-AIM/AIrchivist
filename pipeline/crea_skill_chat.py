@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Costruisce lo zip della skill ricerca-fonti per la chat di Claude (claude.ai, Claude Desktop): SKILL.md e
-config.ini da skill_chat/, i moduli del motore che servono alla lettura in sessione e serie_modello.ini.
+config.ini dalla fonte unica skills/ricerca-fonti/, i moduli del motore che servono alla lettura in sessione e
+serie_modello.ini.
 Lo zip si carica in Impostazioni → Funzionalità → Skill (serve l'esecuzione del codice).
 
 Uso:
@@ -14,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
-SORGENTE = CARTELLA.parent / "skill_chat"
+SORGENTE = CARTELLA.parent / "skills" / "ricerca-fonti"
 NOME = "ricerca-fonti"
 # moduli del motore: chat.py e quelli che importa, direttamente o no (calcolati da dipendenze())
 INIZIO = ["chat", "sessione", "sintesi", "importa", "esplora", "schede", "progetto", "indice"]
