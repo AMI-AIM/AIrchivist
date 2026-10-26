@@ -53,8 +53,8 @@ Gli originali di `stato_del_sistema.md` e `progettazione_del_sistema.md` sono ne
 | `importazioni/` | registro delle importazioni |
 | `docs/` | documentazione di progetto |
 | `letteratura/` | letteratura secondaria sul metodo (PDF, fuori da git) |
-| `skill_chat/`, `dist/` | skill ricerca-fonti per la chat di Claude e il suo zip (`python pipeline/crea_skill_chat.py`) |
-| `.claude/skills/ricerca-fonti/` | skill ricerca-fonti per Claude Code (lettura in sessione, `pipeline/sessione.py`) |
+| `skills/ricerca-fonti/` | skill ricerca-fonti, fonte unica senza nomi di provider (`SKILL.md`, `config.ini`); `skills/leggimi/`: LEGGIMI delle confezioni |
+| `dist/` | confezioni della skill (`python pipeline/confeziona.py`): `ricerca-fonti-claude.zip` per claude.ai, `claude-code/` marketplace con il plugin per Claude Code, `ricerca-fonti-chatgpt.zip` per ChatGPT |
 
 Ambiente: Windows. Il tool si usa dalla chat di Jan tramite il server MCP `pipeline/mcp_server.py`. I modelli arrivano da FreeLLMAPI (`http://127.0.0.1:31415/v1`, chiave in `FREELLMAPI_KEY`).
 

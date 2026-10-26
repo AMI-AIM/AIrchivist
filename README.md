@@ -89,6 +89,21 @@ variable.
 New sources (PDF, scans, `.txt`, PAGE XML and ALTO XML exports from Transkribus or eScriptorium) are added with
 `pipeline/importa.py` or the `importa` tool.
 
+## Skill for chat assistants
+
+A smaller version of the method runs inside a chat assistant, without installing the engine: the `ricerca-fonti`
+skill, written once in `skills/ricerca-fonti/` and packaged for three places by `python pipeline/confeziona.py`
+(output in `dist/`):
+
+- `ricerca-fonti-claude.zip` for claude.ai and Claude Desktop (upload under Customize > Skills);
+- `claude-code/`, a Claude Code plugin marketplace (`claude plugin marketplace add ./dist/claude-code`, then
+  `claude plugin install ricerca-fonti@airchivist`);
+- `ricerca-fonti-chatgpt.zip`, the same plugin as a skills-only ChatGPT plugin.
+
+The skill works on a small corpus uploaded to the conversation, with no reading archive. When it finds a full
+AIrchivist installation on the computer, it uses that project and its archive instead. It is a way to try the
+method on a few documents, not a replacement for the engine.
+
 ## Tests
 
 ```bash

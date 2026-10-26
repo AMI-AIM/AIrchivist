@@ -1,7 +1,7 @@
 """
 Test della skill ricerca-fonti per la chat di Claude: chat.py su un corpus caricato in .zip (progetto
 temporaneo, serie e scheda create dalla chat, nessun archivio delle letture), importazione di un PDF con testo
-senza Tesseract, lettura dei PDF con pypdf quando manca PyMuPDF, costruzione dello zip della skill.
+senza Tesseract, lettura dei PDF con pypdf quando manca PyMuPDF, confezioni della skill.
 """
 import json
 import re
@@ -15,7 +15,7 @@ from pathlib import Path
 
 PIPELINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PIPELINE))
-import crea_skill_chat  # noqa: E402
+import confeziona  # noqa: E402
 
 INTESTAZIONE = """[DOC_ID: RMB-{data}]
 [SERIES: Renmin Ribao]
@@ -173,34 +173,63 @@ class PdfConPypdf(unittest.TestCase):
                     doc[0].get_pixmap(dpi=300)
 
 
-class ZipDellaSkill(unittest.TestCase):
-    def test_contenuto(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "skill.zip"
-            from contextlib import redirect_stdout
-            import io
-            with redirect_stdout(io.StringIO()):
-                crea_skill_chat.main(["--out", str(out)])
-            nomi = set(zipfile.ZipFile(out).namelist())
-        self.assertIn("ricerca-fonti/SKILL.md", nomi)
-        self.assertIn("ricerca-fonti/motore/config.ini", nomi)
-        self.assertIn("ricerca-fonti/motore/serie_modello.ini", nomi)
+def confeziona_in(dist):
+    from contextlib import redirect_stdout
+    import io
+    with redirect_stdout(io.StringIO()):
+        confeziona.main(["--dist", str(dist)])
+    return Path(dist)
+
+
+class Confezioni(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dist = confeziona_in(Path(cls.tmp.name) / "dist")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_zip_claude(self):
+        nomi = set(zipfile.ZipFile(self.dist / "ricerca-fonti-claude.zip").namelist())
+        self.assertEqual({n.split("/")[0] for n in nomi}, {"ricerca-fonti"})       # la cartella alla radice
+        for f in ("SKILL.md", "LEGGIMI.md", "LICENSE", "motore/config.ini", "motore/serie_modello.ini"):
+            self.assertIn(f"ricerca-fonti/{f}", nomi)
         for m in ("chat", "sessione", "sintesi", "importa", "estrai_occorrenze", "indice", "citazioni"):
             self.assertIn(f"ricerca-fonti/motore/{m}.py", nomi)
-        for m in ("mcp_server", "lavori", "valutazione", "installa"):          # non servono nella chat
+        for m in ("mcp_server", "lavori", "valutazione", "installa", "confeziona"):  # non servono nella chat
             self.assertNotIn(f"ricerca-fonti/motore/{m}.py", nomi)
 
+    def test_plugin_claude_code_e_chatgpt(self):
+        mercato = json.loads((self.dist / "claude-code" / ".claude-plugin" / "marketplace.json")
+                             .read_text(encoding="utf-8"))
+        voce = mercato["plugins"][0]
+        self.assertTrue(mercato["name"] and mercato["owner"]["name"])
+        cart = self.dist / "claude-code" / voce["source"]
+        self.assertTrue((cart / "skills" / "ricerca-fonti" / "motore" / "chat.py").is_file())
+        claude = json.loads((cart / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        portabile = json.loads((cart / "plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(claude["name"], voce["name"])
+        self.assertEqual(portabile["name"], claude["name"])
+        self.assertIn("agent-plugins.org", portabile["$schema"])
+        self.assertTrue(claude["description"])                # OpenAI la vuole non vuota
+        # ChatGPT: alla radice dello zip il manifesto e almeno skills/<nome>/SKILL.md
+        z = zipfile.ZipFile(self.dist / "ricerca-fonti-chatgpt.zip")
+        nomi = set(z.namelist())
+        for f in (".claude-plugin/plugin.json", "plugin.json", "LEGGIMI.md", "LICENSE",
+                  "skills/ricerca-fonti/SKILL.md", "skills/ricerca-fonti/motore/chat.py"):
+            self.assertIn(f, nomi)
+        self.assertEqual(nomi, {f.relative_to(cart).as_posix() for f in cart.rglob("*") if f.is_file()})
+
     def test_fonte_unica(self):
-        """Lo zip prende SKILL.md dalla fonte unica; ogni comando di chat.py che SKILL.md richiama esiste e la
-        skill non nomina un provider."""
+        """Le confezioni prendono SKILL.md dalla fonte unica; ogni comando di chat.py che SKILL.md richiama
+        esiste e la skill non nomina un provider."""
         fonte = PIPELINE.parent / "skills" / "ricerca-fonti" / "SKILL.md"
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "skill.zip"
-            from contextlib import redirect_stdout
-            import io
-            with redirect_stdout(io.StringIO()):
-                crea_skill_chat.main(["--out", str(out)])
-            self.assertEqual(zipfile.ZipFile(out).read("ricerca-fonti/SKILL.md"), fonte.read_bytes())
+        self.assertEqual(zipfile.ZipFile(self.dist / "ricerca-fonti-claude.zip").read("ricerca-fonti/SKILL.md"),
+                         fonte.read_bytes())
+        self.assertEqual(zipfile.ZipFile(self.dist / "ricerca-fonti-chatgpt.zip")
+                         .read("skills/ricerca-fonti/SKILL.md"), fonte.read_bytes())
         testo = fonte.read_text(encoding="utf-8")
         richiamati = set(re.findall(r"chat\.py ([a-z-]+)", testo))
         aiuto = subprocess.run([sys.executable, str(PIPELINE / "chat.py"), "--help"], capture_output=True,
@@ -243,12 +272,7 @@ class Ambiente(unittest.TestCase):
         temporaneo."""
         with tempfile.TemporaryDirectory() as tmp:
             t = Path(tmp)
-            out = t / "skill.zip"
-            from contextlib import redirect_stdout
-            import io
-            with redirect_stdout(io.StringIO()):
-                crea_skill_chat.main(["--out", str(out)])
-            zipfile.ZipFile(out).extractall(t / "skill")
+            zipfile.ZipFile(confeziona_in(t / "dist") / "ricerca-fonti-claude.zip").extractall(t / "skill")
             env = {k: v for k, v in os.environ.items() if k != "AIRCHIVIST_MOTORE"}
             env.update(AIRCHIVIST_PROGETTO=str(t / "progetto"), PYTHONIOENCODING="utf-8")
             esito = json.loads(self.esegui(t / "skill" / "ricerca-fonti" / "motore" / "chat.py", "ambiente",

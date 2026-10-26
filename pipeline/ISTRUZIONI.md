@@ -35,9 +35,9 @@ AIrchivist\
     <nome_entità>\          una cartella per ogni ricerca
   letteratura\              letteratura secondaria sul metodo (PDF, fuori dal controllo di versione)
   docs\                     documentazione di progetto (stato, progettazione, piano di lavoro, schede)
-  skill_chat\               skill ricerca-fonti per la chat di Claude (crea_skill_chat.py la impacchetta)
-  dist\                     lo zip della skill per la chat (si rigenera)
-  .claude\skills\           skill ricerca-fonti per Claude Code, sul progetto di questa cartella
+  skills\ricerca-fonti\     skill ricerca-fonti, fonte unica (SKILL.md, config.ini); skills\leggimi\: LEGGIMI delle confezioni
+  dist\                     confezioni della skill (si rigenerano con confeziona.py): ricerca-fonti-claude.zip
+                            (claude.ai), claude-code\ (marketplace con il plugin), ricerca-fonti-chatgpt.zip
   pipeline\
     installa.py             installazione delle librerie, controllo dell'ambiente, configurazione dei client
     mcp_server.py           il server che collega Jan alla pipeline; istruzioni.py: le regole che consegna
@@ -53,8 +53,8 @@ AIrchivist\
                             parti dell'importazione: XML, numeri di pagina, ordine delle colonne nei giornali,
                             motori OCR, confronto dei testi
     citazioni.py            citazioni in stile Chicago dalle intestazioni e dai profili di serie
-    sessione.py             lettura dei passaggi in sessione (skill ricerca-fonti per Claude Code)
-    chat.py, crea_skill_chat.py   motore e pacchetto della skill per la chat di Claude
+    sessione.py             lettura dei passaggi in sessione (skill ricerca-fonti)
+    chat.py, confeziona.py  comandi della skill ricerca-fonti (chat.py ambiente: dove si trova) e sue confezioni
     valuta.py               prova rapida dei modelli su una lettura di riferimento
     valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
     prova_ocr.py, prova_chat.py   prove dei motori OCR e dei modelli della chat
