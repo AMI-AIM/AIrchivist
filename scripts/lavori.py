@@ -87,6 +87,10 @@ def comando_ricerca(i, domanda, config=None, accetta_incompleti=False):
         comando += ["--config", config]
     if accetta_incompleti:
         comando += ["--accetta-incompleti"]
+    if i.get("usa_modello_attuale"):
+        comando += ["--usa-modello-attuale"]
+    if i.get("rileggi_modello"):
+        comando += ["--rileggi-modello", i["rileggi_modello"]]
     return comando
 
 

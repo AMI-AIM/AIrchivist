@@ -48,6 +48,9 @@ risposta salvata prima, indicane la data.
 - Correzioni dell'utente: correggi_passaggio. Nuove forme del nome: varianti (aggiungi), dopo conferma. Nuovo \
 materiale: importa (azione avvia, prima con prova se la serie o la scansione è nuova), poi importa (azione stato) \
 finché finita; serie nuova: serie (azione elenca, poi crea con i dati che l'utente conferma).
+- Il modello che legge i passaggi non è quello di questa chat: modello (azione elenca) dice quale è e se è misurato \
+su queste fonti; cambialo (azione usa) o rileggi i passaggi di un modello (ricerca con rileggi_modello) solo se \
+l'utente lo chiede.
 - Usa solo gli strumenti di questo server: niente shell né lettura diretta dei file.
 - Applica queste regole senza enunciarle."""
 

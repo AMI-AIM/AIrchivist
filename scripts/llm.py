@@ -265,7 +265,7 @@ class LLM:
         max_token, timeout = self.max_token, self.timeout
         # pochi token bastano per sapere se il servizio risponde (i modelli che "ragionano" possono restituire
         # un testo vuoto: conta che la richiesta sia accettata)
-        self.max_token, self.timeout = min(self.max_token, 200), min(self.timeout, 90)
+        self.max_token, self.timeout = min(self.max_token, 200), min(self.timeout, 60)   # sotto i 90 s di Jan
         try:
             funzione("Rispondi solo con la parola: ok", "Prova di collegamento.", None)
         except LimiteRaggiunto as l:

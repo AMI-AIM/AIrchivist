@@ -1,7 +1,7 @@
 """
 Test del server MCP generico (mcp_server.py, istruzioni.py): il server avviato davvero in stdio su un progetto
 nuovo (variabile AIRCHIVIST_PROGETTO), con le istruzioni composte dai profili e da istruzioni.md, il prompt
-«istruzioni», i 13 strumenti e i nomi di prima accettati come alias.
+«istruzioni», i 14 strumenti e i nomi di prima accettati come alias.
 """
 import argparse
 import io
@@ -81,7 +81,7 @@ class ServerMcp(unittest.TestCase):
 
     def test_strumenti_e_prompt(self):
         nomi = [t["name"] for t in self.risposte[2]["result"]["tools"]]
-        self.assertEqual(len(nomi), 13)
+        self.assertEqual(len(nomi), 14)
         self.assertIn("guida", nomi)
         self.assertNotIn("elenca_serie", nomi)                     # alias: accettato, non elencato
         self.assertEqual(self.risposte[3]["result"]["prompts"][0]["name"], "istruzioni")

@@ -200,6 +200,8 @@ def main():
     args = ap.parse_args()
     if args.collegate:
         args.evoluzione = True
+    if args.rileggi_modello is not None and len(args.rileggi_modello.strip()) < 3:
+        sys.exit("--rileggi-modello: indica almeno tre caratteri del nome del modello.")
 
     cfg = leggi_config(args.config)
     f_entita = percorso(cfg, "entita")

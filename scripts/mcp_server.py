@@ -5,11 +5,11 @@ un LLM: qualsiasi client MCP (Jan, Claude Desktop, LM Studio, Open WebUI, ...). 
 
 Istruzioni per il modello della chat: composte da istruzioni.py (regole generali, fonti del progetto, instructions.md
 del progetto) e consegnate in tre modi, perché non tutti i client le mostrano al modello: campo «instructions» di
-initialize, prompt MCP «istruzioni», strumento «guida». Strumenti: 13, quelli con più operazioni hanno «azione»;
+initialize, prompt MCP «istruzioni», strumento «guida». Strumenti: 14, quelli con più operazioni hanno «azione»;
 i nomi di prima del lavoro 14 restano accettati (ALIAS).
 
 Il modello della chat NON legge le fonti: usa questi strumenti. La lettura dei passaggi resta alla pipeline
-(archivio unico + modelli configurati in config.ini); alla chat arrivano solo risultati con citazioni verificate.
+(archivio unico + profili di modello di models.ini, strumento «modello»); alla chat arrivano solo risultati con citazioni verificate.
 
 Avvio:
   python mcp_server.py                 (stdio: lo avvia il client; vedi docs/user_guide.it.md)
@@ -291,7 +291,8 @@ def t_crea_serie(nome, tipo, lingua, cartella, citazione, sigla="", nota_limiti=
     return {"esito": msg} if msg.startswith("Serie") else {"errore": msg}
 
 
-def t_avvia_ricerca(entita, collegate=None, modalita="occorrenze", dal=None, al=None, fonti=None, domanda=""):
+def t_avvia_ricerca(entita, collegate=None, modalita="occorrenze", dal=None, al=None, fonti=None, domanda="",
+                    usa_modello_attuale=False, rileggi_modello=""):
     c = cfg()
     sezioni = schede.leggi_schede(percorso(c, "entita")).sections()
     if entita not in sezioni:
@@ -305,6 +306,15 @@ def t_avvia_ricerca(entita, collegate=None, modalita="occorrenze", dal=None, al=
          "modalita": "evoluzione" if modalita == "evoluzione" or collegate else "occorrenze",
          "dal": int(dal) if dal else None, "al": int(al) if al else None,
          "fonti": [f for f in (fonti or []) if f in FONTI_SCELTE], "seguito": False}
+    rileggi_modello = (rileggi_modello or "").strip()
+    if rileggi_modello and len(rileggi_modello) < 3:
+        return {"errore": "rileggi_modello: indica almeno tre caratteri del nome del modello (come appare in "
+                          "«Limiti» o in passaggi_archivio)."}
+    # solo se richieste, perché i parametri delle ricerche già avviate restino confrontabili
+    if usa_modello_attuale:
+        i["usa_modello_attuale"] = True
+    if rileggi_modello:
+        i["rileggi_modello"] = rileggi_modello
     if i["modalita"] == "evoluzione" and not collegate:
         i = schede.aggiungi_collegate_scheda(i, schede.leggi_schede(percorso(c, "entita")))
     d, s_ = lavori.attivo(c)
@@ -322,7 +332,7 @@ def compatto(s_):
     fine = s_.get("battito", time.time()) if finito else time.time()      # durata, non tempo trascorso da allora
     out = {"finito": finito, "stato": s_.get("stato"),
            "minuti": round((fine - s_.get("inizio", fine)) / 60)}
-    for k in ("fase", "avanzamento", "prossimo_tentativo", "messaggio", "risposta"):
+    for k in ("fase", "avanzamento", "prossimo_tentativo", "messaggio", "risposta", "profili"):
         if s_.get(k):
             out[k] = s_[k]
     if not finito:
@@ -722,14 +732,44 @@ def t_schede(azione="elenca", filtro="", nome="", varianti=None, descrizione="",
 
 
 def t_ricerca(azione="attendi", entita="", collegate=None, modalita="occorrenze", dal=None, al=None, fonti=None,
-              domanda="", secondi=None):
+              domanda="", secondi=None, usa_modello_attuale=False, rileggi_modello=""):
     if azione == "avvia":
         if not entita:
             return {"errore": "Per avviare una ricerca serve entita (nome esatto della scheda)."}
-        return t_avvia_ricerca(entita, collegate, modalita, dal, al, fonti, domanda)
+        return t_avvia_ricerca(entita, collegate, modalita, dal, al, fonti, domanda, usa_modello_attuale,
+                               rileggi_modello)
     if azione == "ferma":
         return t_ferma_ricerca()
     return t_attendi_ricerca(secondi)
+
+
+def t_modello(azione="elenca", profilo="", ruoli=None, solo_progetto=False):
+    """Profili dei modelli che leggono i passaggi (installa.py modello, lavoro 26): elenca, prova, usa. «usa» cambia
+    la scelta solo se la prova di collegamento riesce, come da riga di comando."""
+    import installa
+    installa.FILE_CONFIG = Path(CONFIG).resolve() if CONFIG else CARTELLA / "config.ini"
+    c = cfg()
+    if azione == "elenca":
+        return {**installa.stato_profili(c),
+                "nota_chat": "Il modello di questa chat è un'altra cosa: si sceglie nel client, non qui. Un profilo "
+                             "nuovo si crea da riga di comando (python installa.py modello nuovo): la chiave non "
+                             "passa dalla chat."}
+    from llm import RUOLI, leggi_profili
+    if not profilo or profilo not in leggi_profili(c):
+        return {"errore": f"Profilo «{profilo}» inesistente.", "profili": list(leggi_profili(c))}
+    ruoli = [r for r in (ruoli or []) if r in RUOLI]
+    righe = []
+    if azione == "prova":
+        ok = installa.prova_profilo(c, profilo, righe.append)
+        return {"riuscita": ok, "messaggi": righe}
+    codice = installa.modello_usa(argparse.Namespace(nome=profilo, ruolo=ruoli or None, progetto=bool(solo_progetto)),
+                                  righe.append)
+    out = {"cambiato": codice == 0, "messaggi": righe}
+    d, s_ = lavori.attivo(c)
+    if d and codice == 0:
+        out["ricerca_in_corso"] = ("La ricerca in corso continua con i profili con cui è partita; il cambio vale per "
+                                   "le ricerche successive.")
+    return out
 
 
 def t_risposte(azione="leggi", file="", sezioni=None, dal=None, al=None, da=0, testo_filtro="", quante=20):
@@ -799,7 +839,19 @@ STRUMENTI = {
                 {"azione": _azione("avvia", "attendi", "ferma"), "entita": _S,
                  "collegate": dict(_L, description="altre schede: modalità evoluzione"),
                  "modalita": _azione("occorrenze", "evoluzione"), "dal": _I, "al": _I, "fonti": _F,
-                 "domanda": dict(_S, description="la domanda dell'utente per intero"), "secondi": _I},
+                 "domanda": dict(_S, description="la domanda dell'utente per intero"), "secondi": _I,
+                 "usa_modello_attuale": dict(_B, description="solo se l'utente lo chiede: una ricerca interrotta "
+                                                             "prosegue con il modello scelto adesso, non con quello "
+                                                             "con cui era partita"),
+                 "rileggi_modello": dict(_S, description="solo se l'utente lo chiede: parte del nome di un modello "
+                                                         "inaffidabile; i suoi passaggi tornano al modello attuale")},
+                ["azione"]),
+    "modello": (t_modello, "Modelli che leggono i passaggi (non quello di questa chat): elenca i profili, quelli in "
+                "uso e se sono misurati; prova un profilo; usa un profilo SOLO su richiesta esplicita dell'utente "
+                "(cambia solo se la prova riesce; ruoli: smistamento, analisi, sintesi; senza, tutti).",
+                {"azione": _azione("elenca", "prova", "usa"), "profilo": _S,
+                 "ruoli": {"type": "array", "items": {"type": "string", "enum": ["smistamento", "analisi", "sintesi"]}},
+                 "solo_progetto": dict(_B, description="la scelta vale solo per il progetto in uso")},
                 ["azione"]),
     "risposte": (t_risposte, "Risposte salvate: elenca, o leggi (l'ultima se file è vuoto; senza sezioni la risposta "
                  "pronta da presentare; dal/al e testo_filtro, forme separate da ;, filtrano le sezioni 1 e 2; da "

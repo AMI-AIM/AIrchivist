@@ -454,6 +454,35 @@ def sn(chiedi, domanda, predefinito):
     return predefinito if not r else r in ("s", "si", "sì", "y", "yes")
 
 
+def stato_profili(cfg):
+    """Profili, scelta per ruolo, chiavi e misure, come dati (per lo strumento MCP «modello»)."""
+    from llm import RUOLI, ErroreModello, file_profili, leggi_profili, nome_scelto, profilo, usa_profili
+    from progetto import NessunProgetto, percorso
+    from sintesi import misurato, modelli_misurati
+    try:
+        misurati = modelli_misurati(percorso(cfg, "risultati"))
+    except NessunProgetto:
+        misurati = set()
+    scelti = {r: nome_scelto(cfg, r) for r in RUOLI}
+    out = {"file_profili": str(file_profili(cfg)), "profili": []}
+    for nome, p in leggi_profili(cfg).items():
+        env = p.get("chiave_env", "") or ("ANTHROPIC_API_KEY" if p.get("servizio") == "anthropic" else "")
+        voce = {"nome": nome, "servizio": p.get("servizio", ""), "modello": p.get("modello", ""),
+                "chiave": ("presente" if os.environ.get(env) else "assente") if env else "non serve",
+                "in_uso_per": [r for r in RUOLI if scelti[r] == nome]}
+        if p.get("servizio") != "router":           # un router sceglie il modello a ogni richiesta
+            voce["misurato"] = misurato(p.get("modello", ""), misurati)
+        out["profili"].append(voce)
+    try:
+        out["in_uso"] = {r: profilo(cfg, r)[0] for r in RUOLI}
+    except ErroreModello as e:
+        out["errore"] = str(e)
+    if not usa_profili(cfg):
+        out["nota"] = ("Nessun profilo scelto: vale la configurazione precedente di config.ini "
+                       "(per convertirla: python installa.py modello converti).")
+    return out
+
+
 def modello_elenca(args, stampa, **_):
     from llm import RUOLI, ErroreModello, file_profili, leggi_profili, nome_scelto, profilo, usa_profili
     cfg = leggi_cfg()

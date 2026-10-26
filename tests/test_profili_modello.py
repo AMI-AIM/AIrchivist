@@ -273,6 +273,53 @@ class Converti(Base):
         self.assertEqual(esito.mancanti, ["modelli: spento"])
 
 
+class StrumentoMcp(Base):
+    """Strumento «modello» del server MCP e opzioni dello strumento «ricerca»."""
+    def setUp(self):
+        super().setUp()
+        import mcp_server
+        self.M = mcp_server
+        self.patch_mcp = mock.patch.object(mcp_server, "CONFIG", str(self.config))
+        self.patch_mcp.start()
+
+    def tearDown(self):
+        self.patch_mcp.stop()
+        super().tearDown()
+
+    def test_elenca(self):
+        out = self.M.t_modello("elenca")
+        self.assertEqual(out["in_uso"], {"smistamento": "buono", "analisi": "buono", "sintesi": "buono"})
+        voci = {p["nome"]: p for p in out["profili"]}
+        self.assertEqual(voci["buono"]["in_uso_per"], ["smistamento", "analisi", "sintesi"])
+        self.assertEqual((voci["buono"]["chiave"], voci["spento"]["chiave"]), ("presente", "non serve"))
+        self.assertFalse(voci["buono"]["misurato"])
+        self.assertIn("non qui", out["nota_chat"])
+
+    def test_prova_e_usa(self):
+        self.assertTrue(self.M.t_modello("prova", "buono")["riuscita"])
+        self.assertIn("errore", self.M.t_modello("usa", "inesistente"))
+        rifiutato = self.M.t_modello("usa", "rotto")
+        self.assertFalse(rifiutato["cambiato"])
+        self.assertIn("Restano in uso", " ".join(rifiutato["messaggi"]))
+        self.assertEqual(L.profili_attivi(self.cfg())["analisi"], "buono")
+        self.assertTrue(self.M.t_modello("usa", "secondo", ruoli=["sintesi"])["cambiato"])
+        self.assertEqual(L.profili_attivi(self.cfg()),
+                         {"smistamento": "buono", "analisi": "buono", "sintesi": "secondo"})
+        self.assertTrue(self.M.t_modello("usa", "secondo", solo_progetto=True)["cambiato"])
+        self.assertIn("profilo = secondo", (self.progetto / "project.ini").read_text(encoding="utf-8"))
+
+    def test_opzioni_della_ricerca(self):
+        import lavori
+        i = {"principale": "X", "collegate": [], "modalita": "occorrenze", "dal": None, "al": None, "fonti": []}
+        self.assertNotIn("--usa-modello-attuale", lavori.comando_ricerca(i, "d"))
+        comando = lavori.comando_ricerca(dict(i, usa_modello_attuale=True, rileggi_modello="gpt-oss"), "d")
+        self.assertIn("--usa-modello-attuale", comando)
+        self.assertEqual(comando[comando.index("--rileggi-modello") + 1], "gpt-oss")
+        schema = {n: p for n, (_, _, p, _) in self.M.STRUMENTI.items()}
+        self.assertIn("rileggi_modello", schema["ricerca"])
+        self.assertEqual(schema["modello"]["azione"]["enum"], ["elenca", "prova", "usa"])
+
+
 class Voci(unittest.TestCase):
     def test_bom_e_crlf_conservati(self):
         f = Path(tempfile.mkdtemp()) / "a.ini"
