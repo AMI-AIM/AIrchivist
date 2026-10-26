@@ -300,6 +300,18 @@ Verifiche (26/10):
    - seconda ricerca: i 4 passaggi già letti non si rileggono, i 4 nuovi li legge qwen/qwen3.8-27b direttamente da Groq; sintesi con lo stesso modello. «Limiti»: «qwen/qwen3.8-27b (anche come groq/qwen/qwen3.8-27b), 6 passaggi, non misurato…; google/gemini-flash-lite-latest, 2 passaggi, non misurato…».
    Il cambio da o verso Ollama, chiesto dalla roadmap, non è provato: Ollama non è installato.
 
+### Configurazione dei client MCP (fase 7, lavoro 27, 26/10/2026)
+
+Istruzioni in `roadmap_simplification.md`, lavoro 27. Il comando configura la chat senza far scrivere nulla a mano.
+
+- **`installa.py client <jan|claude|lmstudio> --scrivi`**: trova il file di configurazione del client sul sistema in uso (cartella dati: Windows `%APPDATA%`, macOS `Library/Application Support`, Linux `$XDG_CONFIG_HOME` o `~/.config`; per Jan `Jan/data/mcp_config.json`, quando Jan è chiuso); mostra le modifiche e scrive solo dopo conferma (`--si` per i test e per l'avvio guidato). Crea una copia `<file>.airchivist-<data>.bak` accanto all'originale; aggiunge o aggiorna solo la voce «airchivist» — riconosce anche il nome usato in precedenza («Pipeline») e la aggiorna senza toccare le altre voci; se il file non è JSON valido, o la sezione dei server è malformata, rifiuta di scrivere. Con `client json` stampa il blocco generico (nessun file da scrivere). Per Jan elenca anche i passaggi manuali nell'interfaccia (timeout degli strumenti 90 s, smart routing e ricerca web disattivati): verifica su un'installazione reale (ottobre 2026) — non sono in nessun file modificabile.
+- **`installa.py client --verifica`**: avvia il server con lo stesso eseguibile, gli stessi argomenti e le stesse variabili d'ambiente della voce scritta nel file, fa l'handshake MCP (`initialize`, `notifications/initialized`) e controlla `tools/list` contro l'elenco degli strumenti attesi (14). Esce con 1 se il collegamento fallisce o mancano strumenti. Si può usare anche da solo, senza `--scrivi`. Nota tecnica: le notifiche JSON-RPC non hanno risposta — la lettura andava in blocco; corretto il 26/10 (`scambia_jsonrpc`: scrive e non legge quando manca l'«id»).
+
+Verifiche (26/10):
+1. Test: 261, tutti superati (14 saltati in modo esplicito). Dieci test nuovi su file finti in cartelle temporanee: scrittura su configurazione vuota, aggiunta senza toccare le altre voci, aggiornamento della voce esistente riconosciuta col nome vecchio, voce già identica (nessuna scrittura), file malformato e sezione malformata (rifiuto), domanda di conferma con copia di sicurezza, `--scrivi` senza conferma (annullato, file invariato), `--scrivi` senza `--si` e tastiera assente (EOFError -> annullato con esito 0, file intatto; difetto corretto il 26/10), handshake ed elenco strumenti con un processo finto, strumenti mancanti (esito 1).
+2. Prova reale su questa macchina: `client --verifica` avvia `mcp_server.py` vero -> «Handshake MCP riuscito: server «ricerca-fonti» versione 1.0, protocollo 2024-11-05», «Strumenti annunciati: 14: tutti quelli attesi», esito 0. Scrittura su un file Claude Desktop finto con un altro server già presente: copia `.bak` creata, JSON risultante valido, altra voce intatta; ripetuto con `--verifica` nello stesso comando.
+3. Non provate (richiedono i programmi su altri PC, come per il lavoro 26): apertura del server da parte di Jan e di Claude Desktop dopo la scrittura (la prova manuale chiesta dalla roadmap), e i percorsi reali dei file su macOS e Linux (il codice li calcola, non verificati lì).
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).

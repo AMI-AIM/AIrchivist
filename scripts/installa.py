@@ -10,6 +10,11 @@ Uso (nella cartella scripts):
   python installa.py controlla          Python, SQLite FTS5, librerie, Tesseract e lingue, modelli, progetto
   python installa.py librerie           installa nel Python di sistema le librerie facoltative (requirements.txt)
   python installa.py client [nome]      configurazione del server MCP per un client: jan, claude, lmstudio, json
+      client <nome> --scrivi [--si]       aggiunge la voce al file di configurazione del client (claude, lmstudio,
+                                          jan): copia di sicurezza prima, modifiche mostrate e conferma; senza
+                                          --scrivi mostra solo che cosa cambierebbe
+      client --verifica                  avvia il server come lo avvierebbe il client e controlla handshake MCP
+                                         ed elenco degli strumenti
   python installa.py modello [azione]   profili dei modelli che leggono i passaggi (lavoro 26):
       nuovo                         procedura guidata per un profilo nuovo (azione predefinita)
       elenca                        profili, quelli in uso, chiavi presenti
@@ -19,6 +24,12 @@ Uso (nella cartella scripts):
       prova <profilo>               prova di collegamento con una richiesta minima
       togli <profilo> [--si]        toglie un profilo non in uso
       converti [--si]               trasforma in profili la configurazione precedente di config.ini
+  python installa.py inizia [--passi N,...] [--saltati N,...] [--si] [--rapido]
+                                    avvio guidato per chi installa per la prima volta (lavoro 28):
+                                    1 ambiente, 2 modello, 3 primo progetto, 4 chat, 5 riepilogo.
+                                    Si interrompe e riprende senza rifare i passi già completati; ogni passo
+                                    si può saltare (--saltati 2,4). Con --si i passi automatici non chiedono
+                                    conferma (la scelta del modello resta comunque interattiva)
 
 Esito di «controlla»: 0 se i requisiti necessari ci sono, 1 se ne manca almeno uno. I facoltativi (PyMuPDF,
 Tesseract, PaddleOCR) servono solo a importare nuove fonti.
@@ -246,40 +257,247 @@ def cmd_librerie(args, stampa=print):
     return subprocess.run(cmd).returncode
 
 
-# ---------------------------------------------------------------- client MCP
+# ---------------------------------------------------------------- client MCP (lavoro 27)
 def voce_server():
     return {"command": sys.executable, "args": [str(CARTELLA / "mcp_server.py")], "env": {"PYTHONUTF8": "1"}}
 
 
-def file_client(nome):
+def cartella_dati():
+    """Cartella dei dati dell'applicazione per l'utente, sui tre sistemi (Windows APPDATA, macOS Application
+    Support, Linux ~/.config o XDG_CONFIG_HOME)."""
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    return Path(xdg) if xdg else Path.home() / ".config"
+
+
+# nomi con cui i client indicano il nostro server nelle loro configurazioni esistenti
+ALIAS_CLIENT = {"claude": ("airchivist", "AIrchivist", "Pipeline"),
+                "lmstudio": ("airchivist", "AIrchivist", "Pipeline"),
+                "jan": ("airchivist", "AIrchivist", "Pipeline")}
+
+
+def file_client(nome, dati=None):
+    """Percorso del file di configurazione del client sul sistema in uso. Per Jan è il file dove il programma
+    tiene i server MCP (mcp_config.json), che «--scrivi» può aggiornare quando Jan è chiuso; per «json» non c'è
+    un file: serve solo a stampare il blocco."""
+    dati = cartella_dati() if dati is None else Path(dati)
     if nome == "claude":
-        base = Path(os.environ.get("APPDATA", "")) if os.name == "nt" else (
-            Path.home() / "Library" / "Application Support" if sys.platform == "darwin" else Path.home() / ".config")
-        return base / "Claude" / "claude_desktop_config.json"
+        return dati / "Claude" / "claude_desktop_config.json"
     if nome == "lmstudio":
-        return Path.home() / ".lmstudio" / "mcp.json"
+        return Path(os.environ.get("LMSTUDIO_DIR", Path.home() / ".lmstudio")) / "mcp.json"
+    if nome == "jan":
+        return dati / "Jan" / "data" / "mcp_config.json"
     return None
 
 
-def cmd_client(args, stampa=print):
+def passaggi_manuali_jan(stampa):
+    """Jan: le impostazioni MCP che oggi si cambiano a mano (timeout degli strumenti, smart routing, ricerca web)
+    non stanno in nessun file modificabile — verifica fatta su una installazione reale (ottobre 2026): sono solo
+    nell'interfaccia. Il comando quindi le elenca come passaggi manuali accanto alla voce scritta nel file."""
+    stampa("In più, a mano nell'interfaccia di Jan (Settings > MCP):")
+    stampa("  - timeout degli strumenti: 90 secondi")
+    stampa("  - smart routing: disattivato")
+    stampa("  - Web Search: disattivato, così le risposte vengono solo dalle fonti")
+    stampa("  (queste tre voci non sono in nessun file: verificato su una installazione reale)")
+
+
+def conferma_domanda(testo, chiedi):
+    """Domanda di conferma: «testo [S/n] » risponde sì anche a vuoto, «testo [s/N] » no a vuoto.
+    Se non c'è nessuno da interrogare (tastiera assente o pipe chiusa: EOFError) la risposta è «no»,
+    così --scrivi senza --si in modalità non interattiva non scrive nulla invece di interrompersi."""
+    m = re.search(r"\[(s[Nn])\]\s*$", testo)
+    default = m and m.group(1) == "sN"
+    try:
+        r = chiedi(testo).strip().lower()
+    except EOFError:
+        return False
+    if not r:
+        return not default
+    return r in ("s", "si", "sì", "y", "yes")
+
+
+def unisci_voci(client, esistente, nome_server, voce):
+    """Restituisce (documento aggiornato, descrizioni delle modifiche, già_presente). Tocca solo la voce del
+    nostro server — individuata anche col nome usato in precedenza («Pipeline») — e lascia invariate tutte le
+    altre. «esistente» deve essere un oggetto JSON (dict) o None per un file nuovo; se la forma non è valida
+    restituisce documento None, così il comando rifiuta di scrivere."""
+    if esistente is None:
+        esistente = {}
+    if not isinstance(esistente, dict):
+        return None, ["il file non è un oggetto JSON valido: non scrivo nulla"], False
+    doc = json.loads(json.dumps(esistente))               # copia: non tocchiamo l'oggetto ricevuto
+    chiavi = ("servers",) if client == "jan" else ("mcpServers", "servers")
+    sezione = next((k for k in chiavi if isinstance(doc.get(k), dict)), None)
+    if sezione is None:
+        for k in chiavi:                                  # una chiave presente ma malformata blocca la scrittura
+            if k in doc:
+                return None, [f"«{k}» nel file non è un elenco di server: non scrivo nulla"], False
+        sezione = chiavi[0]
+        doc[sezione] = {}
+    servers = doc[sezione]
+    vecchio_nome = next((n for n in ALIAS_CLIENT.get(client, (nome_server,)) if n in servers), None)
+    vecchio = servers.get(vecchio_nome) if vecchio_nome else None
+    if vecchio is not None and vecchio == voce:
+        return doc, [f"la voce «{vecchio_nome}» è già esattamente questa"], True
+    if vecchio is None:
+        servers[nome_server] = voce
+        return doc, [f"+ «{nome_server}» ({sezione}): avvierà il server MCP",
+                     "- nessuna altra voce viene toccata"], False
+    servers.pop(vecchio_nome)
+    servers[nome_server] = voce
+    altri = ", ".join(str(a) for a in (vecchio.get("args") or [])) or "(nessun argomento)"
+    mod = [f"~ «{vecchio_nome}» diventa «{nome_server}»: prima command {vecchio.get('command')} | args {altri}",
+           f"+ «{nome_server}» ({sezione}): avvierà il server MCP",
+           "- nessuna altra voce viene toccata"]
+    return doc, mod, False
+
+
+def scrivi_file_client(f, doc):
+    """Scrive il file JSON con copia di sicurezza «<file>.airchivist-<data>.bak» accanto all'originale."""
+    _, bom, fine_riga = _leggi_testo(f)
+    testo = json.dumps(doc, ensure_ascii=False, indent=2) + fine_riga
+    if f.exists():
+        copia = f.with_name(f"{f.name}.airchivist-{dt.date.today().isoformat()}.bak")
+        shutil.copyfile(f, copia)
+        yield f"copia di sicurezza: {copia}"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(((chr(0xFEFF) if bom else "") + testo).encode("utf-8"))
+    yield f"scritto: {f}"
+
+
+def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
+    """`installa.py client <claude|lmstudio|jan> --scrivi`: trova il file, prepara la modifica, la mostra e
+    scrive solo dopo conferma. Con `--verifica` in più fa anche la prova del collegamento."""
+    nome = args.nome
+    if nome == "json":
+        stampa("«json» serve a stampare il blocco per client non riconosciuti: niente file da scrivere.")
+        return 1
+    f = Path(args.file) if getattr(args, "file", None) else file_client(nome)
+    voce = getattr(args, "voce", None) or voce_server()
+    nome_server = nome_server or NOME_SERVER
+    esistente = None
+    if f.exists():
+        try:
+            esistente = json.loads(_leggi_testo(f)[0])
+        except ValueError:
+            stampa(f"Il file {f} non è JSON valido: non lo tocco. Sistema a mano o sposta il file.")
+            return 3
+    doc, modifiche, gia = unisci_voci(nome, esistente, nome_server, voce)
+    stampa(f"File di configurazione: {f} ({'esiste' if f.exists() else 'non esiste ancora'})")
+    for m in modifiche:
+        stampa("  " + m)
+    if doc is None:
+        return 3
+    if gia:
+        stampa("Nessuna scrittura necessaria.")
+        return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
+    if not args.scrivi:
+        stampa("Con --scrivi aggiungo la voce al file (copia di sicurezza prima). Ora non ho scritto nulla.")
+        return 0
+    if not args.si and not conferma_domanda("Scrivere queste modifiche? [S/n] ", chiedi):
+        stampa("Annullato: il file non è cambiato.")
+        return 0
+    for riga in scrivi_file_client(f, doc):
+        stampa("  " + riga)
+    if nome == "jan":
+        passaggi_manuali_jan(stampa)
+        stampa("Riavvia Jan (se era aperto) e riattiva il server «airchivist».")
+    else:
+        stampa("Riavvia il client perché legga la nuova configurazione.")
+    return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
+
+
+def scambia_jsonrpc(proc, msg):
+    """Una chiamata JSON-RPC su STDIO/STDOUT: scrive una riga, legge la risposta.
+    Le notifiche (senza «id») non producono risposta: si scrive e basta, altrimenti la lettura
+    della risposta blocca per sempre il controllo."""
+    proc.stdin.write(json.dumps(msg, ensure_ascii=False) + "\n")
+    proc.stdin.flush()
+    if "id" not in msg:
+        return None
+    riga = proc.stdout.readline()
+    if not riga:
+        raise ValueError("risposta assente (il server ha chiuso la conversazione)")
+    return json.loads(riga)
+
+
+STRUMENTI_ATTESI = ["guida", "schede", "esplora_nome", "cerca_testo", "ricerca", "modello", "risposte",
+                   "passaggi_archivio", "copertura_fonti", "apri_fonte", "varianti", "correggi_passaggio",
+                   "importa", "serie"]
+
+
+def client_verifica(args, stampa, avvia=None):
+    """`installa.py client --verifica`: avvia il server MCP come lo avvierebbe il client (stesso eseguibile,
+    stessi argomenti, stesse variabili d'ambiente) e controlla l'handshake MCP e l'elenco degli strumenti."""
+    def avvia_di_default(voce):
+        env = {**os.environ, **(voce.get("env") or {})}
+        return subprocess.Popen([voce["command"], *voce.get("args", [])], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                                encoding="utf-8", env=env)
+
+    voce = getattr(args, "voce", None) or voce_server()
+    proc = (avvia or avvia_di_default)(voce)
+    try:
+        r = scambia_jsonrpc(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                   "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                                              "clientInfo": {"name": "installa.py", "version": "1"}}})
+        if "error" in r:
+            stampa(f"Handshake MCP non riuscito: {r['error'].get('message')}")
+            return 1
+        info = r.get("result", {}).get("serverInfo", {})
+        stampa(f"Handshake MCP riuscito: server «{info.get('name')}» versione {info.get('version')}, "
+               f"protocollo {r['result'].get('protocolVersion')}")
+        scambia_jsonrpc(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})  # notifica: senza id
+        r = scambia_jsonrpc(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+        if "error" in r:
+            stampa(f"Elenco degli strumenti non riuscito: {r['error'].get('message')}")
+            return 1
+        trovati = [t["name"] for t in r["result"]["tools"]]
+        mancanti = [n for n in STRUMENTI_ATTESI if n not in trovati]
+        stampa(f"Strumenti annunciati: {len(trovati)}"
+               + (" (mancano: " + ", ".join(mancanti) + ")" if mancanti else ": tutti quelli attesi"))
+        return 1 if mancanti else 0
+    except (OSError, ValueError) as e:
+        stampa(f"Verifica non riuscita: {e}")
+        return 1
+    finally:
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except OSError:
+            pass
+
+
+def cmd_client(args, stampa=print, chiedi=input):
+    if getattr(args, "verifica", False) and not getattr(args, "scrivi", False) \
+            and getattr(args, "nome", "json") == "json":
+        return client_verifica(args, stampa)
+    if getattr(args, "scrivi", False):
+        return cmd_client_scrivi(args, stampa, chiedi=chiedi)
     voce = voce_server()
     if args.nome == "jan":
-        stampa("Jan: Settings > MCP Servers > + Add MCP Server")
+        stampa("Jan: Settings > MCP Servers > + Add MCP Server (oppure: python installa.py client jan --scrivi)")
         stampa(f"  Nome:      {NOME_SERVER}")
         stampa("  Tipo:      STDIO")
         stampa(f"  Command:   {voce['command']}")
         stampa(f"  Arguments: {voce['args'][0]}")
         stampa("  Variabile d'ambiente: PYTHONUTF8 = 1")
-        stampa("Poi, nelle impostazioni MCP: timeout degli strumenti 90 secondi (vedi docs/user_guide.it.md, «Jan»).")
+        passaggi_manuali_jan(stampa)
         return 0
     blocco = json.dumps({"mcpServers": {NOME_SERVER: voce}}, ensure_ascii=False, indent=2)
     f = file_client(args.nome)
     if f:
         stato = "esiste: aggiungi la voce dentro «mcpServers»" if f.exists() else "non esiste ancora: crealo"
         stampa(f"File di configurazione: {f} ({stato})")
+        stampa("Oppure, per scrivere io la voce (con copia di sicurezza e conferma): aggiungi --scrivi")
     stampa(blocco)
     if args.nome == "json":
         stampa("Per un client che usa HTTP invece di STDIO: python mcp_server.py --http 8765")
+        stampa("Per controllare che il server risponda come lo vedrebbe il client: "
+               "python installa.py client --verifica")
     stampa("Riavvia il client dopo aver salvato il file.")
     return 0
 
@@ -450,7 +668,11 @@ def prova_profilo(cfg, nome, stampa):
 
 
 def sn(chiedi, domanda, predefinito):
-    r = chiedi(f"{domanda} [{'S/n' if predefinito else 's/N'}] ").strip().lower()
+    """Sì/no con default; se non c'è nessuno da interrogare (tastiera assente: EOFError) vale il default."""
+    try:
+        r = chiedi(f"{domanda} [{'S/n' if predefinito else 's/N'}] ").strip().lower()
+    except EOFError:
+        return predefinito
     return predefinito if not r else r in ("s", "si", "sì", "y", "yes")
 
 
@@ -537,12 +759,15 @@ def modello_prova(args, stampa, **_):
     return 0 if prova_profilo(cfg, args.nome, stampa) else 1
 
 
-def modello_usa(args, stampa, gia_provato=False, **_):
-    """Sceglie un profilo per tutti i ruoli o per quelli indicati, solo dopo una prova di collegamento riuscita."""
+def modello_usa(args, stampa, gia_provato=False, default=None, **_):
+    """Sceglie un profilo per tutti i ruoli o per quelli indicati, solo dopo una prova di collegamento riuscita.
+    «default» (callable): procedura guidata che chiede il nome quando args.nome manca (avvio guidato, lavoro 28)."""
     from llm import RUOLI, ErroreModello, leggi_profili, profili_attivi
     from progetto import cartella_scelta
     cfg = leggi_cfg()
-    nome = args.nome
+    nome = (args.nome or "").strip() if args.nome else ""
+    if not nome and default:
+        nome = (default() or "").strip()
     if not nome or nome not in leggi_profili(cfg):
         stampa(f"Indica un profilo esistente: python installa.py modello usa <profilo> "
                f"(profili: {', '.join(leggi_profili(cfg)) or 'nessuno'}).")
@@ -655,17 +880,24 @@ def modello_converti(args, stampa, chiedi=input, **_):
 
 
 def _scegli(chiedi, stampa, domanda, opzioni, predefinita=1):
+    """Scelta numerata; se non c'è nessuno da interrogare (tastiera assente: EOFError) vale la scelta di default."""
     for i, o in enumerate(opzioni, 1):
         stampa(f"  {i}. {o}")
     while True:
-        r = chiedi(f"{domanda} [{predefinita}] ").strip() or str(predefinita)
+        try:
+            r = chiedi(f"{domanda} [{predefinita}] ").strip() or str(predefinita)
+        except EOFError:
+            return predefinita
         if r.isdigit() and 1 <= int(r) <= len(opzioni):
             return int(r)
         stampa(f"Scrivi un numero da 1 a {len(opzioni)}.")
 
 
 def _chiedi_valore(chiedi, domanda, predefinito=""):
-    r = chiedi(f"{domanda}" + (f" [{predefinito}]" if predefinito else "") + ": ").strip()
+    try:
+        r = chiedi(f"{domanda}" + (f" [{predefinito}]" if predefinito else "") + ": ").strip()
+    except EOFError:                     # tastiera assente: il valore di default, se c'è
+        return predefinito
     return r or predefinito
 
 
@@ -790,6 +1022,202 @@ def cmd_modello(args, stampa=print, **kw):
     return AZIONI_MODELLO[args.azione](args, stampa=stampa, **kw)
 
 
+# ---------------------------------------------------------------- avvio guidato (lavoro 28)
+PASSI = {1: "ambiente", 2: "modello", 3: "progetto", 4: "chat", 5: "riepilogo"}
+
+
+def scegli_passi(args, stampa):
+    """Quali passi eseguire, in ordine, dai numeri dati (--passi e --saltati); None se i numeri non valgono."""
+    def numeri(testo, nome):
+        try:
+            v = {int(x) for x in testo.replace(" ", ",").split(",") if x.strip()}
+        except ValueError:
+            stampa(f"--{nome}: scrivi numeri da 1 a 5 separati da virgola (es. 2,4).")
+            return False
+        if not v <= set(PASSI):
+            stampa(f"--{nome}: i passi sono solo 1-5 ({', '.join(f'{n} {t}' for n, t in PASSI.items())}).")
+            return False
+        return v
+    scelti = numeri(args.passi, "passi") if args.passi else set(PASSI)
+    if scelti is False:
+        return None
+    saltati = numeri(args.saltati, "saltati") if args.saltati else set()
+    if saltati is True:
+        saltati = set()
+    if saltati is False:
+        return None
+    scelti -= saltati
+    if 5 not in scelti:
+        scelti.add(5)                     # il riepilogo finale si fa sempre: costa niente e riassume lo stato
+    return sorted(scelti)
+
+
+def stato_ambiente(args, stampa):
+    """Passo 1: controllo dell'ambiente; 0 tutto a posto, 1 manca qualcosa di necessario (istruzioni già stampate)."""
+    return cmd_controlla(argparse.Namespace(rapido=args.rapido), stampa)
+
+
+def guida_modello(stampa, chiedi=input):
+    """Passo 2: scelta del modello che legge i passaggi (lavoro 26). 0 fatto o non necessario, 1 fallito o saltato."""
+    from llm import ErroreModello, leggi_profili, profilo, usa_profili
+    cfg = leggi_cfg()
+    profili = leggi_profili(cfg)
+    if usa_profili(cfg):
+        try:
+            attivi = {r: profilo(cfg, r)[0] for r in ("smistamento", "analisi", "sintesi")}
+        except ErroreModello as e:
+            stampa(str(e))
+            attivi = {}
+        if attivi:
+            stampa("Modello che legge i passaggi, già scelto: "
+                   + ", ".join(sorted(set(attivi.values()))) + ". Per cambiarlo: python installa.py modello usa "
+                   "<profilo> (la scelta resta valida anche se salti questo passo).")
+            return 0
+    if not profili:
+        stampa("Nessun profilo di modello: ne creo uno adesso con la procedura guidata (servizio, modello, chiave).")
+        return modello_nuovo(argparse.Namespace(), stampa, chiedi=chiedi)
+    nomi = list(profili)
+    stampa("Ci sono già dei profili di modello:")
+    n = _scegli(chiedi, stampa, "Quale uso per leggere i passaggi?",
+                nomi + ["ne creo uno nuovo"], predefinita=1)
+    if n > len(nomi):
+        return modello_nuovo(argparse.Namespace(), stampa, chiedi=chiedi)
+    return modello_usa(argparse.Namespace(nome=nomi[n - 1], ruolo=None, progetto=False), stampa)
+
+
+def cartella_progetti():
+    return CARTELLA.parent / "projects"
+
+
+def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None):
+    """Passo 3: creazione del primo progetto e sua scelta in config.ini, senza modifiche manuali ai file.
+    0 fatto o non necessario, 1 fallito o saltato dall'utente. Parametri solo per i test: «config» file .ini da
+    scrivere, «crea» la funzione che crea il progetto, «base» cartella dove proporre di metterlo."""
+    from progetto import VARIABILE, cartella_scelta, cmd_nuovo, nome
+    cfg = leggi_cfg()
+    radice = cartella_scelta(cfg)
+    if radice is not None:
+        stampa(f"Progetto in uso: «{nome(cfg)}» ({radice}). Per un progetto nuovo: python progetto.py nuovo "
+               f'<cartella> --nome "..." (la scelta resta valida anche se salti questo passo).')
+        return 0
+    base = Path(base) if base else cartella_progetti()
+    proposto = _chiedi_valore(chiedi, "Nome del progetto nuovo (la ricerca sui tuoi documenti)", "La mia ricerca")
+    cartella = _chiedi_valore(chiedi, "Cartella dove mettere i suoi file", str(base / re.sub(r"\s+", "_", proposto)))
+    if not conferma_domanda(f"Creo il progetto «{proposto}» in {cartella}? [S/n] ", chiedi):
+        stampa("Passo saltato: nessun progetto creato. Quando vuoi: python progetto.py nuovo <cartella> --nome \"...\"")
+        return 1
+    esito = (crea or cmd_nuovo)(argparse.Namespace(cartella=cartella, nome=proposto, descrizione=""), stampa)
+    if esito:
+        return 1
+    f = Path(cartella).resolve()
+    dest = Path(config) if config else FILE_CONFIG
+    copia = copia_di_sicurezza(dest)
+    imposta_voci(dest, "progetto", {"cartella": str(f)})
+    stampa(f"Progetto scelto in {dest.name}, sezione [progetto]: vale per tutti i comandi."
+           + (f" Copia di sicurezza: {copia}" if copia else ""))
+    stampa(f"(Solo per una finestra del terminale, senza toccare i file: {VARIABILE}={f})")
+    return 0
+
+
+CLIENT_GUIDA = [("jan", "Jan"), ("claude", "Claude Desktop"), ("lmstudio", "LM Studio")]
+
+
+def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
+    """Passo 4: configurazione della chat (lavoro 27). Aggiunge la voce al file del client scelto, poi prova
+    l'handshake MCP come lo farebbe il client. 0 fatto, 1 saltato o non riuscito. «file» e «scrivi_voce» servono
+    solo ai test: percorso del file da usare al posto di quello reale e voce del server finta."""
+    def gia_configurato(codice):
+        f = Path(file) if file else file_client(codice)
+        try:
+            doc = json.loads(_leggi_testo(f)[0]) if f.exists() else {}
+        except ValueError:
+            return False
+        servers = next((doc[k] for k in ("mcpServers", "servers") if isinstance(doc.get(k), dict)), {})
+        return any(n in servers for n in ALIAS_CLIENT.get(codice, (NOME_SERVER,)))
+
+    gia = next((c for c, _ in CLIENT_GUIDA if gia_configurato(c)), None)
+    stampa("Quale programma di chat colleghi a AIrchivist? (la chat è diversa dal modello che legge i passaggi)")
+    predefinita = next((i for i, (c, _) in enumerate(CLIENT_GUIDA, 1) if c == gia), 1)
+    n = _scegli(chiedi, stampa, "Scelta", [etichetta for _, etichetta in CLIENT_GUIDA] + ["nessuno, per ora"],
+                predefinita=predefinita)
+    if n > len(CLIENT_GUIDA):
+        stampa("Passo saltato. Quando vuoi: python installa.py client <jan|claude|lmstudio> --scrivi")
+        return 1
+    nome = CLIENT_GUIDA[n - 1][0]
+    args = argparse.Namespace(nome=nome, scrivi=True, verifica=True, si=True,
+                              file=str(file) if file else None,
+                              voce=scrivi_voce or voce_server())
+    return cmd_client_scrivi(args, stampa, chiedi=chiedi)
+
+
+def riepilogo(stampa, file_client_fn=None):
+    """Passo 5: che cosa è installato, dove sta il progetto, prossimo passo. «file_client_fn» nei test."""
+    from llm import RUOLI, ErroreModello, profilo, usa_profili
+    from progetto import cartella_scelta, nome
+    cfg = leggi_cfg()
+    fc = file_client_fn or file_client
+    stampa("\n=== Riepilogo ===")
+    stampa(f"- Motore: {CARTELLA} (Python {sys.version_info.major}.{sys.version_info.minor})")
+    if usa_profili(cfg):
+        try:
+            stampa("- Modello che legge i passaggi: " + ", ".join(f"{r}: {profilo(cfg, r)[0]}" for r in RUOLI))
+        except ErroreModello as e:
+            stampa(f"- Modello che legge i passaggi: attenzione, {e}")
+    else:
+        stampa("- Modello che legge i passaggi: nessuna scelta ancora (python installa.py modello nuovo)")
+    radice = cartella_scelta(cfg)
+    stampa(f"- Progetto: «{nome(cfg)}» in {radice}" if radice else
+           "- Progetto: nessuno ancora (python installa.py inizia, passo 3)")
+    configurati = [etichetta for codice, etichetta in CLIENT_GUIDA
+                   if (lambda f: f is not None and Path(f).exists())(fc(codice))]
+    if configurati:
+        stampa("- Chat: file di configurazione presente per " + ", ".join(configurati) +
+               "; se non l'hai già fatto riavvia il programma perché legga la nuova voce")
+    else:
+        stampa("- Chat: non configurata ancora (python installa.py client <nome> --scrivi)")
+    stampa("- Prossimo passo: importare le fonti (con la tabella di revisione: python scripts/importa.py proponi "
+           "<cartella di PDF>; vedi lavoro 29)")
+    return 0
+
+
+def cmd_inizia(args, stampa=print, chiedi=input, funzioni=None, riepilogo_fn=None):
+    """Avvio guidato: i cinque passi della roadmap (lavoro 28). Si interrompe e riprende senza rifare i passi
+    già completati (ognuno riconosce il proprio stato); ogni passo si può saltare (--saltati, o rispondendo
+    «no» alle domande). «funzioni» e «riepilogo_fn» servono solo ai test."""
+    sys.path.insert(0, str(CARTELLA))
+    passi = scegli_passi(args, stampa)
+    if passi is None:
+        return 2
+    stampa("AIrchivist — avvio guidato (puoi interrompere con Ctrl+C e riprendere: i passi già fatti non si "
+           "rifanno)\n")
+    esiti = {}
+    default = {1: lambda: stato_ambiente(args, stampa),
+               2: lambda: guida_modello(stampa, chiedi),
+               3: lambda: guida_progetto(stampa, chiedi),
+               4: lambda: guida_chat(stampa, chiedi)}
+    funzioni = funzioni or default
+    for n in passi:
+        if n == 5:
+            continue
+        titolo = {1: "Controllo dell'ambiente", 2: "Modello che legge i passaggi",
+                  3: "Il tuo primo progetto", 4: "Collegamento con la chat"}[n]
+        stampa(f"\n--- Passo {n} di 5: {titolo} ---")
+        esiti[n] = funzioni[n]()
+        if esiti[n] != 0 and n == 1:
+            stampa("\nManca qualcosa di necessario: sistema seguendo le indicazioni qui sopra (per le librerie: "
+                   "python installa.py librerie) e rilancia «python installa.py inizia»: i passi già completati "
+                   "non verranno rifatti.")
+            return 1
+    (riepilogo_fn or riepilogo)(stampa)
+    blocco = [n for n in (1, 2, 3, 4) if n in esiti and esiti[n] != 0]
+    if blocco:
+        stampa("Passi non completati: " + ", ".join(f"{n} {PASSI[n]}" for n in blocco) +
+               ". Riprendi quando vuoi con gli stessi comandi indicati sopra.")
+        return 1
+    stampa("Tutto pronto.")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="comando")
@@ -798,6 +1226,12 @@ def main(argv=None):
     sub.add_parser("librerie")
     k = sub.add_parser("client")
     k.add_argument("nome", nargs="?", default="json", choices=["jan", "claude", "lmstudio", "json"])
+    k.add_argument("--scrivi", action="store_true",
+                   help="aggiungi la voce al file di configurazione del client (prima le modifiche, poi conferma)")
+    k.add_argument("--verifica", action="store_true", dest="verifica",
+                   help="avvia il server come lo avvierebbe il client: handshake MCP ed elenco degli strumenti")
+    k.add_argument("--si", action="store_true", help="--scrivi: niente domanda di conferma")
+    k.add_argument("--file", default=None, help="--scrivi: file di configurazione da usare (di norma lo trovo io)")
     m = sub.add_parser("modello", help="profili dei modelli: nuovo, elenca, usa, prova, togli, converti")
     m.add_argument("azione", nargs="?", default="nuovo", choices=list(AZIONI_MODELLO))
     m.add_argument("nome", nargs="?", help="nome del profilo (usa, prova, togli)")
@@ -805,6 +1239,12 @@ def main(argv=None):
                    help="usa: solo per questo ruolo (ripetibile); senza, per tutti")
     m.add_argument("--progetto", action="store_true", help="usa: scelta nel project.ini del progetto in uso")
     m.add_argument("--si", action="store_true", help="togli, converti: niente domanda di conferma")
+    i = sub.add_parser("inizia", help="avvio guidato: ambiente, modello, primo progetto, chat, riepilogo "
+                                      "(lavoro 28)")
+    i.add_argument("--passi", default="", help="solo questi passi, numeri da 1 a 5 separati da virgola (es. 3,4)")
+    i.add_argument("--saltati", default="", help="tutti tranne questi (es. --saltati 2 per non toccare il modello)")
+    i.add_argument("--si", action="store_true", help="nei passi automatici nessuna domanda di conferma")
+    i.add_argument("--rapido", action="store_true", help="passo 1: salta il controllo di PaddleOCR (lento)")
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -813,7 +1253,7 @@ def main(argv=None):
     if args.comando is None:
         args.comando, args.rapido = "controlla", False
     return {"controlla": cmd_controlla, "librerie": cmd_librerie, "client": cmd_client,
-            "modello": cmd_modello}[args.comando](args)
+            "modello": cmd_modello, "inizia": cmd_inizia}[args.comando](args)
 
 
 if __name__ == "__main__":

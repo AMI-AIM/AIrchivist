@@ -34,6 +34,7 @@ import argparse
 import configparser
 import datetime as dt
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -168,10 +169,16 @@ def serie_vuoto():
     return testo + "\n# Nessuna serie: aggiungile copiando l'esempio o chiedendo in Jan («crea la serie ...»).\n"
 
 
-def cmd_nuovo(args):
+def cmd_nuovo(args, stampa=print):
+    """Crea un progetto vuoto; 0 riuscito, 1 la cartella esiste già con qualcosa dentro, 2 nome non ammesso.
+    Con «stampa» si può raccogliere il messaggio altrove (l'avvio guidato, lavoro 28)."""
     radice = Path(args.cartella).resolve()
     if radice.exists() and any(radice.iterdir()):
-        sys.exit(f"La cartella {radice} esiste e non è vuota: per sicurezza non creo un progetto lì.")
+        stampa(f"La cartella {radice} esiste e non è vuota: per sicurezza non creo un progetto lì.")
+        return 1
+    if args.nome and not re.fullmatch(r"[^/\\:*?\"<>|]+", args.nome):
+        stampa("Il nome del progetto non va bene: niente barre o altri segni proibiti nei nomi dei file.")
+        return 2
     for k in ("dati", "originali", "importazioni", "risposte", "lavori", "backup"):
         (radice / PERCORSI[k]).mkdir(parents=True, exist_ok=True)
     for sotto in (ARCHIVIO, RICERCHE):
@@ -186,10 +193,11 @@ def cmd_nuovo(args):
     (radice / "project.ini").write_text(
         f"[progetto]\nnome = {args.nome or radice.name}\ndescrizione = {args.descrizione or ''}\n"
         f"creato_il = {dt.date.today().isoformat()}\n", encoding="utf-8")
-    print(f"Progetto creato in {radice}.\nPer usarlo: in config.ini, sezione [progetto], cartella = {radice}\n"
-          f"oppure, solo per una finestra del Prompt dei comandi: set {VARIABILE}={radice}\n"
-          f"Poi: aggiungi le serie in glossary/series.ini, importa le fonti (importa.py) e costruisci l'indice "
-          f"(python indice.py costruisci).")
+    stampa(f"Progetto creato in {radice}.\nPer usarlo: in config.ini, sezione [progetto], cartella = {radice}\n"
+           f"oppure, solo per una finestra del Prompt dei comandi: set {VARIABILE}={radice}\n"
+           f"Poi: aggiungi le serie in glossary/series.ini, importa le fonti (importa.py) e costruisci l'indice "
+           f"(python indice.py costruisci).")
+    return 0
 
 
 def cmd_stato(args):
@@ -220,7 +228,8 @@ def main(argv=None):
     except AttributeError:
         pass
     {"stato": cmd_stato, "nuovo": cmd_nuovo}[args.comando](args)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -62,13 +62,16 @@ that you can edit it.
 ### Connecting a client
 
 ```bash
-python scripts/installa.py client claude
+python scripts/installa.py client claude --scrivi
+python scripts/installa.py client --verifica
 ```
 
-This prints the MCP server entry (Python interpreter, path of `scripts/mcp_server.py`, `PYTHONUTF8=1`) and the
-client's configuration file. It does not change that file. Other values: `jan` (the fields to fill in Jan's MCP
-settings), `lmstudio` and `json` (the generic `mcpServers` block). For clients that use HTTP:
-`python scripts/mcp_server.py --http 8765`.
+`client <name>` prints the MCP server entry (Python interpreter, path of `scripts/mcp_server.py`, `PYTHONUTF8=1`) and
+the client's configuration file; with `--scrivi` it adds or updates only the AIrchivist entry in that file — a backup
+copy is made first and nothing is written until you confirm. Other values: `jan` (also lists the three settings to
+change by hand in Jan's interface), `lmstudio` and `json` (the generic `mcpServers` block, no file). `client
+--verifica` starts the server the way the client would and checks the MCP handshake and the tool list. For clients
+that use HTTP: `python scripts/mcp_server.py --http 8765`.
 
 The server sends the working rules (how to use the tools, how to cite, what not to do) in three ways: in the MCP
 `instructions` field, as the MCP prompt `istruzioni`, and through the `guida` tool. If your client ignores the
