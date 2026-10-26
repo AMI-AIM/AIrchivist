@@ -93,10 +93,19 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
 Dalla cartella `scripts`:
 
 ```
+python installa.py inizia
+```
+
+`inizia` è l'avvio guidato per chi installa per la prima volta: controlla l'ambiente, crea il profilo del modello,
+crea il primo progetto e lo sceglie, collega la chat e chiude con un riepilogo che rifà i controlli necessari. Ogni
+passo si può saltare (`--saltati 4`) o fare da solo (`--passi 3`); rilanciato, non rifà i passi già completati. Le
+stesse cose, una per volta:
+
+```
 python installa.py librerie
 python installa.py modello
 python installa.py controlla
-python installa.py client jan
+python installa.py client jan --scrivi
 ```
 
 - `librerie` installa nel Python di sistema le librerie facoltative di `requirements.txt` (PyMuPDF).
@@ -105,9 +114,12 @@ python installa.py client jan
   raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie e PaddleOCR. Esce con 1 se
   manca un requisito necessario; `--rapido` salta PaddleOCR.
 - `client` configura la chat: senza opzioni stampa cosa scrivere nel client (`jan`, `claude`, `lmstudio`, `json`);
-  con `--scrivi` aggiunge o aggiorna solo la voce «airchivist» nel file del client (copia di sicurezza prima, conferma
-  a schermo), per Jan elenca anche i passaggi manuali nell'interfaccia; `client --verifica` avvia il server come lo
-  avvierebbe il client e controlla l'handshake MCP e l'elenco degli strumenti.
+  con `--scrivi` aggiunge o aggiorna solo la voce di AIrchivist nel file del client (copia di sicurezza prima,
+  conferma a schermo); `client --verifica` avvia il server come lo avvierebbe il client e controlla l'handshake MCP
+  e l'elenco degli strumenti. Per Jan, `--scrivi` va usato **a Jan chiuso** (alla chiusura Jan riscrive i suoi
+  file): aggiorna la voce del server (anche se si chiama «Pipeline») e la accende, porta il timeout degli strumenti
+  ad almeno 90 secondi, spegne lo smart routing, alza a 8000 caratteri i risultati degli strumenti e spegne la
+  ricerca web (file `mcp_config.json` e `settings.json` nella cartella dei dati di Jan).
 
 ### Modelli che leggono i passaggi (profili)
 

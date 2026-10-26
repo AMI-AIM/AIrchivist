@@ -281,8 +281,8 @@ ALIAS_CLIENT = {"claude": ("airchivist", "AIrchivist", "Pipeline"),
 
 def file_client(nome, dati=None):
     """Percorso del file di configurazione del client sul sistema in uso. Per Jan è il file dove il programma
-    tiene i server MCP (mcp_config.json), che «--scrivi» può aggiornare quando Jan è chiuso; per «json» non c'è
-    un file: serve solo a stampare il blocco."""
+    tiene i server MCP e le loro impostazioni (mcp_config.json: «mcpServers» e «mcpSettings»), che «--scrivi»
+    aggiorna quando Jan è chiuso; per «json» non c'è un file: serve solo a stampare il blocco."""
     dati = cartella_dati() if dati is None else Path(dati)
     if nome == "claude":
         return dati / "Claude" / "claude_desktop_config.json"
@@ -293,15 +293,75 @@ def file_client(nome, dati=None):
     return None
 
 
+# Jan (verificato il 26/10/2026 su un'installazione reale): i server stanno in mcp_config.json, «mcpServers»,
+# ciascuno con «active» (spento se manca) e «type»; le impostazioni MCP in «mcpSettings» dello stesso file; la
+# ricerca web in settings.json, voce «setting-web-search» (testo JSON: state.webSearchEnabled). Jan riscrive i
+# file quando si chiude: vanno modificati a Jan chiuso.
+IMPOSTAZIONI_JAN = (
+    ("toolCallTimeoutSeconds", lambda v: isinstance(v, (int, float)) and v >= 90, 90,
+     "timeout degli strumenti almeno 90 secondi (la ricerca attende fino a 75 secondi per chiamata)"),
+    ("enableSmartToolRouting", lambda v: v is False, False,
+     "smart routing disattivato (sceglierebbe da sé quali strumenti mostrare al modello)"),
+    ("maxToolOutputChars", lambda v: isinstance(v, (int, float)) and v >= 8000, 8000,
+     "risultati degli strumenti fino a 8000 caratteri (il server resta sotto [mcp] max_caratteri)"),
+)
+
+
 def passaggi_manuali_jan(stampa):
-    """Jan: le impostazioni MCP che oggi si cambiano a mano (timeout degli strumenti, smart routing, ricerca web)
-    non stanno in nessun file modificabile — verifica fatta su una installazione reale (ottobre 2026): sono solo
-    nell'interfaccia. Il comando quindi le elenca come passaggi manuali accanto alla voce scritta nel file."""
-    stampa("In più, a mano nell'interfaccia di Jan (Settings > MCP):")
-    stampa("  - timeout degli strumenti: 90 secondi")
-    stampa("  - smart routing: disattivato")
-    stampa("  - Web Search: disattivato, così le risposte vengono solo dalle fonti")
-    stampa("  (queste tre voci non sono in nessun file: verificato su una installazione reale)")
+    """Stampa che cosa serve in Jan oltre alla voce del server, e dove sta (senza --scrivi lo si fa a mano)."""
+    stampa("In Jan servono anche (con --scrivi li sistemo io nei file, a Jan chiuso):")
+    for _, _, valore, spiegazione in IMPOSTAZIONI_JAN:
+        stampa(f"  - {spiegazione}")
+    stampa("  - Web Search disattivato, così le risposte vengono solo dalle fonti")
+    stampa("  (interfaccia: Settings > MCP Servers e Settings > Web Search; file: mcp_config.json, «mcpSettings», "
+           "e settings.json)")
+
+
+def impostazioni_jan(doc):
+    """Porta «mcpSettings» di mcp_config.json ai valori che servono; restituisce le descrizioni delle modifiche."""
+    imp = doc.get("mcpSettings")
+    if imp is not None and not isinstance(imp, dict):
+        return ["«mcpSettings» non è un oggetto: le impostazioni di Jan restano da cambiare a mano"]
+    if imp is None:
+        imp = doc["mcpSettings"] = {}
+    modifiche = []
+    for chiave, va_bene, valore, spiegazione in IMPOSTAZIONI_JAN:
+        if not va_bene(imp.get(chiave)):
+            modifiche.append(f"~ mcpSettings.{chiave}: {imp.get(chiave, '(assente)')} -> {valore} ({spiegazione})")
+            imp[chiave] = valore
+    return modifiche
+
+
+def ricerca_web_jan(f):
+    """(documento di settings.json con la ricerca web spenta, descrizione) se in Jan è accesa; (None, None)
+    se è già spenta o il file non c'è o non ha la forma attesa (allora lo si fa a mano)."""
+    if not f.exists():
+        return None, None
+    try:
+        doc = json.loads(_leggi_testo(f)[0])
+        stato = json.loads(doc["setting-web-search"])
+        attiva = stato["state"]["webSearchEnabled"]
+    except (ValueError, KeyError, TypeError):
+        return None, None
+    if attiva is not True:
+        return None, None
+    stato["state"]["webSearchEnabled"] = False
+    doc["setting-web-search"] = json.dumps(stato, ensure_ascii=False, separators=(",", ":"))
+    return doc, "~ settings.json, Web Search: attiva -> disattivata (le risposte vengono solo dalle fonti)"
+
+
+def in_esecuzione(nome):
+    """Vero se il programma del client è aperto (solo Jan: alla chiusura riscrive i suoi file)."""
+    if nome != "jan":
+        return False
+    try:
+        if os.name == "nt":
+            r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Jan.exe", "/NH"], capture_output=True, text=True,
+                               errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return "jan.exe" in r.stdout.lower()
+        return subprocess.run(["pgrep", "-xi", "jan"], capture_output=True).returncode == 0
+    except OSError:
+        return False
 
 
 def conferma_domanda(testo, chiedi):
@@ -329,7 +389,7 @@ def unisci_voci(client, esistente, nome_server, voce):
     if not isinstance(esistente, dict):
         return None, ["il file non è un oggetto JSON valido: non scrivo nulla"], False
     doc = json.loads(json.dumps(esistente))               # copia: non tocchiamo l'oggetto ricevuto
-    chiavi = ("servers",) if client == "jan" else ("mcpServers", "servers")
+    chiavi = ("mcpServers", "servers")                    # Jan, Claude Desktop e LM Studio usano «mcpServers»
     sezione = next((k for k in chiavi if isinstance(doc.get(k), dict)), None)
     if sezione is None:
         for k in chiavi:                                  # una chiave presente ma malformata blocca la scrittura
@@ -340,17 +400,21 @@ def unisci_voci(client, esistente, nome_server, voce):
     servers = doc[sezione]
     vecchio_nome = next((n for n in ALIAS_CLIENT.get(client, (nome_server,)) if n in servers), None)
     vecchio = servers.get(vecchio_nome) if vecchio_nome else None
-    if vecchio is not None and vecchio == voce:
+    # le voci proprie del client restano (Jan: «type», «active»); per Jan il server va acceso
+    nuova = {**{k: v for k, v in (vecchio or {}).items() if k not in ("command", "args", "env")}, **voce}
+    if client == "jan":
+        nuova.update(active=True, type=nuova.get("type", "stdio"))
+    if vecchio is not None and vecchio == nuova:
         return doc, [f"la voce «{vecchio_nome}» è già esattamente questa"], True
     if vecchio is None:
-        servers[nome_server] = voce
+        servers[nome_server] = nuova
         return doc, [f"+ «{nome_server}» ({sezione}): avvierà il server MCP",
                      "- nessuna altra voce viene toccata"], False
-    servers.pop(vecchio_nome)
-    servers[nome_server] = voce
+    # il nome che l'utente ha dato alla voce resta: cambia solo il contenuto
+    servers[vecchio_nome] = nuova
     altri = ", ".join(str(a) for a in (vecchio.get("args") or [])) or "(nessun argomento)"
-    mod = [f"~ «{vecchio_nome}» diventa «{nome_server}»: prima command {vecchio.get('command')} | args {altri}",
-           f"+ «{nome_server}» ({sezione}): avvierà il server MCP",
+    mod = [f"~ «{vecchio_nome}» aggiornata: prima command {vecchio.get('command')} | args {altri}"
+           + (" | spenta" if client == "jan" and not vecchio.get("active") else ""),
            "- nessuna altra voce viene toccata"]
     return doc, mod, False
 
@@ -391,20 +455,36 @@ def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
         stampa("  " + m)
     if doc is None:
         return 3
+    altri_file = []                         # (file, documento) da scrivere insieme a quello del client
+    if nome == "jan":
+        imp = impostazioni_jan(doc)
+        f_web = Path(args.file_impostazioni) if getattr(args, "file_impostazioni", None) else f.with_name("settings.json")
+        doc_web, mod_web = ricerca_web_jan(f_web)
+        if doc_web is not None:
+            altri_file.append((f_web, doc_web))
+            imp.append(mod_web)
+        for m in imp:
+            stampa("  " + m)
+        gia = gia and not any(m.startswith("~") for m in imp)
     if gia:
         stampa("Nessuna scrittura necessaria.")
         return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
     if not args.scrivi:
-        stampa("Con --scrivi aggiungo la voce al file (copia di sicurezza prima). Ora non ho scritto nulla.")
+        stampa("Con --scrivi faccio io queste modifiche (copia di sicurezza prima). Ora non ho scritto nulla.")
         return 0
+    if in_esecuzione(nome):
+        stampa("Jan è aperto: quando si chiude riscrive i suoi file e queste modifiche andrebbero perse. Chiudi Jan "
+               "(anche dall'icona accanto all'orologio) e rilancia il comando.")
+        return 1
     if not args.si and not conferma_domanda("Scrivere queste modifiche? [S/n] ", chiedi):
         stampa("Annullato: il file non è cambiato.")
         return 0
-    for riga in scrivi_file_client(f, doc):
-        stampa("  " + riga)
+    for file_, documento in [(f, doc)] + altri_file:
+        for riga in scrivi_file_client(file_, documento):
+            stampa("  " + riga)
     if nome == "jan":
-        passaggi_manuali_jan(stampa)
-        stampa("Riavvia Jan (se era aperto) e riattiva il server «airchivist».")
+        stampa("Apri Jan: il server AIrchivist è acceso. Le altre impostazioni dell'assistente sono nella guida "
+               "(docs/user_guide.it.md, «Jan»).")
     else:
         stampa("Riavvia il client perché legga la nuova configurazione.")
     return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
@@ -469,6 +549,11 @@ def client_verifica(args, stampa, avvia=None):
             proc.wait(timeout=5)
         except OSError:
             pass
+        for canale in (getattr(proc, "stdin", None), getattr(proc, "stdout", None)):
+            try:
+                canale.close()
+            except (AttributeError, OSError):
+                pass
 
 
 def cmd_client(args, stampa=print, chiedi=input):
@@ -640,7 +725,9 @@ def descrivi(p):
 
 def registra_cambio(cfg, cambi, dove, stampa):
     """Una riga per ruolo in system/model_changes.csv del progetto (UTF-8 con BOM, CRLF come gli altri registri)."""
-    from progetto import NessunProgetto, percorso
+    from progetto import NessunProgetto, cartella_scelta, percorso
+    if not progetto_esiste(cartella_scelta(cfg)):
+        return                              # nessun progetto ancora (avvio guidato): niente cartelle fantasma
     try:
         f = percorso(cfg, "cambi_modello")
     except NessunProgetto:
@@ -1053,8 +1140,18 @@ def scegli_passi(args, stampa):
 
 
 def stato_ambiente(args, stampa):
-    """Passo 1: controllo dell'ambiente; 0 tutto a posto, 1 manca qualcosa di necessario (istruzioni già stampate)."""
-    return cmd_controlla(argparse.Namespace(rapido=args.rapido), stampa)
+    """Passo 1: controllo dell'ambiente di base (Python, SQLite con FTS5, librerie e OCR facoltativi); 0 tutto a
+    posto, 1 manca qualcosa di necessario (istruzioni già stampate). Modello e progetto no: li preparano i passi 2
+    e 3, e il riepilogo controlla tutto."""
+    esito = Esito(stampa)
+    controlla_python(esito)
+    controlla_sqlite(esito)
+    stampa("Per importare nuove fonti (facoltativi):")
+    controlla_pymupdf(esito)
+    controlla_tesseract(esito, leggi_cfg())
+    if not args.rapido:
+        controlla_paddle(esito, leggi_cfg())
+    return 1 if esito.mancanti else 0
 
 
 def guida_modello(stampa, chiedi=input):
@@ -1085,25 +1182,32 @@ def guida_modello(stampa, chiedi=input):
     return modello_usa(argparse.Namespace(nome=nomi[n - 1], ruolo=None, progetto=False), stampa)
 
 
+def progetto_esiste(radice):
+    """Vero se la cartella è un progetto (c'è project.ini): una cartella indicata ma assente non conta."""
+    return radice is not None and (Path(radice) / "project.ini").is_file()
+
+
 def cartella_progetti():
     return CARTELLA.parent / "projects"
 
 
-def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None):
+def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None, si=False):
     """Passo 3: creazione del primo progetto e sua scelta in config.ini, senza modifiche manuali ai file.
     0 fatto o non necessario, 1 fallito o saltato dall'utente. Parametri solo per i test: «config» file .ini da
     scrivere, «crea» la funzione che crea il progetto, «base» cartella dove proporre di metterlo."""
     from progetto import VARIABILE, cartella_scelta, cmd_nuovo, nome
     cfg = leggi_cfg()
     radice = cartella_scelta(cfg)
-    if radice is not None:
+    if progetto_esiste(radice):
         stampa(f"Progetto in uso: «{nome(cfg)}» ({radice}). Per un progetto nuovo: python progetto.py nuovo "
                f'<cartella> --nome "..." (la scelta resta valida anche se salti questo passo).')
         return 0
+    if radice is not None:
+        stampa(f"La configurazione indica come progetto {radice}, che non esiste (o non è un progetto): ne creo uno.")
     base = Path(base) if base else cartella_progetti()
     proposto = _chiedi_valore(chiedi, "Nome del progetto nuovo (la ricerca sui tuoi documenti)", "La mia ricerca")
     cartella = _chiedi_valore(chiedi, "Cartella dove mettere i suoi file", str(base / re.sub(r"\s+", "_", proposto)))
-    if not conferma_domanda(f"Creo il progetto «{proposto}» in {cartella}? [S/n] ", chiedi):
+    if not si and not conferma_domanda(f"Creo il progetto «{proposto}» in {cartella}? [S/n] ", chiedi):
         stampa("Passo saltato: nessun progetto creato. Quando vuoi: python progetto.py nuovo <cartella> --nome \"...\"")
         return 1
     esito = (crea or cmd_nuovo)(argparse.Namespace(cartella=cartella, nome=proposto, descrizione=""), stampa)
@@ -1122,20 +1226,25 @@ def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None):
 CLIENT_GUIDA = [("jan", "Jan"), ("claude", "Claude Desktop"), ("lmstudio", "LM Studio")]
 
 
-def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
-    """Passo 4: configurazione della chat (lavoro 27). Aggiunge la voce al file del client scelto, poi prova
-    l'handshake MCP come lo farebbe il client. 0 fatto, 1 saltato o non riuscito. «file» e «scrivi_voce» servono
-    solo ai test: percorso del file da usare al posto di quello reale e voce del server finta."""
-    def gia_configurato(codice):
-        f = Path(file) if file else file_client(codice)
-        try:
-            doc = json.loads(_leggi_testo(f)[0]) if f.exists() else {}
-        except ValueError:
-            return False
-        servers = next((doc[k] for k in ("mcpServers", "servers") if isinstance(doc.get(k), dict)), {})
-        return any(n in servers for n in ALIAS_CLIENT.get(codice, (NOME_SERVER,)))
+def voce_presente(codice, file=None):
+    """Vero se il file di configurazione del client contiene la voce di AIrchivist (anche col nome «Pipeline»)."""
+    f = Path(file) if file else file_client(codice)
+    if f is None or not f.exists():
+        return False
+    try:
+        doc = json.loads(_leggi_testo(f)[0])
+    except ValueError:
+        return False
+    servers = next((doc[k] for k in ("mcpServers", "servers") if isinstance(doc.get(k), dict)), {})
+    return any(n in servers for n in ALIAS_CLIENT.get(codice, (NOME_SERVER,)))
 
-    gia = next((c for c, _ in CLIENT_GUIDA if gia_configurato(c)), None)
+
+def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
+    """Passo 4: configurazione della chat (lavoro 27). Mostra le modifiche al file del client scelto, le scrive
+    dopo la conferma (senza domanda solo con --si), poi prova l'handshake MCP come lo farebbe il client. 0 fatto,
+    1 saltato o non riuscito. «file» e «scrivi_voce» servono solo ai test: percorso del file da usare al posto di
+    quello reale e voce del server finta."""
+    gia = next((c for c, _ in CLIENT_GUIDA if voce_presente(c, file)), None)
     stampa("Quale programma di chat colleghi a AIrchivist? (la chat è diversa dal modello che legge i passaggi)")
     predefinita = next((i for i, (c, _) in enumerate(CLIENT_GUIDA, 1) if c == gia), 1)
     n = _scegli(chiedi, stampa, "Scelta", [etichetta for _, etichetta in CLIENT_GUIDA] + ["nessuno, per ora"],
@@ -1144,18 +1253,25 @@ def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
         stampa("Passo saltato. Quando vuoi: python installa.py client <jan|claude|lmstudio> --scrivi")
         return 1
     nome = CLIENT_GUIDA[n - 1][0]
-    args = argparse.Namespace(nome=nome, scrivi=True, verifica=True, si=True,
+    args = argparse.Namespace(nome=nome, scrivi=True, verifica=True, si=si,
                               file=str(file) if file else None,
                               voce=scrivi_voce or voce_server())
-    return cmd_client_scrivi(args, stampa, chiedi=chiedi)
+    esito = cmd_client_scrivi(args, stampa, chiedi=chiedi)
+    return esito if esito or voce_presente(nome, file) else 1        # annullato: passo non completato
 
 
 def riepilogo(stampa, file_client_fn=None):
-    """Passo 5: che cosa è installato, dove sta il progetto, prossimo passo. «file_client_fn» nei test."""
+    """Passo 5: che cosa è installato, dove sta il progetto, prossimo passo. Rifà tutti i controlli necessari
+    (come «controlla»): 0 se non manca nulla, 1 altrimenti. «file_client_fn» nei test."""
     from llm import RUOLI, ErroreModello, profilo, usa_profili
     from progetto import cartella_scelta, nome
     cfg = leggi_cfg()
     fc = file_client_fn or file_client
+    controlli = Esito(lambda riga: None)
+    controlla_python(controlli)
+    controlla_sqlite(controlli)
+    controlla_modelli(controlli, cfg)
+    controlla_progetto(controlli, cfg)
     stampa("\n=== Riepilogo ===")
     stampa(f"- Motore: {CARTELLA} (Python {sys.version_info.major}.{sys.version_info.minor})")
     if usa_profili(cfg):
@@ -1166,17 +1282,21 @@ def riepilogo(stampa, file_client_fn=None):
     else:
         stampa("- Modello che legge i passaggi: nessuna scelta ancora (python installa.py modello nuovo)")
     radice = cartella_scelta(cfg)
-    stampa(f"- Progetto: «{nome(cfg)}» in {radice}" if radice else
-           "- Progetto: nessuno ancora (python installa.py inizia, passo 3)")
-    configurati = [etichetta for codice, etichetta in CLIENT_GUIDA
-                   if (lambda f: f is not None and Path(f).exists())(fc(codice))]
+    stampa(f"- Progetto: «{nome(cfg)}» in {radice}" if progetto_esiste(radice) else
+           "- Progetto: nessuno ancora (python installa.py inizia --passi 3)")
+    configurati = [etichetta for codice, etichetta in CLIENT_GUIDA if voce_presente(codice, fc(codice))]
     if configurati:
-        stampa("- Chat: file di configurazione presente per " + ", ".join(configurati) +
-               "; se non l'hai già fatto riavvia il programma perché legga la nuova voce")
+        stampa("- Chat: AIrchivist è nella configurazione di " + ", ".join(configurati) +
+               "; se il programma era aperto, riavvialo perché legga la voce")
     else:
-        stampa("- Chat: non configurata ancora (python installa.py client <nome> --scrivi)")
-    stampa("- Prossimo passo: importare le fonti (con la tabella di revisione: python scripts/importa.py proponi "
-           "<cartella di PDF>; vedi lavoro 29)")
+        stampa("- Chat: non configurata ancora (python installa.py client <jan|claude|lmstudio> --scrivi)")
+    if controlli.mancanti:
+        stampa("- Manca ancora: " + ", ".join(v.strip() for v in controlli.mancanti) +
+               " (dettagli: python installa.py controlla)")
+        return 1
+    stampa("- Prossimo passo: descrivi le serie delle tue fonti (glossary/series.ini del progetto, o dalla chat con "
+           "lo strumento serie) e importa i documenti (python importa.py importa <file o cartella> --serie \"...\", "
+           "o dalla chat con lo strumento importa); vedi «Importare nuove fonti» in docs/user_guide.it.md")
     return 0
 
 
@@ -1191,10 +1311,11 @@ def cmd_inizia(args, stampa=print, chiedi=input, funzioni=None, riepilogo_fn=Non
     stampa("AIrchivist — avvio guidato (puoi interrompere con Ctrl+C e riprendere: i passi già fatti non si "
            "rifanno)\n")
     esiti = {}
+    si = getattr(args, "si", False)
     default = {1: lambda: stato_ambiente(args, stampa),
                2: lambda: guida_modello(stampa, chiedi),
-               3: lambda: guida_progetto(stampa, chiedi),
-               4: lambda: guida_chat(stampa, chiedi)}
+               3: lambda: guida_progetto(stampa, chiedi, si=si),
+               4: lambda: guida_chat(stampa, chiedi, si=si)}
     funzioni = funzioni or default
     for n in passi:
         if n == 5:
@@ -1204,15 +1325,15 @@ def cmd_inizia(args, stampa=print, chiedi=input, funzioni=None, riepilogo_fn=Non
         stampa(f"\n--- Passo {n} di 5: {titolo} ---")
         esiti[n] = funzioni[n]()
         if esiti[n] != 0 and n == 1:
-            stampa("\nManca qualcosa di necessario: sistema seguendo le indicazioni qui sopra (per le librerie: "
-                   "python installa.py librerie) e rilancia «python installa.py inizia»: i passi già completati "
-                   "non verranno rifatti.")
+            stampa("\nManca qualcosa di necessario: sistema seguendo le indicazioni qui sopra e rilancia "
+                   "«python installa.py inizia»: i passi già completati non verranno rifatti.")
             return 1
-    (riepilogo_fn or riepilogo)(stampa)
+    completo = (riepilogo_fn or riepilogo)(stampa) == 0
     blocco = [n for n in (1, 2, 3, 4) if n in esiti and esiti[n] != 0]
     if blocco:
         stampa("Passi non completati: " + ", ".join(f"{n} {PASSI[n]}" for n in blocco) +
-               ". Riprendi quando vuoi con gli stessi comandi indicati sopra.")
+               ". Riprendi quando vuoi: python installa.py inizia (o --passi " + ",".join(map(str, blocco)) + ").")
+    if blocco or not completo:
         return 1
     stampa("Tutto pronto.")
     return 0
@@ -1232,6 +1353,8 @@ def main(argv=None):
                    help="avvia il server come lo avvierebbe il client: handshake MCP ed elenco degli strumenti")
     k.add_argument("--si", action="store_true", help="--scrivi: niente domanda di conferma")
     k.add_argument("--file", default=None, help="--scrivi: file di configurazione da usare (di norma lo trovo io)")
+    k.add_argument("--file-impostazioni", default=None, dest="file_impostazioni",
+                   help="jan --scrivi: settings.json di Jan da usare (di norma accanto a mcp_config.json)")
     m = sub.add_parser("modello", help="profili dei modelli: nuovo, elenca, usa, prova, togli, converti")
     m.add_argument("azione", nargs="?", default="nuovo", choices=list(AZIONI_MODELLO))
     m.add_argument("nome", nargs="?", help="nome del profilo (usa, prova, togli)")

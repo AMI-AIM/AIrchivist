@@ -11,10 +11,17 @@ Serve Python 3.10 o successivo (quello di python.org). I requisiti si installano
 cartella. Dalla cartella del repository:
 
 ```
+python scripts\installa.py inizia
+```
+
+`inizia` guida i passi per la prima volta (ambiente, modello, primo progetto, chat, riepilogo); si possono fare
+anche uno per volta:
+
+```
 python scripts\installa.py librerie
 python scripts\installa.py modello
 python scripts\installa.py controlla
-python scripts\installa.py client jan
+python scripts\installa.py client jan --scrivi
 ```
 
 - `librerie`: installa le librerie facoltative di `requirements.txt` (PyMuPDF, per importare i PDF).

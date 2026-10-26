@@ -121,7 +121,7 @@ Completo quando:
 
 Per Jan: verificare se le impostazioni che oggi si cambiano a mano (timeout degli strumenti, smart routing, ricerca web) sono in un file modificabile. Se non lo sono, la procedura le elenca come passaggi manuali.
 
-**Stato (26/10/2026): fatto.** `--scrivi` e `--verifica` implementati in `installa.py`; verifica dei campi di Jan fatta su un'installazione reale (ottobre 2026): non sono in nessun file modificabile, il comando li elenca come passaggi manuali. Test automatici in `tests/test_installa.py`. Difetto corretto il 26/10: `--scrivi` senza `--si` con tastiera assente (EOFError, pipe o avvio automatico) andava in errore; ora la conferma senza risposta vale «no», il comando annulla con esito 0 e lascia il file intatto (test nuovo: `test_non_interattiva_eof_non_scrive`). Da fare sul PC reale: la prova manuale in Jan e Claude Desktop qui sotto; dettagli ed esiti in `stato_del_sistema.md` (sezione «Configurazione dei client MCP»).
+**Stato (26/10/2026): fatto, salvo la prova manuale nei client.** `--scrivi` e `--verifica` implementati in `installa.py`. Le impostazioni di Jan sono in file modificabili (verifica sul file reale del 26/10, che corregge un'annotazione precedente): timeout degli strumenti e smart routing in `mcp_config.json`, sezione `mcpSettings`; ricerca web in `settings.json`, voce `setting-web-search`. `--scrivi` le sistema insieme alla voce del server, a Jan chiuso. Test automatici in `tests/test_installa.py`. Difetto corretto il 26/10: `--scrivi` senza `--si` con tastiera assente (EOFError, pipe o avvio automatico) andava in errore; ora la conferma senza risposta vale «no», il comando annulla con esito 0 e lascia il file intatto (test nuovo: `test_non_interattiva_eof_non_scrive`). Da fare sul PC reale: la prova manuale in Jan e Claude Desktop qui sotto; dettagli ed esiti in `stato_del_sistema.md` (sezione «Configurazione dei client MCP»).
 
 Completo quando: su una configurazione vuota e su una con altri server già presenti, il file risultante è valido e il client avvia il server (prova manuale in Jan e Claude Desktop, annotata in `stato_del_sistema.md`).
 
@@ -137,6 +137,8 @@ Completo quando: su una configurazione vuota e su una con altri server già pres
 5. Riepilogo finale: che cosa è installato, dove sta il progetto, prossimo passo (importare le fonti, lavoro 29).
 
 Si interrompe e riprende senza rifare i passi già completati. Ogni passo si può saltare.
+
+**Stato (26/10/2026):** fatto su Windows (copia pulita del repository fino al riepilogo, vedi `stato_del_sistema.md`, «Avvio guidato»); da provare su un altro sistema.
 
 Completo quando: una copia pulita del repository, su Windows e su almeno un altro sistema, arriva al riepilogo finale senza modifiche manuali ai file.
 

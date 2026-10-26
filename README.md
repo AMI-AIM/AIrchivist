@@ -45,6 +45,14 @@ Install requirements system-wide, never inside the project folder.
 ```bash
 git clone <repository URL> AIrchivist
 cd AIrchivist
+python scripts/installa.py inizia
+```
+
+`inizia` is a guided first setup: environment check, model profile, first research project, chat client, and a
+summary that re-runs the required checks. Each step can be skipped (`--saltati 4`) or run alone (`--passi 3`); run
+again, it does not redo completed steps. The same steps one at a time:
+
+```bash
 python scripts/installa.py librerie
 python scripts/installa.py modello
 python scripts/installa.py controlla
@@ -68,8 +76,8 @@ python scripts/installa.py client --verifica
 
 `client <name>` prints the MCP server entry (Python interpreter, path of `scripts/mcp_server.py`, `PYTHONUTF8=1`) and
 the client's configuration file; with `--scrivi` it adds or updates only the AIrchivist entry in that file — a backup
-copy is made first and nothing is written until you confirm. Other values: `jan` (also lists the three settings to
-change by hand in Jan's interface), `lmstudio` and `json` (the generic `mcpServers` block, no file). `client
+copy is made first and nothing is written until you confirm. Other values: `jan` (with `--scrivi`, run while Jan is closed: it
+also sets the tool timeout, smart routing, tool output size and web search in Jan's own files), `lmstudio` and `json` (the generic `mcpServers` block, no file). `client
 --verifica` starts the server the way the client would and checks the MCP handshake and the tool list. For clients
 that use HTTP: `python scripts/mcp_server.py --http 8765`.
 
