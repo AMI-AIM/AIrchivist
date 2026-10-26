@@ -3,6 +3,9 @@
 # progetto di prova dei test (tests/test_project/); un progetto nuovo: python scripts/progetto.py nuovo projects/<nome>
 projects/
 
+# Profili dei modelli di chi usa il motore (il modello pubblico è scripts/models_template.ini)
+scripts/models.ini
+
 # Letteratura secondaria sul metodo (va spostata fuori dal repository)
 letteratura/
 

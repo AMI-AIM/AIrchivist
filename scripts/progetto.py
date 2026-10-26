@@ -57,6 +57,7 @@ PERCORSI = {
     "lavori_importazioni": "system/import_jobs",
     "cache": "system/cache",
     "backup": "system/backups",
+    "cambi_modello": "system/model_changes.csv",   # cambi di profilo di modello (installa.py modello usa)
 }
 # sottocartelle di results/: ricerche, archivio unico, letture di riferimento, sessioni con Claude, prove, valutazione
 RICERCHE, ARCHIVIO, RIFERIMENTI, SESSIONI, PROVE, VALUTAZIONE = (

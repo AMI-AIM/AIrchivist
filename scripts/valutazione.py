@@ -772,14 +772,8 @@ def prompt_misto(gruppo, schede, n):
 
 def catalogo_router(cfg):
     """Modelli del router con i loro dati (nome, contesto, stato delle quote)."""
-    import urllib.request
-    from llm import LLM
-    llm = LLM(cfg, "smistamento")
-    base = llm.url.rsplit("/chat/completions", 1)[0]
-    req = urllib.request.Request(base + "/models?available=true",
-                                 headers={"Authorization": f"Bearer {llm.chiave}", "User-Agent": "ricerca-fonti/1.0"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.load(r).get("data", [])
+    from llm import catalogo_router as catalogo
+    return catalogo(cfg)
 
 
 def scegli_modelli(args, cfg):

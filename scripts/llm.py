@@ -1,12 +1,18 @@
 """
-Collegamento ai modelli linguistici. Tre tipi di servizio ("backend"), scelti in config.ini:
+Collegamento ai modelli linguistici. Tipi di servizio:
   anthropic : Claude via API (a pagamento, a consumo)
   openai    : qualsiasi servizio compatibile con il formato OpenAI, compresi quelli con piano gratuito
-              (Groq, Google Gemini, OpenRouter), i router locali che li combinano (FreeLLMAPI)
-              e i server locali (LM Studio, Ollama /v1)
-Dopo ogni chiamata, 'ultimo_modello' contiene il modello che ha davvero risposto (con un router può
-cambiare da una richiesta all'altra); 'modelli_ammessi' in config.ini rifiuta le risposte di modelli non verificati.
+              (Groq, Google Gemini, OpenRouter) e i server locali (LM Studio, Ollama /v1)
+  router    : FreeLLMAPI, router locale che combina più servizi gratuiti (formato OpenAI)
   ollama    : Ollama in locale (API nativa)
+Dopo ogni chiamata, 'ultimo_modello' contiene il modello che ha davvero risposto (con un router può
+cambiare da una richiesta all'altra); 'modelli_ammessi' rifiuta le risposte di modelli non verificati.
+
+Profili (lavoro 26): ogni modello configurato è una sezione di models.ini (servizio, modello, indirizzo, variabile
+della chiave, parametri propri; modello pubblico: models_template.ini). config.ini o project.ini scelgono il profilo
+nella sezione [modello]: «profilo» per tutti i ruoli, «smistamento», «analisi», «sintesi» per un ruolo solo.
+Senza profilo scelto vale la configurazione precedente: «backend» e le sezioni [anthropic], [openai], [router],
+[ollama] di config.ini (installa.py modello converti la trasforma in profili).
 Solo libreria standard di Python.
 """
 import configparser
@@ -47,50 +53,163 @@ class LimiteRaggiunto(Exception):
         self.motivo = motivo
 
 
-class LLM:
-    """ruolo = 'smistamento' | 'analisi' | 'sintesi'"""
+RUOLI = ("smistamento", "analisi", "sintesi")
+SERVIZI = ("anthropic", "openai", "router", "ollama")
+# voci di un profilo che vengono dalla sezione del servizio nella configurazione precedente
+VOCI_SERVIZIO = ("url", "chiave_env", "json", "parametri_extra", "pausa_secondi", "num_ctx", "modelli_ammessi")
 
-    def __init__(self, cfg, ruolo):
-        scelta = cfg.get("modello", "backend", fallback="anthropic").strip().lower()
-        if scelta not in ("anthropic", "openai", "ollama", "router"):
-            raise ErroreModello(f"Backend sconosciuto: {scelta}")
-        sez = cfg[scelta] if cfg.has_section(scelta) else {}
-        # "router" (FreeLLMAPI) usa il formato OpenAI, con le impostazioni della sezione [router]
+
+def _ini():
+    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
+    cp.optionxform = str
+    return cp
+
+
+def file_profili(cfg):
+    """models.ini accanto al codice, o il file indicato in [modello] file_profili (relativo alla cartella scripts)."""
+    v = Path(cfg.get("modello", "file_profili", fallback="").strip() or "models.ini")
+    return v if v.is_absolute() else CARTELLA / v
+
+
+def leggi_profili(cfg):
+    """{nome: {voce: valore}} dei profili di models.ini, nell'ordine del file; {} se il file non c'è."""
+    f = file_profili(cfg)
+    if not f.exists():
+        return {}
+    cp = _ini()
+    try:
+        cp.read(f, encoding="utf-8")
+    except configparser.Error as e:
+        raise ErroreModello(f"{f} non si legge: {e}")
+    return {s: {k: v.strip() for k, v in cp[s].items()} for s in cp.sections()}
+
+
+def nome_scelto(cfg, ruolo):
+    """Profilo scelto per un ruolo in [modello] (voce del ruolo, poi «profilo»); "" con la configurazione precedente."""
+    return (cfg.get("modello", ruolo, fallback="").strip() or cfg.get("modello", "profilo", fallback="").strip())
+
+
+def usa_profili(cfg):
+    return any(nome_scelto(cfg, r) for r in RUOLI)
+
+
+def profilo_precedente(cfg, ruolo, servizio=None):
+    """La configurazione precedente ai profili (backend e sezione del servizio) vista come un profilo."""
+    servizio = (servizio or cfg.get("modello", "backend", fallback="anthropic")).strip().lower()
+    sez = cfg[servizio] if cfg.has_section(servizio) else {}
+    p = {"servizio": servizio, "modello": sez.get(f"modello_{ruolo}", "").strip()}
+    for k in VOCI_SERVIZIO:
+        if sez.get(k, "").strip():
+            p[k] = sez.get(k).strip()
+    if servizio == "anthropic":
+        p.setdefault("chiave_env", "ANTHROPIC_API_KEY")
+    return p
+
+
+def profilo(cfg, ruolo, nome=None):
+    """(nome, voci) del profilo da usare per un ruolo. Con nome: quel profilo di models.ini, qualunque sia la scelta."""
+    nome = nome or nome_scelto(cfg, ruolo)
+    if not nome:
+        servizio = cfg.get("modello", "backend", fallback="anthropic").strip().lower()
+        return f"config.ini [{servizio}]", profilo_precedente(cfg, ruolo, servizio)
+    profili = leggi_profili(cfg)
+    if nome not in profili:
+        elenco = ", ".join(profili) or "nessuno"
+        raise ErroreModello(f"Il profilo di modello «{nome}» non esiste in {file_profili(cfg)} (profili: {elenco}). "
+                            "Elenco: python installa.py modello elenca; nuovo profilo: python installa.py modello nuovo")
+    return nome, profili[nome]
+
+
+def profili_attivi(cfg):
+    """{ruolo: nome del profilo} per i tre ruoli."""
+    return {r: profilo(cfg, r)[0] for r in RUOLI}
+
+
+def profilo_router(cfg):
+    """Voci del profilo del router (FreeLLMAPI), per le prove dei modelli: quello scelto per lo smistamento, se è
+    un router; altrimenti il primo router di models.ini; altrimenti la sezione [router] della configurazione
+    precedente."""
+    p = profilo(cfg, "smistamento")[1]
+    if p.get("servizio") == "router":
+        return dict(p)
+    for p in leggi_profili(cfg).values():
+        if p.get("servizio") == "router":
+            return dict(p)
+    p = profilo_precedente(cfg, "smistamento", "router")
+    if p.get("url"):
+        return p
+    raise ErroreModello("Nessun profilo del router (FreeLLMAPI): creane uno con python installa.py modello nuovo")
+
+
+def catalogo_router(cfg, solo_disponibili=True):
+    """Modelli che il router dichiara (GET /models), con i loro dati."""
+    p = profilo_router(cfg)
+    chiave = os.environ.get(p.get("chiave_env", ""), "") if p.get("chiave_env") else ""
+    req = urllib.request.Request(p.get("url", "").rstrip("/") + "/models" + ("?available=true" if solo_disponibili else ""),
+                                 headers={"Authorization": f"Bearer {chiave}", "User-Agent": "ricerca-fonti/1.0"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r).get("data", [])
+
+
+class LLM:
+    """ruolo = 'smistamento' | 'analisi' | 'sintesi'; nome_profilo: un profilo di models.ini al posto di quello
+    scelto nella configurazione (per provarlo prima di sceglierlo)."""
+
+    def __init__(self, cfg, ruolo, nome_profilo=None):
+        self.profilo, p = profilo(cfg, ruolo, nome_profilo)
+        scelta = p.get("servizio", "").strip().lower()
+        if scelta not in SERVIZI:
+            raise ErroreModello(f"Servizio sconosciuto nel profilo «{self.profilo}»: «{scelta}» "
+                                f"(ammessi: {', '.join(SERVIZI)})")
+        # "router" (FreeLLMAPI) usa il formato OpenAI
         self.backend = "openai" if scelta == "router" else scelta
         self.sezione = scelta
-        self.timeout = cfg.getint("modello", "timeout", fallback=300)
+
+        def intero(voce, predefinito):
+            v = p.get(voce, "")
+            try:
+                return int(v) if v else predefinito
+            except ValueError:
+                raise ErroreModello(f"«{voce}» nel profilo «{self.profilo}» deve essere un numero intero.")
+
+        self.timeout = intero("timeout", cfg.getint("modello", "timeout", fallback=300))
         # lunghezza massima della risposta, per ruolo (i modelli che "ragionano" prima di rispondere ne consumano
-        # una parte: con un limite basso il JSON arriva troncato)
-        self.max_token = cfg.getint("modello", f"max_token_{ruolo}",
-                                    fallback=cfg.getint("modello", "max_token", fallback=3000))
-        self.modello = sez.get(f"modello_{ruolo}", "").strip()
+        # una parte: con un limite basso il JSON arriva troncato); prima il profilo, poi [modello]
+        self.max_token = intero(f"max_token_{ruolo}", intero("max_token", cfg.getint(
+            "modello", f"max_token_{ruolo}", fallback=cfg.getint("modello", "max_token", fallback=3000))))
+        self.modello = p.get("modello", "").strip()
         if not self.modello:
-            raise ErroreModello(f"Manca 'modello_{ruolo}' nella sezione [{scelta}] di config.ini.")
-        self.pausa = float(sez.get("pausa_secondi", "0") or 0)
+            raise ErroreModello(f"Manca «modello_{ruolo}» nella sezione [{scelta}] di config.ini."
+                                if self.profilo.startswith("config.ini") else
+                                f"Manca «modello» nel profilo «{self.profilo}».")
+        try:
+            self.pausa = float(p.get("pausa_secondi", "0") or 0)
+        except ValueError:
+            raise ErroreModello(f"«pausa_secondi» nel profilo «{self.profilo}» deve essere un numero.")
         self._ultima = 0.0
         self.ultimo_modello = self.modello
         # parti di nome (minuscole) dei modelli accettati, separate da ";": vuoto = qualsiasi modello
-        self.ammessi = [x.strip().lower() for x in sez.get("modelli_ammessi", "").replace("；", ";").split(";")
+        self.ammessi = [x.strip().lower() for x in p.get("modelli_ammessi", "").replace("；", ";").split(";")
                         if x.strip()]
+        nome_env = p.get("chiave_env", "").strip() or ("ANTHROPIC_API_KEY" if scelta == "anthropic" else "")
+        self.chiave_env = nome_env
+        self.chiave = os.environ.get(nome_env, "") if nome_env else ""
+        if nome_env and not self.chiave:
+            raise ErroreModello(f"Manca la chiave: imposta la variabile {nome_env} (vedi docs/user_guide.it.md).")
         if self.backend == "anthropic":
             self.url = "https://api.anthropic.com/v1/messages"
-            self.chiave = os.environ.get("ANTHROPIC_API_KEY", "")
-            if not self.chiave:
-                raise ErroreModello("Manca la chiave: imposta la variabile ANTHROPIC_API_KEY (vedi docs/user_guide.it.md).")
         elif self.backend == "openai":
-            self.url = sez.get("url", "").rstrip("/") + "/chat/completions"
-            nome_env = sez.get("chiave_env", "").strip()
-            self.chiave = os.environ.get(nome_env, "") if nome_env else ""
-            if nome_env and not self.chiave:
-                raise ErroreModello(f"Manca la chiave: imposta la variabile {nome_env} (vedi docs/user_guide.it.md).")
-            self.json_mode = sez.get("json", "si").strip().lower() in ("si", "sì", "yes", "true", "1")
+            self.url = p.get("url", "").rstrip("/") + "/chat/completions"
+            if not self.url.startswith("http"):
+                raise ErroreModello(f"Manca l'indirizzo («url») del servizio nel profilo «{self.profilo}».")
+            self.json_mode = p.get("json", "si").strip().lower() in ("si", "sì", "yes", "true", "1")
             try:
-                self.extra = json.loads(sez.get("parametri_extra", "") or "{}")
+                self.extra = json.loads(p.get("parametri_extra", "") or "{}")
             except ValueError:
-                raise ErroreModello("'parametri_extra' in config.ini non è JSON valido.")
+                raise ErroreModello(f"«parametri_extra» nel profilo «{self.profilo}» non è JSON valido.")
         else:
-            self.url = sez.get("url", "http://localhost:11434").rstrip("/")
-            self.num_ctx = int(sez.get("num_ctx", "4096"))
+            self.url = (p.get("url", "") or "http://localhost:11434").rstrip("/")
+            self.num_ctx = intero("num_ctx", 4096)
             self.think = False
 
     # ---------------- controlli ----------------
@@ -117,6 +236,40 @@ class LLM:
         if self.modello not in nomi and self.modello + ":latest" not in nomi:
             raise ErroreModello(f"Il modello {self.modello} non è installato. Esegui:  ollama pull {self.modello}")
 
+    def prova(self):
+        """Prova del collegamento con una richiesta minima, senza attese né nuovi tentativi: il modello che ha
+        risposto, oppure ErroreModello con la spiegazione."""
+        self.controlla()
+        funzione = {"anthropic": self._anthropic, "openai": self._openai, "ollama": self._ollama}[self.backend]
+        max_token, timeout = self.max_token, self.timeout
+        # pochi token bastano per sapere se il servizio risponde (i modelli che "ragionano" possono restituire
+        # un testo vuoto: conta che la richiesta sia accettata)
+        self.max_token, self.timeout = min(self.max_token, 200), min(self.timeout, 90)
+        try:
+            funzione("Rispondi solo con la parola: ok", "Prova di collegamento.", None)
+        except LimiteRaggiunto as l:
+            raise ErroreModello(f"il servizio risponde ma adesso non accetta richieste ({l.motivo}): "
+                                "riprova più tardi o scegli un altro modello")
+        except ModelloNonAmmesso:
+            raise
+        except ErroreModello as e:
+            codice = re.search(r"errore (\d{3})", str(e))
+            if codice and codice.group(1) in ("401", "403"):
+                raise ErroreModello(f"il servizio rifiuta la chiave (variabile {self.chiave_env or 'nessuna'}): "
+                                    "controlla che sia copiata per intero e ancora valida")
+            if codice and codice.group(1) == "404":
+                raise ErroreModello(f"il servizio non trova il modello «{self.modello}» o l'indirizzo {self.url}: "
+                                    "controlla il nome esatto nella console del servizio")
+            raise
+        except urllib.error.URLError as e:
+            raise ErroreModello(f"il servizio non risponde su {self.url} ({getattr(e, 'reason', e)}): "
+                                "controlla l'indirizzo e che il servizio sia acceso")
+        except (OSError, ValueError) as e:      # timeout, connessione chiusa, risposta che non è JSON
+            raise ErroreModello(f"il servizio su {self.url} non ha dato una risposta valida ({e})")
+        finally:
+            self.max_token, self.timeout = max_token, timeout
+        return self.ultimo_modello
+
     # ---------------- HTTP ----------------
     def _post(self, url, corpo, intestazioni):
         req = urllib.request.Request(url, data=json.dumps(corpo).encode("utf-8"),
@@ -129,6 +282,7 @@ class LLM:
                 return json.load(r), {k.lower(): v for k, v in r.headers.items()}
         except urllib.error.HTTPError as e:
             testo = e.read().decode("utf-8", "replace")
+            e.close()
             if e.code in (429, 503, 529):
                 attesa = e.headers.get("retry-after") or e.headers.get("Retry-After")
                 try:
@@ -180,7 +334,8 @@ class LLM:
         if self.ammessi and not any(a in self.ultimo_modello.lower() for a in self.ammessi):
             raise ModelloNonAmmesso(
                 f"ha risposto un modello non ammesso ({self.ultimo_modello}): togli quel modello dalla catena "
-                f"del router oppure aggiungilo a 'modelli_ammessi' in config.ini dopo averlo verificato con valuta.py")
+                f"del router oppure aggiungilo a 'modelli_ammessi' ({self.profilo}) dopo averlo verificato con "
+                f"valutazione.py")
         scelte = r.get("choices") or [{}]
         return (scelte[0].get("message") or {}).get("content") or ""
 

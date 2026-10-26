@@ -10,7 +10,7 @@ Uso semplice (fa tutto da solo):
   python valuta.py "Nuova Unità" --limite 40     (solo i primi 40 passaggi, per una prova veloce)
   python valuta.py "Nuova Unità" --modelli "glm-4.7; nemotron-3-ultra; dots3"
       prova uno per uno i modelli indicati (parte del nome, come nel catalogo di FreeLLMAPI) e alla fine
-      stampa una tabella di confronto. Funziona con backend = router.
+      stampa una tabella di confronto. Serve un profilo del router (FreeLLMAPI).
 La prova misura lo SMISTAMENTO (pertinente sì/no): traduzione e analisi non vengono fatte, così ogni
 modello costa circa una richiesta ogni 6 passaggi.
 
@@ -138,26 +138,26 @@ def confronta(rif, prova):
 
 def modelli_disponibili(cfg):
     """Identificativi dei modelli che il router può usare adesso (GET /models?available=true)."""
-    import urllib.request
-    from llm import LLM
-    llm = LLM(cfg, "smistamento")
-    base = llm.url.rsplit("/chat/completions", 1)[0]
-    req = urllib.request.Request(base + "/models?available=true",
-                                 headers={"Authorization": f"Bearer {llm.chiave}", "User-Agent": "ricerca-fonti/1.0"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        dati = json.load(r)
-    return [m.get("id", "") for m in dati.get("data", []) if m.get("id")]
+    from llm import catalogo_router
+    return [m.get("id", "") for m in catalogo_router(cfg) if m.get("id")]
 
 
 def config_per_modello(cfg_path, modello, dest):
     """Copia della configurazione (config.ini più project.ini del progetto in uso) con il router fissato su un
-    solo modello e nessun filtro sui modelli ammessi."""
-    from llm import leggi_config
+    solo modello e nessun filtro sui modelli ammessi: un profilo «prova» in un models.ini accanto a dest."""
+    import configparser
+    from llm import RUOLI, leggi_config, profilo_router
     cp = leggi_config(cfg_path)
-    cp["modello"]["backend"] = "router"
-    for k in ("modello_smistamento", "modello_analisi", "modello_sintesi"):
-        cp["router"][k] = modello
-    cp["router"]["modelli_ammessi"] = ""
+    prof = configparser.ConfigParser(interpolation=None)
+    prof.optionxform = str
+    prof["prova"] = dict(profilo_router(cp), servizio="router", modello=modello, modelli_ammessi="")
+    file_prof = Path(dest).with_name(Path(dest).stem + "_models.ini")
+    with open(file_prof, "w", encoding="utf-8") as f:
+        prof.write(f)
+    for r in RUOLI:
+        cp.remove_option("modello", r)
+    cp["modello"]["file_profili"] = str(file_prof)
+    cp["modello"]["profilo"] = "prova"
     # la prova misura il modello: niente decisioni per regola sulle forme inequivocabili del nome
     if not cp.has_section("estrazione"):
         cp.add_section("estrazione")
@@ -210,7 +210,7 @@ def automatico(nome, limite=None, config=None, modelli=None):
     try:
         disponibili = modelli_disponibili(cfg)
     except Exception as e:
-        sys.exit(f"Non riesco a leggere l'elenco dei modelli dal router ({e}). FreeLLMAPI è acceso e backend = router?")
+        sys.exit(f"Non riesco a leggere l'elenco dei modelli dal router ({e}). FreeLLMAPI è acceso e c'è un suo profilo?")
     tabella = []
     for termine in modelli:
         trovati = [m for m in disponibili if termine.lower() in m.lower()]

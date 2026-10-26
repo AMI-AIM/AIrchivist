@@ -597,7 +597,7 @@ def main():
                 print(f"ERRORE: {e}")
                 scrivi_non_letti(cart, len(da_fare))
                 sys.exit(4 if PERMANENTE.search(str(e)) else 3)
-            print(f"Servizio: {llm_s.backend} | smistamento {llm_s.modello} | analisi {llm_a.modello}"
+            print(f"Modelli: smistamento {llm_s.modello} ({llm_s.profilo}) | analisi {llm_a.modello} ({llm_a.profilo})"
                   + (f" | modelli ammessi: {'; '.join(llm_s.ammessi)}" if llm_s.ammessi else ""))
         else:
             llm_s = llm_a = None
