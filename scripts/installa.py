@@ -24,6 +24,12 @@ Uso (nella cartella scripts):
       prova <profilo>               prova di collegamento con una richiesta minima
       togli <profilo> [--si]        toglie un profilo non in uso
       converti [--si]               trasforma in profili la configurazione precedente di config.ini
+  python installa.py inizia [--passi N,...] [--saltati N,...] [--si] [--rapido]
+                                    avvio guidato per chi installa per la prima volta (lavoro 28):
+                                    1 ambiente, 2 modello, 3 primo progetto, 4 chat, 5 riepilogo.
+                                    Si interrompe e riprende senza rifare i passi già completati; ogni passo
+                                    si può saltare (--saltati 2,4). Con --si i passi automatici non chiedono
+                                    conferma (la scelta del modello resta comunque interattiva)
 
 Esito di «controlla»: 0 se i requisiti necessari ci sono, 1 se ne manca almeno uno. I facoltativi (PyMuPDF,
 Tesseract, PaddleOCR) servono solo a importare nuove fonti.
@@ -662,7 +668,11 @@ def prova_profilo(cfg, nome, stampa):
 
 
 def sn(chiedi, domanda, predefinito):
-    r = chiedi(f"{domanda} [{'S/n' if predefinito else 's/N'}] ").strip().lower()
+    """Sì/no con default; se non c'è nessuno da interrogare (tastiera assente: EOFError) vale il default."""
+    try:
+        r = chiedi(f"{domanda} [{'S/n' if predefinito else 's/N'}] ").strip().lower()
+    except EOFError:
+        return predefinito
     return predefinito if not r else r in ("s", "si", "sì", "y", "yes")
 
 
@@ -749,12 +759,15 @@ def modello_prova(args, stampa, **_):
     return 0 if prova_profilo(cfg, args.nome, stampa) else 1
 
 
-def modello_usa(args, stampa, gia_provato=False, **_):
-    """Sceglie un profilo per tutti i ruoli o per quelli indicati, solo dopo una prova di collegamento riuscita."""
+def modello_usa(args, stampa, gia_provato=False, default=None, **_):
+    """Sceglie un profilo per tutti i ruoli o per quelli indicati, solo dopo una prova di collegamento riuscita.
+    «default» (callable): procedura guidata che chiede il nome quando args.nome manca (avvio guidato, lavoro 28)."""
     from llm import RUOLI, ErroreModello, leggi_profili, profili_attivi
     from progetto import cartella_scelta
     cfg = leggi_cfg()
-    nome = args.nome
+    nome = (args.nome or "").strip() if args.nome else ""
+    if not nome and default:
+        nome = (default() or "").strip()
     if not nome or nome not in leggi_profili(cfg):
         stampa(f"Indica un profilo esistente: python installa.py modello usa <profilo> "
                f"(profili: {', '.join(leggi_profili(cfg)) or 'nessuno'}).")
@@ -867,17 +880,24 @@ def modello_converti(args, stampa, chiedi=input, **_):
 
 
 def _scegli(chiedi, stampa, domanda, opzioni, predefinita=1):
+    """Scelta numerata; se non c'è nessuno da interrogare (tastiera assente: EOFError) vale la scelta di default."""
     for i, o in enumerate(opzioni, 1):
         stampa(f"  {i}. {o}")
     while True:
-        r = chiedi(f"{domanda} [{predefinita}] ").strip() or str(predefinita)
+        try:
+            r = chiedi(f"{domanda} [{predefinita}] ").strip() or str(predefinita)
+        except EOFError:
+            return predefinita
         if r.isdigit() and 1 <= int(r) <= len(opzioni):
             return int(r)
         stampa(f"Scrivi un numero da 1 a {len(opzioni)}.")
 
 
 def _chiedi_valore(chiedi, domanda, predefinito=""):
-    r = chiedi(f"{domanda}" + (f" [{predefinito}]" if predefinito else "") + ": ").strip()
+    try:
+        r = chiedi(f"{domanda}" + (f" [{predefinito}]" if predefinito else "") + ": ").strip()
+    except EOFError:                     # tastiera assente: il valore di default, se c'è
+        return predefinito
     return r or predefinito
 
 
@@ -1002,6 +1022,202 @@ def cmd_modello(args, stampa=print, **kw):
     return AZIONI_MODELLO[args.azione](args, stampa=stampa, **kw)
 
 
+# ---------------------------------------------------------------- avvio guidato (lavoro 28)
+PASSI = {1: "ambiente", 2: "modello", 3: "progetto", 4: "chat", 5: "riepilogo"}
+
+
+def scegli_passi(args, stampa):
+    """Quali passi eseguire, in ordine, dai numeri dati (--passi e --saltati); None se i numeri non valgono."""
+    def numeri(testo, nome):
+        try:
+            v = {int(x) for x in testo.replace(" ", ",").split(",") if x.strip()}
+        except ValueError:
+            stampa(f"--{nome}: scrivi numeri da 1 a 5 separati da virgola (es. 2,4).")
+            return False
+        if not v <= set(PASSI):
+            stampa(f"--{nome}: i passi sono solo 1-5 ({', '.join(f'{n} {t}' for n, t in PASSI.items())}).")
+            return False
+        return v
+    scelti = numeri(args.passi, "passi") if args.passi else set(PASSI)
+    if scelti is False:
+        return None
+    saltati = numeri(args.saltati, "saltati") if args.saltati else set()
+    if saltati is True:
+        saltati = set()
+    if saltati is False:
+        return None
+    scelti -= saltati
+    if 5 not in scelti:
+        scelti.add(5)                     # il riepilogo finale si fa sempre: costa niente e riassume lo stato
+    return sorted(scelti)
+
+
+def stato_ambiente(args, stampa):
+    """Passo 1: controllo dell'ambiente; 0 tutto a posto, 1 manca qualcosa di necessario (istruzioni già stampate)."""
+    return cmd_controlla(argparse.Namespace(rapido=args.rapido), stampa)
+
+
+def guida_modello(stampa, chiedi=input):
+    """Passo 2: scelta del modello che legge i passaggi (lavoro 26). 0 fatto o non necessario, 1 fallito o saltato."""
+    from llm import ErroreModello, leggi_profili, profilo, usa_profili
+    cfg = leggi_cfg()
+    profili = leggi_profili(cfg)
+    if usa_profili(cfg):
+        try:
+            attivi = {r: profilo(cfg, r)[0] for r in ("smistamento", "analisi", "sintesi")}
+        except ErroreModello as e:
+            stampa(str(e))
+            attivi = {}
+        if attivi:
+            stampa("Modello che legge i passaggi, già scelto: "
+                   + ", ".join(sorted(set(attivi.values()))) + ". Per cambiarlo: python installa.py modello usa "
+                   "<profilo> (la scelta resta valida anche se salti questo passo).")
+            return 0
+    if not profili:
+        stampa("Nessun profilo di modello: ne creo uno adesso con la procedura guidata (servizio, modello, chiave).")
+        return modello_nuovo(argparse.Namespace(), stampa, chiedi=chiedi)
+    nomi = list(profili)
+    stampa("Ci sono già dei profili di modello:")
+    n = _scegli(chiedi, stampa, "Quale uso per leggere i passaggi?",
+                nomi + ["ne creo uno nuovo"], predefinita=1)
+    if n > len(nomi):
+        return modello_nuovo(argparse.Namespace(), stampa, chiedi=chiedi)
+    return modello_usa(argparse.Namespace(nome=nomi[n - 1], ruolo=None, progetto=False), stampa)
+
+
+def cartella_progetti():
+    return CARTELLA.parent / "projects"
+
+
+def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None):
+    """Passo 3: creazione del primo progetto e sua scelta in config.ini, senza modifiche manuali ai file.
+    0 fatto o non necessario, 1 fallito o saltato dall'utente. Parametri solo per i test: «config» file .ini da
+    scrivere, «crea» la funzione che crea il progetto, «base» cartella dove proporre di metterlo."""
+    from progetto import VARIABILE, cartella_scelta, cmd_nuovo, nome
+    cfg = leggi_cfg()
+    radice = cartella_scelta(cfg)
+    if radice is not None:
+        stampa(f"Progetto in uso: «{nome(cfg)}» ({radice}). Per un progetto nuovo: python progetto.py nuovo "
+               f'<cartella> --nome "..." (la scelta resta valida anche se salti questo passo).')
+        return 0
+    base = Path(base) if base else cartella_progetti()
+    proposto = _chiedi_valore(chiedi, "Nome del progetto nuovo (la ricerca sui tuoi documenti)", "La mia ricerca")
+    cartella = _chiedi_valore(chiedi, "Cartella dove mettere i suoi file", str(base / re.sub(r"\s+", "_", proposto)))
+    if not conferma_domanda(f"Creo il progetto «{proposto}» in {cartella}? [S/n] ", chiedi):
+        stampa("Passo saltato: nessun progetto creato. Quando vuoi: python progetto.py nuovo <cartella> --nome \"...\"")
+        return 1
+    esito = (crea or cmd_nuovo)(argparse.Namespace(cartella=cartella, nome=proposto, descrizione=""), stampa)
+    if esito:
+        return 1
+    f = Path(cartella).resolve()
+    dest = Path(config) if config else FILE_CONFIG
+    copia = copia_di_sicurezza(dest)
+    imposta_voci(dest, "progetto", {"cartella": str(f)})
+    stampa(f"Progetto scelto in {dest.name}, sezione [progetto]: vale per tutti i comandi."
+           + (f" Copia di sicurezza: {copia}" if copia else ""))
+    stampa(f"(Solo per una finestra del terminale, senza toccare i file: {VARIABILE}={f})")
+    return 0
+
+
+CLIENT_GUIDA = [("jan", "Jan"), ("claude", "Claude Desktop"), ("lmstudio", "LM Studio")]
+
+
+def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
+    """Passo 4: configurazione della chat (lavoro 27). Aggiunge la voce al file del client scelto, poi prova
+    l'handshake MCP come lo farebbe il client. 0 fatto, 1 saltato o non riuscito. «file» e «scrivi_voce» servono
+    solo ai test: percorso del file da usare al posto di quello reale e voce del server finta."""
+    def gia_configurato(codice):
+        f = Path(file) if file else file_client(codice)
+        try:
+            doc = json.loads(_leggi_testo(f)[0]) if f.exists() else {}
+        except ValueError:
+            return False
+        servers = next((doc[k] for k in ("mcpServers", "servers") if isinstance(doc.get(k), dict)), {})
+        return any(n in servers for n in ALIAS_CLIENT.get(codice, (NOME_SERVER,)))
+
+    gia = next((c for c, _ in CLIENT_GUIDA if gia_configurato(c)), None)
+    stampa("Quale programma di chat colleghi a AIrchivist? (la chat è diversa dal modello che legge i passaggi)")
+    predefinita = next((i for i, (c, _) in enumerate(CLIENT_GUIDA, 1) if c == gia), 1)
+    n = _scegli(chiedi, stampa, "Scelta", [etichetta for _, etichetta in CLIENT_GUIDA] + ["nessuno, per ora"],
+                predefinita=predefinita)
+    if n > len(CLIENT_GUIDA):
+        stampa("Passo saltato. Quando vuoi: python installa.py client <jan|claude|lmstudio> --scrivi")
+        return 1
+    nome = CLIENT_GUIDA[n - 1][0]
+    args = argparse.Namespace(nome=nome, scrivi=True, verifica=True, si=True,
+                              file=str(file) if file else None,
+                              voce=scrivi_voce or voce_server())
+    return cmd_client_scrivi(args, stampa, chiedi=chiedi)
+
+
+def riepilogo(stampa, file_client_fn=None):
+    """Passo 5: che cosa è installato, dove sta il progetto, prossimo passo. «file_client_fn» nei test."""
+    from llm import RUOLI, ErroreModello, profilo, usa_profili
+    from progetto import cartella_scelta, nome
+    cfg = leggi_cfg()
+    fc = file_client_fn or file_client
+    stampa("\n=== Riepilogo ===")
+    stampa(f"- Motore: {CARTELLA} (Python {sys.version_info.major}.{sys.version_info.minor})")
+    if usa_profili(cfg):
+        try:
+            stampa("- Modello che legge i passaggi: " + ", ".join(f"{r}: {profilo(cfg, r)[0]}" for r in RUOLI))
+        except ErroreModello as e:
+            stampa(f"- Modello che legge i passaggi: attenzione, {e}")
+    else:
+        stampa("- Modello che legge i passaggi: nessuna scelta ancora (python installa.py modello nuovo)")
+    radice = cartella_scelta(cfg)
+    stampa(f"- Progetto: «{nome(cfg)}» in {radice}" if radice else
+           "- Progetto: nessuno ancora (python installa.py inizia, passo 3)")
+    configurati = [etichetta for codice, etichetta in CLIENT_GUIDA
+                   if (lambda f: f is not None and Path(f).exists())(fc(codice))]
+    if configurati:
+        stampa("- Chat: file di configurazione presente per " + ", ".join(configurati) +
+               "; se non l'hai già fatto riavvia il programma perché legga la nuova voce")
+    else:
+        stampa("- Chat: non configurata ancora (python installa.py client <nome> --scrivi)")
+    stampa("- Prossimo passo: importare le fonti (con la tabella di revisione: python scripts/importa.py proponi "
+           "<cartella di PDF>; vedi lavoro 29)")
+    return 0
+
+
+def cmd_inizia(args, stampa=print, chiedi=input, funzioni=None, riepilogo_fn=None):
+    """Avvio guidato: i cinque passi della roadmap (lavoro 28). Si interrompe e riprende senza rifare i passi
+    già completati (ognuno riconosce il proprio stato); ogni passo si può saltare (--saltati, o rispondendo
+    «no» alle domande). «funzioni» e «riepilogo_fn» servono solo ai test."""
+    sys.path.insert(0, str(CARTELLA))
+    passi = scegli_passi(args, stampa)
+    if passi is None:
+        return 2
+    stampa("AIrchivist — avvio guidato (puoi interrompere con Ctrl+C e riprendere: i passi già fatti non si "
+           "rifanno)\n")
+    esiti = {}
+    default = {1: lambda: stato_ambiente(args, stampa),
+               2: lambda: guida_modello(stampa, chiedi),
+               3: lambda: guida_progetto(stampa, chiedi),
+               4: lambda: guida_chat(stampa, chiedi)}
+    funzioni = funzioni or default
+    for n in passi:
+        if n == 5:
+            continue
+        titolo = {1: "Controllo dell'ambiente", 2: "Modello che legge i passaggi",
+                  3: "Il tuo primo progetto", 4: "Collegamento con la chat"}[n]
+        stampa(f"\n--- Passo {n} di 5: {titolo} ---")
+        esiti[n] = funzioni[n]()
+        if esiti[n] != 0 and n == 1:
+            stampa("\nManca qualcosa di necessario: sistema seguendo le indicazioni qui sopra (per le librerie: "
+                   "python installa.py librerie) e rilancia «python installa.py inizia»: i passi già completati "
+                   "non verranno rifatti.")
+            return 1
+    (riepilogo_fn or riepilogo)(stampa)
+    blocco = [n for n in (1, 2, 3, 4) if n in esiti and esiti[n] != 0]
+    if blocco:
+        stampa("Passi non completati: " + ", ".join(f"{n} {PASSI[n]}" for n in blocco) +
+               ". Riprendi quando vuoi con gli stessi comandi indicati sopra.")
+        return 1
+    stampa("Tutto pronto.")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="comando")
@@ -1023,6 +1239,12 @@ def main(argv=None):
                    help="usa: solo per questo ruolo (ripetibile); senza, per tutti")
     m.add_argument("--progetto", action="store_true", help="usa: scelta nel project.ini del progetto in uso")
     m.add_argument("--si", action="store_true", help="togli, converti: niente domanda di conferma")
+    i = sub.add_parser("inizia", help="avvio guidato: ambiente, modello, primo progetto, chat, riepilogo "
+                                      "(lavoro 28)")
+    i.add_argument("--passi", default="", help="solo questi passi, numeri da 1 a 5 separati da virgola (es. 3,4)")
+    i.add_argument("--saltati", default="", help="tutti tranne questi (es. --saltati 2 per non toccare il modello)")
+    i.add_argument("--si", action="store_true", help="nei passi automatici nessuna domanda di conferma")
+    i.add_argument("--rapido", action="store_true", help="passo 1: salta il controllo di PaddleOCR (lento)")
     args = ap.parse_args(argv)
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -1031,7 +1253,7 @@ def main(argv=None):
     if args.comando is None:
         args.comando, args.rapido = "controlla", False
     return {"controlla": cmd_controlla, "librerie": cmd_librerie, "client": cmd_client,
-            "modello": cmd_modello}[args.comando](args)
+            "modello": cmd_modello, "inizia": cmd_inizia}[args.comando](args)
 
 
 if __name__ == "__main__":

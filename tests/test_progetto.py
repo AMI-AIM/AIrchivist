@@ -87,8 +87,25 @@ class Progetto(unittest.TestCase):
         serie = (radice / "glossary/series.ini").read_text(encoding="utf-8")
         self.assertIn("periodicita", serie)
         self.assertNotIn("[Renmin Ribao]", serie)                  # solo la descrizione dei campi, nessuna serie
-        with self.assertRaises(SystemExit):                        # cartella non vuota: non si tocca
-            P.cmd_nuovo(argparse.Namespace(cartella=str(radice), nome="", descrizione=""))
+
+    def test_cartella_non_vuota_esito(self):
+        """Da quando l'avvio guidato (lavoro 28) chiama cmd_nuovo: cartella occupata = esito 1, non SystemExit."""
+        righe = []
+        radice = self.tmp / "occupata"
+        radice.mkdir()
+        (radice / "qualcosa.txt").write_text("c'è già qualcosa", encoding="utf-8")
+        esito = P.cmd_nuovo(argparse.Namespace(cartella=str(radice), nome="", descrizione=""), righe.append)
+        self.assertEqual(esito, 1)
+        self.assertIn("non è vuota", "\n".join(righe))
+        self.assertEqual([p.name for p in radice.iterdir()], ["qualcosa.txt"])   # niente file nuovi
+
+    def test_nome_non_ammesso_esito(self):
+        righe = []
+        esito = P.cmd_nuovo(argparse.Namespace(cartella=str(self.tmp / "x"), nome="a/b\\c", descrizione=""),
+                            righe.append)
+        self.assertEqual(esito, 2)
+        self.assertIn("nome", "\n".join(righe))
+        self.assertFalse((self.tmp / "x").exists())
 
 
 if __name__ == "__main__":
