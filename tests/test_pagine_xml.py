@@ -145,7 +145,8 @@ def configurazione(radice):
                        "problemi": str(radice / "p.csv"),
                        "importazioni": str(radice / "audit" / "checks"),
                        "registro_importazioni": str(radice / "audit" / "imports.csv"),
-                       "cache": str(radice / "system" / "cache")}
+                       "cache": str(radice / "system" / "cache"),
+                       "originali": str(radice / "sources")}
     return cfg
 
 

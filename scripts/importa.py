@@ -9,8 +9,11 @@ Per ogni documento:
      documento; dove il file dichiara la pagina stampata si scrive il marcatore [[p. N | img K]];
   2. scrive in data\\<cartella della serie> un file .txt con l'intestazione dei metadati
      ([SERIES], [DATE], [FULL_CITATION], [LANG]...), come le fonti già presenti;
-  3. registra in audit\\imports.csv metodo, pagine, qualità dell'OCR e avvisi;
-  4. aggiorna l'indice delle fonti (solo i file nuovi).
+  3. copia l'originale (PDF, scansione, esportazione PAGE/ALTO, testo) in sources\\<cartella della serie>, intatto,
+     e non lo modifica più: SOURCE_FILE e SOURCE_HASH dell'intestazione rimandano a quella copia (vedi
+     conserva_originale);
+  4. registra in audit\\imports.csv metodo, pagine, qualità dell'OCR e avvisi;
+  5. aggiorna l'indice delle fonti (solo i file nuovi).
 Le serie (testate, raccolte) sono descritte in series.ini.
 
 Uso:
@@ -701,7 +704,8 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("PUBLISHER", valori.get("editore", "")),
         ("PUBLICATION_PLACE", valori.get("luogo", "")),
         ("LANG", scheda.get("lingua", "")),
-        ("SOURCE_FILE", origine),
+        ("SOURCE_FILE", valori.get("originale", "")),
+        ("SOURCE_HASH", valori.get("impronta_originale", "")),
         ("METADATA_SOURCE", f"importa.py {dt.date.today().isoformat()} ({rapporto['metodo']})"),
         ("TEXT_METHOD", rapporto.get("metodo_testo", "")),
         ("OCR_ENGINE", rapporto.get("motore", "")),
@@ -825,6 +829,64 @@ def raggruppa_file(file, unisci=False):
     return gruppi
 
 
+def impronta_file(f):
+    """SHA-256 del contenuto di un file (esadecimale)."""
+    h = hashlib.sha256()
+    with open(f, "rb") as fh:
+        for blocco in iter(lambda: fh.read(1 << 20), b""):
+            h.update(blocco)
+    return h.hexdigest()
+
+
+def impronta_cartella(cartella):
+    """SHA-256 di un documento fatto di più file: una riga «percorso relativo, impronta del file» per file, in
+    ordine. Non dipende da dove sta la cartella né dalle date dei file."""
+    righe = sorted(f"{f.relative_to(cartella).as_posix()}\t{impronta_file(f)}\n"
+                   for f in Path(cartella).rglob("*") if f.is_file())
+    return hashlib.sha256("".join(righe).encode("utf-8")).hexdigest()
+
+
+def conserva_originale(file, originali, sottocartella, base):
+    """Copia l'originale di un documento in sources/, nella stessa sottocartella che il .txt ha in data/, e non lo
+    modifica più. Un file solo si copia con il suo nome; più file (pagine XML di una cartella, --unisci) in una
+    cartella con il nome del documento, con i percorsi relativi alla loro cartella comune. Se c'è già un originale
+    con lo stesso nome e lo stesso contenuto lo riusa (reimportazione); se il contenuto è diverso non lo tocca e
+    copia il nuovo con l'impronta nel nome.
+    Restituisce (percorso relativo a sources/, «sha256:<impronta>», avviso o "")."""
+    radice = Path(originali) / sottocartella
+    radice.mkdir(parents=True, exist_ok=True)
+    if len(file) == 1:
+        f = Path(file[0])
+        impronta = impronta_file(f)
+        dest, avviso = radice / f.name, ""
+        if dest.exists() and impronta_file(dest) != impronta:
+            dest = radice / f"{f.stem}-{impronta[:8]}{f.suffix}"
+            avviso = f"in sources c'era già un {f.name} diverso: originale conservato come {dest.name}"
+        if not dest.exists():
+            tmp = dest.with_name(dest.name + ".parziale")
+            shutil.copy2(f, tmp)
+            tmp.replace(dest)
+    else:
+        comune = Path(os.path.commonpath([str(Path(f).resolve().parent) for f in file]))
+        tmp = radice / f".{base}.parziale"
+        shutil.rmtree(tmp, ignore_errors=True)
+        for f in file:
+            d = tmp / Path(f).resolve().relative_to(comune)
+            d.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, d)
+        impronta = impronta_cartella(tmp)
+        dest, avviso = radice / base, ""
+        if dest.exists() and impronta_cartella(dest) != impronta:
+            dest = radice / f"{base}-{impronta[:8]}"
+            avviso = f"in sources c'era già una cartella {base} diversa: originale conservato come {dest.name}"
+        if dest.exists():
+            shutil.rmtree(tmp)
+        else:
+            tmp.replace(dest)
+    rel = dest.relative_to(originali).as_posix() + ("" if len(file) == 1 else "/")
+    return rel, f"sha256:{impronta}", avviso
+
+
 def opzioni_pagine(args, riga_csv):
     """Numerazione delle pagine dei PDF: --prima-pagina/--da-pagina, o le colonne prima_pagina/da_pagina del file
     --metadati (valgono per quel file); --senza-pagine la disattiva."""
@@ -846,6 +908,9 @@ def cmd_importa(args, stampa=print):
     dest = (dati / scheda.get("cartella", "altre_fonti")).resolve()
     if dati not in dest.parents:
         raise SystemExit("La cartella della serie deve stare dentro data.")
+    originali = percorso(cfg, "originali").resolve()
+    if originali == dati or dati in originali.parents or originali in dati.parents:
+        raise SystemExit("La cartella degli originali (sources) non può stare dentro data né contenerla.")
     file = raccogli(args.percorsi)
     if not file:
         raise SystemExit("Nessun file da importare (PDF, immagini, .txt, esportazioni PAGE/ALTO .xml o .zip).")
@@ -946,6 +1011,15 @@ def cmd_importa(args, stampa=print):
             avvisi.append("data non trovata: aggiungila con --data o --metadati")
         elif v["stato_data"]:
             avvisi.append(f"data con stato «{v['stato_data']}» ({v['nota_data']})")
+        try:
+            v["originale"], v["impronta_originale"], nota = conserva_originale(
+                g, originali, dest.relative_to(dati), Path(nome).stem)
+        except OSError as e:
+            problemi.append(f"{origine}: originale non copiato in sources ({type(e).__name__}: {e})")
+            stampa(f"  ERRORE: originale non copiato in sources ({e}): non importato")
+            continue
+        if nota:
+            avvisi.append(nota)
         tmp = out.with_suffix(".parziale")
         tmp.write_text(intestazione(args.serie, scheda, v, rap, origine, nome) + testo + "\n", encoding="utf-8")
         tmp.replace(out)

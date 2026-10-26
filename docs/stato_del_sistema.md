@@ -267,10 +267,11 @@ Struttura: il repository contiene il motore (`scripts\`, con `config.ini` e `ser
 - Codice: `progetto.py` ha le posizioni nuove (chiavi nuove: `originali`, `registro_importazioni`, `lavori_importazioni`, `cache`; `cartella_ricerche()` per `results\searches`); `progetto.py nuovo` crea la struttura nuova. Tolta la disposizione storica: senza progetto scelto valgono solo i percorsi scritti in `[percorsi]` e per gli altri il motore lo dice e indica `progetto.py nuovo`. `archivio.py` cerca le letture in `results\searches`, `references` e `past_sessions`. `chat.py` accetta i file di progetto caricati con i nomi nuovi e con quelli di prima.
 - Le intestazioni del corpus che citano `audit_fonti/registro_modifiche.csv` (917 file) non sono state riscritte: la corrispondenza è in `audit\README.md` del progetto.
 - `project.ini` non tiene più `backup = pipeline/_backup`. Configurazione di Jan (`%APPDATA%\Jan\data\mcp_config.json`): server «Pipeline» su `scripts\mcp_server.py` (copia precedente in `system\backups\2026-10-26_riorganizzazione\`). Claude Desktop non ha una configurazione su questo PC. `AIRCHIVIST_PROGETTO` non è impostata nelle variabili d'utente né di sistema.
+- Originali delle importazioni (sezione 4 di `reorganization.md`): `importa.py` copia l'originale di ogni documento importato in `sources\`, nella stessa sottocartella del `.txt` in `data\` (più file: una cartella con il nome del documento), e non lo modifica più. `SOURCE_FILE` è il percorso relativo a `sources\`, `SOURCE_HASH` l'impronta `sha256:`; stesso nome con contenuto diverso: il nuovo si conserva con le prime 8 cifre dell'impronta nel nome. Test in `tests\test_originali.py` e nel test della skill con un PDF. Gli originali del corpus attuale non sono stati recuperati: `sources\` di questo progetto resta vuota.
 - Copia di sicurezza prima dello spostamento: `system\backups\2026-10-26_riorganizzazione\` (archivio, schede, serie, `progetto.ini`, `istruzioni.md`, `audit_fonti`, `importazioni`).
 
 Verifiche (26/10):
-1. Test: 212, tutti superati; con PyMuPDF bloccato 212, 14 saltati in modo esplicito, nessun errore.
+1. Test: 212, tutti superati (216 con quelli degli originali); con PyMuPDF bloccato 212, 14 saltati in modo esplicito, nessun errore.
 2. `progetto.py stato`: tutti i percorsi nella struttura nuova; `audit\imports.csv` nasce alla prima importazione.
 3. `installa.py controlla`: requisiti necessari presenti.
 4. Indice: 0 file nuovi, 0 modificati, 0 tolti; firma allineata alle fonti, nessuna ricostruzione.

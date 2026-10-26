@@ -53,7 +53,7 @@ Al 26/10/2026 i lavori 1-14 sono fatti e il 15 in parte (dettagli in `stato_del_
 
 ## Prima della fase 5 — Riorganizzazione della cartella
 
-Struttura in inglese, progetti in `projects/` fuori da git, solo cartelle e file rinominati: istruzioni in `reorganization.md`. Va fatta prima della fase 5, che usa già i percorsi nuovi. Fatta il 26/10/2026 (mappa dei percorsi ed esito delle verifiche in `stato_del_sistema.md`); resta la regola di `sources/` per le importazioni future (`reorganization.md`, sezione 4).
+Struttura in inglese, progetti in `projects/` fuori da git, solo cartelle e file rinominati: istruzioni in `reorganization.md`. Va fatta prima della fase 5, che usa già i percorsi nuovi. Fatta il 26/10/2026 (mappa dei percorsi ed esito delle verifiche in `stato_del_sistema.md`). Regola di `sources/` per le importazioni future (`reorganization.md`, sezione 4) applicata in `importa.py` lo stesso giorno.
 
 
 

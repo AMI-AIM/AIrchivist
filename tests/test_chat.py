@@ -143,6 +143,9 @@ class CorpusCaricato(unittest.TestCase):
         self.assertIn("OCR non disponibile", uscita)
         testo = next((self.radice / "data" / "riviste" / "rinascita").glob("*.txt")).read_text(encoding="utf-8")
         self.assertIn("[[p. 42 | pdf 2]]", testo)
+        copia = self.radice / "sources" / "riviste" / "rinascita" / self.pdf.name      # l'originale, intatto
+        self.assertEqual(copia.read_bytes(), self.pdf.read_bytes())
+        self.assertIn(f"[SOURCE_FILE: riviste/rinascita/{self.pdf.name}]", testo)
         self.chat("scheda-crea", "Berlinguer (Rinascita)", "--varianti", "Enrico Berlinguer")
         self.chat("prepara", "Berlinguer (Rinascita)", "--fonti", "Rinascita")
         cart = self.radice / "results" / "searches" / "berlinguer_rinascita"
