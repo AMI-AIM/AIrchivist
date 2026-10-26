@@ -22,7 +22,9 @@ python scripts\installa.py client jan
   Anthropic o FreeLLMAPI); si cambia quando si vuole con `installa.py modello usa <profilo>`.
 - `controlla`: verifica Python, l'indice FTS5, il modello scelto (chiave e raggiungibilità), il progetto
   in uso, PyMuPDF, Tesseract e le lingue OCR richieste dalle serie. Se manca qualcosa di necessario, lo dice.
-- `client`: mostra cosa scrivere nel client per collegare il server MCP (`jan`, `claude`, `lmstudio`, `json`).
+- `client`: mostra cosa scrivere nel client per collegare il server MCP (`jan`, `claude`, `lmstudio`, `json`);
+  con `--scrivi` aggiunge o aggiorna da sé la voce nel file del client (copia di sicurezza, conferma prima di
+  scrivere); `client --verifica` controlla che il server risponda come lo avvierebbe il client.
 
 ## Come si usa
 

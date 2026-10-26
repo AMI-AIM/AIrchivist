@@ -104,8 +104,10 @@ python installa.py client jan
 - `controlla` verifica Python, SQLite con FTS5, i profili di modello in uso (chiave presente, servizio
   raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie e PaddleOCR. Esce con 1 se
   manca un requisito necessario; `--rapido` salta PaddleOCR.
-- `client` stampa la configurazione del server MCP con i percorsi di questo PC: `jan` (i campi da compilare),
-  `claude` (Claude Desktop), `lmstudio`, `json` (blocco `mcpServers` generico). Non modifica i file dei client.
+- `client` configura la chat: senza opzioni stampa cosa scrivere nel client (`jan`, `claude`, `lmstudio`, `json`);
+  con `--scrivi` aggiunge o aggiorna solo la voce «airchivist» nel file del client (copia di sicurezza prima, conferma
+  a schermo), per Jan elenca anche i passaggi manuali nell'interfaccia; `client --verifica` avvia il server come lo
+  avvierebbe il client e controlla l'handshake MCP e l'elenco degli strumenti.
 
 ### Modelli che leggono i passaggi (profili)
 

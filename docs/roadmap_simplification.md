@@ -121,6 +121,8 @@ Completo quando:
 
 Per Jan: verificare se le impostazioni che oggi si cambiano a mano (timeout degli strumenti, smart routing, ricerca web) sono in un file modificabile. Se non lo sono, la procedura le elenca come passaggi manuali.
 
+**Stato (26/10/2026): fatto.** `--scrivi` e `--verifica` implementati in `installa.py`; verifica dei campi di Jan fatta su un'installazione reale (ottobre 2026): non sono in nessun file modificabile, il comando li elenca come passaggi manuali. Test automatici in `tests/test_installa.py`. Da fare sul PC reale: la prova manuale in Jan e Claude Desktop qui sotto; dettagli ed esiti in `stato_del_sistema.md` (sezione «Configurazione dei client MCP»).
+
 Completo quando: su una configurazione vuota e su una con altri server già presenti, il file risultante è valido e il client avvia il server (prova manuale in Jan e Claude Desktop, annotata in `stato_del_sistema.md`).
 
 

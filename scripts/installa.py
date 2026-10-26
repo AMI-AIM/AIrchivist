@@ -10,6 +10,11 @@ Uso (nella cartella scripts):
   python installa.py controlla          Python, SQLite FTS5, librerie, Tesseract e lingue, modelli, progetto
   python installa.py librerie           installa nel Python di sistema le librerie facoltative (requirements.txt)
   python installa.py client [nome]      configurazione del server MCP per un client: jan, claude, lmstudio, json
+      client <nome> --scrivi [--si]       aggiunge la voce al file di configurazione del client (claude, lmstudio,
+                                          jan): copia di sicurezza prima, modifiche mostrate e conferma; senza
+                                          --scrivi mostra solo che cosa cambierebbe
+      client --verifica                  avvia il server come lo avvierebbe il client e controlla handshake MCP
+                                         ed elenco degli strumenti
   python installa.py modello [azione]   profili dei modelli che leggono i passaggi (lavoro 26):
       nuovo                         procedura guidata per un profilo nuovo (azione predefinita)
       elenca                        profili, quelli in uso, chiavi presenti
@@ -246,40 +251,242 @@ def cmd_librerie(args, stampa=print):
     return subprocess.run(cmd).returncode
 
 
-# ---------------------------------------------------------------- client MCP
+# ---------------------------------------------------------------- client MCP (lavoro 27)
 def voce_server():
     return {"command": sys.executable, "args": [str(CARTELLA / "mcp_server.py")], "env": {"PYTHONUTF8": "1"}}
 
 
-def file_client(nome):
+def cartella_dati():
+    """Cartella dei dati dell'applicazione per l'utente, sui tre sistemi (Windows APPDATA, macOS Application
+    Support, Linux ~/.config o XDG_CONFIG_HOME)."""
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    return Path(xdg) if xdg else Path.home() / ".config"
+
+
+# nomi con cui i client indicano il nostro server nelle loro configurazioni esistenti
+ALIAS_CLIENT = {"claude": ("airchivist", "AIrchivist", "Pipeline"),
+                "lmstudio": ("airchivist", "AIrchivist", "Pipeline"),
+                "jan": ("airchivist", "AIrchivist", "Pipeline")}
+
+
+def file_client(nome, dati=None):
+    """Percorso del file di configurazione del client sul sistema in uso. Per Jan è il file dove il programma
+    tiene i server MCP (mcp_config.json), che «--scrivi» può aggiornare quando Jan è chiuso; per «json» non c'è
+    un file: serve solo a stampare il blocco."""
+    dati = cartella_dati() if dati is None else Path(dati)
     if nome == "claude":
-        base = Path(os.environ.get("APPDATA", "")) if os.name == "nt" else (
-            Path.home() / "Library" / "Application Support" if sys.platform == "darwin" else Path.home() / ".config")
-        return base / "Claude" / "claude_desktop_config.json"
+        return dati / "Claude" / "claude_desktop_config.json"
     if nome == "lmstudio":
-        return Path.home() / ".lmstudio" / "mcp.json"
+        return Path(os.environ.get("LMSTUDIO_DIR", Path.home() / ".lmstudio")) / "mcp.json"
+    if nome == "jan":
+        return dati / "Jan" / "data" / "mcp_config.json"
     return None
 
 
-def cmd_client(args, stampa=print):
+def passaggi_manuali_jan(stampa):
+    """Jan: le impostazioni MCP che oggi si cambiano a mano (timeout degli strumenti, smart routing, ricerca web)
+    non stanno in nessun file modificabile — verifica fatta su una installazione reale (ottobre 2026): sono solo
+    nell'interfaccia. Il comando quindi le elenca come passaggi manuali accanto alla voce scritta nel file."""
+    stampa("In più, a mano nell'interfaccia di Jan (Settings > MCP):")
+    stampa("  - timeout degli strumenti: 90 secondi")
+    stampa("  - smart routing: disattivato")
+    stampa("  - Web Search: disattivato, così le risposte vengono solo dalle fonti")
+    stampa("  (queste tre voci non sono in nessun file: verificato su una installazione reale)")
+
+
+def conferma_domanda(testo, chiedi):
+    """Domanda di conferma: «testo [S/n] » risponde sì anche a vuoto, «testo [s/N] » no a vuoto."""
+    m = re.search(r"\[(s[Nn])\]\s*$", testo)
+    default = m and m.group(1) == "sN"
+    r = chiedi(testo).strip().lower()
+    if not r:
+        return not default
+    return r in ("s", "si", "sì", "y", "yes")
+
+
+def unisci_voci(client, esistente, nome_server, voce):
+    """Restituisce (documento aggiornato, descrizioni delle modifiche, già_presente). Tocca solo la voce del
+    nostro server — individuata anche col nome usato in precedenza («Pipeline») — e lascia invariate tutte le
+    altre. «esistente» deve essere un oggetto JSON (dict) o None per un file nuovo; se la forma non è valida
+    restituisce documento None, così il comando rifiuta di scrivere."""
+    if esistente is None:
+        esistente = {}
+    if not isinstance(esistente, dict):
+        return None, ["il file non è un oggetto JSON valido: non scrivo nulla"], False
+    doc = json.loads(json.dumps(esistente))               # copia: non tocchiamo l'oggetto ricevuto
+    chiavi = ("servers",) if client == "jan" else ("mcpServers", "servers")
+    sezione = next((k for k in chiavi if isinstance(doc.get(k), dict)), None)
+    if sezione is None:
+        for k in chiavi:                                  # una chiave presente ma malformata blocca la scrittura
+            if k in doc:
+                return None, [f"«{k}» nel file non è un elenco di server: non scrivo nulla"], False
+        sezione = chiavi[0]
+        doc[sezione] = {}
+    servers = doc[sezione]
+    vecchio_nome = next((n for n in ALIAS_CLIENT.get(client, (nome_server,)) if n in servers), None)
+    vecchio = servers.get(vecchio_nome) if vecchio_nome else None
+    if vecchio is not None and vecchio == voce:
+        return doc, [f"la voce «{vecchio_nome}» è già esattamente questa"], True
+    if vecchio is None:
+        servers[nome_server] = voce
+        return doc, [f"+ «{nome_server}» ({sezione}): avvierà il server MCP",
+                     "- nessuna altra voce viene toccata"], False
+    servers.pop(vecchio_nome)
+    servers[nome_server] = voce
+    altri = ", ".join(str(a) for a in (vecchio.get("args") or [])) or "(nessun argomento)"
+    mod = [f"~ «{vecchio_nome}» diventa «{nome_server}»: prima command {vecchio.get('command')} | args {altri}",
+           f"+ «{nome_server}» ({sezione}): avvierà il server MCP",
+           "- nessuna altra voce viene toccata"]
+    return doc, mod, False
+
+
+def scrivi_file_client(f, doc):
+    """Scrive il file JSON con copia di sicurezza «<file>.airchivist-<data>.bak» accanto all'originale."""
+    _, bom, fine_riga = _leggi_testo(f)
+    testo = json.dumps(doc, ensure_ascii=False, indent=2) + fine_riga
+    if f.exists():
+        copia = f.with_name(f"{f.name}.airchivist-{dt.date.today().isoformat()}.bak")
+        shutil.copyfile(f, copia)
+        yield f"copia di sicurezza: {copia}"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_bytes(((chr(0xFEFF) if bom else "") + testo).encode("utf-8"))
+    yield f"scritto: {f}"
+
+
+def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
+    """`installa.py client <claude|lmstudio|jan> --scrivi`: trova il file, prepara la modifica, la mostra e
+    scrive solo dopo conferma. Con `--verifica` in più fa anche la prova del collegamento."""
+    nome = args.nome
+    if nome == "json":
+        stampa("«json» serve a stampare il blocco per client non riconosciuti: niente file da scrivere.")
+        return 1
+    f = Path(args.file) if getattr(args, "file", None) else file_client(nome)
+    voce = getattr(args, "voce", None) or voce_server()
+    nome_server = nome_server or NOME_SERVER
+    esistente = None
+    if f.exists():
+        try:
+            esistente = json.loads(_leggi_testo(f)[0])
+        except ValueError:
+            stampa(f"Il file {f} non è JSON valido: non lo tocco. Sistema a mano o sposta il file.")
+            return 3
+    doc, modifiche, gia = unisci_voci(nome, esistente, nome_server, voce)
+    stampa(f"File di configurazione: {f} ({'esiste' if f.exists() else 'non esiste ancora'})")
+    for m in modifiche:
+        stampa("  " + m)
+    if doc is None:
+        return 3
+    if gia:
+        stampa("Nessuna scrittura necessaria.")
+        return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
+    if not args.scrivi:
+        stampa("Con --scrivi aggiungo la voce al file (copia di sicurezza prima). Ora non ho scritto nulla.")
+        return 0
+    if not args.si and not conferma_domanda("Scrivere queste modifiche? [S/n] ", chiedi):
+        stampa("Annullato: il file non è cambiato.")
+        return 0
+    for riga in scrivi_file_client(f, doc):
+        stampa("  " + riga)
+    if nome == "jan":
+        passaggi_manuali_jan(stampa)
+        stampa("Riavvia Jan (se era aperto) e riattiva il server «airchivist».")
+    else:
+        stampa("Riavvia il client perché legga la nuova configurazione.")
+    return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
+
+
+def scambia_jsonrpc(proc, msg):
+    """Una chiamata JSON-RPC su STDIO/STDOUT: scrive una riga, legge la risposta.
+    Le notifiche (senza «id») non producono risposta: si scrive e basta, altrimenti la lettura
+    della risposta blocca per sempre il controllo."""
+    proc.stdin.write(json.dumps(msg, ensure_ascii=False) + "\n")
+    proc.stdin.flush()
+    if "id" not in msg:
+        return None
+    riga = proc.stdout.readline()
+    if not riga:
+        raise ValueError("risposta assente (il server ha chiuso la conversazione)")
+    return json.loads(riga)
+
+
+STRUMENTI_ATTESI = ["guida", "schede", "esplora_nome", "cerca_testo", "ricerca", "modello", "risposte",
+                   "passaggi_archivio", "copertura_fonti", "apri_fonte", "varianti", "correggi_passaggio",
+                   "importa", "serie"]
+
+
+def client_verifica(args, stampa, avvia=None):
+    """`installa.py client --verifica`: avvia il server MCP come lo avvierebbe il client (stesso eseguibile,
+    stessi argomenti, stesse variabili d'ambiente) e controlla l'handshake MCP e l'elenco degli strumenti."""
+    def avvia_di_default(voce):
+        env = {**os.environ, **(voce.get("env") or {})}
+        return subprocess.Popen([voce["command"], *voce.get("args", [])], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                                encoding="utf-8", env=env)
+
+    voce = getattr(args, "voce", None) or voce_server()
+    proc = (avvia or avvia_di_default)(voce)
+    try:
+        r = scambia_jsonrpc(proc, {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                   "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                                              "clientInfo": {"name": "installa.py", "version": "1"}}})
+        if "error" in r:
+            stampa(f"Handshake MCP non riuscito: {r['error'].get('message')}")
+            return 1
+        info = r.get("result", {}).get("serverInfo", {})
+        stampa(f"Handshake MCP riuscito: server «{info.get('name')}» versione {info.get('version')}, "
+               f"protocollo {r['result'].get('protocolVersion')}")
+        scambia_jsonrpc(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})  # notifica: senza id
+        r = scambia_jsonrpc(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+        if "error" in r:
+            stampa(f"Elenco degli strumenti non riuscito: {r['error'].get('message')}")
+            return 1
+        trovati = [t["name"] for t in r["result"]["tools"]]
+        mancanti = [n for n in STRUMENTI_ATTESI if n not in trovati]
+        stampa(f"Strumenti annunciati: {len(trovati)}"
+               + (" (mancano: " + ", ".join(mancanti) + ")" if mancanti else ": tutti quelli attesi"))
+        return 1 if mancanti else 0
+    except (OSError, ValueError) as e:
+        stampa(f"Verifica non riuscita: {e}")
+        return 1
+    finally:
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except OSError:
+            pass
+
+
+def cmd_client(args, stampa=print, chiedi=input):
+    if getattr(args, "verifica", False) and not getattr(args, "scrivi", False) \
+            and getattr(args, "nome", "json") == "json":
+        return client_verifica(args, stampa)
+    if getattr(args, "scrivi", False):
+        return cmd_client_scrivi(args, stampa, chiedi=chiedi)
     voce = voce_server()
     if args.nome == "jan":
-        stampa("Jan: Settings > MCP Servers > + Add MCP Server")
+        stampa("Jan: Settings > MCP Servers > + Add MCP Server (oppure: python installa.py client jan --scrivi)")
         stampa(f"  Nome:      {NOME_SERVER}")
         stampa("  Tipo:      STDIO")
         stampa(f"  Command:   {voce['command']}")
         stampa(f"  Arguments: {voce['args'][0]}")
         stampa("  Variabile d'ambiente: PYTHONUTF8 = 1")
-        stampa("Poi, nelle impostazioni MCP: timeout degli strumenti 90 secondi (vedi docs/user_guide.it.md, «Jan»).")
+        passaggi_manuali_jan(stampa)
         return 0
     blocco = json.dumps({"mcpServers": {NOME_SERVER: voce}}, ensure_ascii=False, indent=2)
     f = file_client(args.nome)
     if f:
         stato = "esiste: aggiungi la voce dentro «mcpServers»" if f.exists() else "non esiste ancora: crealo"
         stampa(f"File di configurazione: {f} ({stato})")
+        stampa("Oppure, per scrivere io la voce (con copia di sicurezza e conferma): aggiungi --scrivi")
     stampa(blocco)
     if args.nome == "json":
         stampa("Per un client che usa HTTP invece di STDIO: python mcp_server.py --http 8765")
+        stampa("Per controllare che il server risponda come lo vedrebbe il client: "
+               "python installa.py client --verifica")
     stampa("Riavvia il client dopo aver salvato il file.")
     return 0
 
@@ -798,6 +1005,12 @@ def main(argv=None):
     sub.add_parser("librerie")
     k = sub.add_parser("client")
     k.add_argument("nome", nargs="?", default="json", choices=["jan", "claude", "lmstudio", "json"])
+    k.add_argument("--scrivi", action="store_true",
+                   help="aggiungi la voce al file di configurazione del client (prima le modifiche, poi conferma)")
+    k.add_argument("--verifica", action="store_true", dest="verifica",
+                   help="avvia il server come lo avvierebbe il client: handshake MCP ed elenco degli strumenti")
+    k.add_argument("--si", action="store_true", help="--scrivi: niente domanda di conferma")
+    k.add_argument("--file", default=None, help="--scrivi: file di configurazione da usare (di norma lo trovo io)")
     m = sub.add_parser("modello", help="profili dei modelli: nuovo, elenca, usa, prova, togli, converti")
     m.add_argument("azione", nargs="?", default="nuovo", choices=list(AZIONI_MODELLO))
     m.add_argument("nome", nargs="?", help="nome del profilo (usa, prova, togli)")
