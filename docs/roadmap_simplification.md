@@ -177,6 +177,8 @@ Completo quando: su un corpus di prova misto (articoli nativi digitali con etich
 
 Completo quando: un profilo con tre campi produce citazioni Chicago corrette per ciascun tipo (test sulle citazioni esistenti).
 
+**Stato (26/10/2026): fatto** (`tests/test_citazioni_tipo.py`; confronto delle citazioni del corpus in `stato_del_sistema.md`, «Serie con meno campi»).
+
 
 
 ### 31. La risposta come documento

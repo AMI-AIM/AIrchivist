@@ -458,8 +458,10 @@ def main():
     sub.add_parser("serie")
     a = sub.add_parser("serie-crea")
     a.add_argument("nome")
-    for k in ("tipo", "lingua", "cartella", "citazione"):
+    for k in ("tipo", "lingua"):
         a.add_argument(f"--{k}", required=True)
+    for k in ("cartella", "citazione"):                 # facoltative: valori predefiniti dal tipo (lavoro 30)
+        a.add_argument(f"--{k}", default="")
     a.add_argument("--sigla")
     a.add_argument("--nota-limiti")
     a.add_argument("--campo", action="append", help="altro campo del profilo, chiave=valore (es. chicago=...)")

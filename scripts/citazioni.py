@@ -35,10 +35,19 @@ MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio
            "settembre", "ottobre", "novembre", "dicembre"]
 ROMANI = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
 
-# Modelli predefiniti per tipo di serie (Chicago, nota). Segnaposto in valori_da_intestazione().
+# Modelli predefiniti per tipo di serie (Chicago, nota), usati quando il profilo non ha il campo chicago (lavoro
+# 30). Segnaposto in valori_da_intestazione(); {autore_nota} è l'autore nella forma della nota (Nome Cognome),
+# {titolo_articolo} il titolo del singolo documento (vuoto per un fascicolo senza titolo).
+ARTICOLO = "[{autore_nota}, ][“{titolo_articolo},” ]"
 PREDEFINITI = {
-    "periodico": "*{serie}*[ {volume}][, {numero_lbl}][, {contenitore}] ({data_o_anno})[: {pagina}]",
-    "volume": "[{autore}, ]*{titolo}*[, {volume_lbl}] ([{luogo}: ][{editore}, ]{anno})[, {pagina}]",
+    # rivista con volume o numero: Autore, “Titolo,” *Rivista* 121, no. 2 (aprile 2016): 377
+    "periodico": ARTICOLO + "*{serie}*[ {volume}][, {numero_lbl}][, {contenitore}] ({data_o_anno})[: {pagina}]",
+    # quotidiano o fascicolo senza volume né numero: Autore, “Titolo,” *Giornale*, 12 gennaio 1967, 3
+    "quotidiano": ARTICOLO + "*{serie}*[, {contenitore}], {data_o_anno}[, {pagina}]",
+    "volume": "[{autore_nota}, ]*{titolo}*[, {volume_lbl}] ([{luogo}: ][{editore}, ]{anno})[, {pagina}]",
+    # Autore, “Titolo,” data, fondo, archivio, luogo, pagina
+    "archivio": "[{autore_nota}, ][“{titolo_articolo},” ][{data_o_anno}, ][{segnatura}, ][{fondo}, ]{archivio}"
+                "[, {luogo}][, {pagina}]",
 }
 DATE_INATTENDIBILI = {"filename+local_header"}      # METADATA_SOURCE con date ricavate dal testo (Peking Review)
 
@@ -132,7 +141,16 @@ def valori_da_intestazione(meta, profilo=None):
         "rapporto": "",
         "serie_originale": meta.get("ORIGINAL_SERIES", ""),
         "traduttore": meta.get("TRANSLATOR", ""),
+        "segnatura": meta.get("CALL_NUMBER", ""),
+        "fondo": meta.get("COLLECTION", ""),
+        "archivio": meta.get("ARCHIVE", ""),
     }
+    for k in ("fondo", "archivio", "segnatura"):
+        if not v[k] and profilo.get(k):
+            v[k] = profilo[k].strip()
+    if not v["archivio"]:
+        v["archivio"] = v["serie"]
+    titolo_proprio = v["titolo"]
     for k in ("titolo", "autore", "luogo", "editore", "anno", "serie"):
         if not v[k] and profilo.get(k):
             v[k] = profilo[k].strip()
@@ -140,6 +158,9 @@ def valori_da_intestazione(meta, profilo=None):
         v["titolo"] = profilo["titolo_fisso"].strip()
     if not v["titolo"]:
         v["titolo"] = v["serie"] or meta.get("DOC_ID", "")
+    # titolo del singolo documento (articolo, documento d'archivio), non quello fisso della serie
+    v["titolo_articolo"] = titolo_proprio if titolo_proprio and titolo_proprio != v["serie"] else ""
+    v["autore_nota"] = nome_in_nota(v["autore"])
     data = meta.get("DATE", "")
     if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) and data_affidabile(meta):     # anche al mese
         v["data"] = data_it(data)
@@ -162,6 +183,26 @@ def valori_da_intestazione(meta, profilo=None):
     if rid:
         v["rapporto"] = rid if rid.upper().startswith("JPRS") else f"JPRS {rid}"
     return v
+
+
+def nome_in_nota(autore):
+    """Autore nella forma della nota Chicago: «Larrabee, F. Stephen» -> «F. Stephen Larrabee»; più autori separati
+    da «;» uniti con «and» (due o tre), «et al.» da quattro; enti e nomi senza virgola restano come sono."""
+    a = (autore or "").strip()
+    if not a:
+        return ""
+    m = re.search(r",?\s*(et al\.?|e altri)$", a, re.IGNORECASE)
+    et_al = " et al." if m else ""
+    a = a[:m.start()].strip() if m else a
+    if ";" in a:
+        nomi = [nome_in_nota(x) for x in a.split(";") if x.strip()]
+        if len(nomi) >= 4:
+            return nomi[0] + " et al."
+        return (" and ".join(nomi) if len(nomi) == 2 else ", ".join(nomi[:-1]) + ", and " + nomi[-1]) + et_al
+    if a.count(",") == 1:
+        cognome, nome = (x.strip() for x in a.split(","))
+        return f"{nome} {cognome}".strip() + et_al
+    return a + et_al
 
 
 def componi(modello, valori):
@@ -188,12 +229,16 @@ def dopo_punto_interrogativo(s):
 
 
 def modello_di(profilo, meta):
+    """Il campo chicago del profilo, se c'è; altrimenti il modello del tipo della serie (lavoro 30). Per i periodici
+    e gli articoli: forma della rivista se il documento ha volume o numero, altrimenti quella del quotidiano."""
     if profilo.get("chicago"):
         return profilo["chicago"]
     tipo = (profilo.get("tipo") or "").strip()
-    if tipo not in PREDEFINITI:
-        tipo = "periodico" if meta.get("ISSUE") else "volume"
-    return PREDEFINITI[tipo]
+    if tipo in ("periodico", "articolo"):
+        return PREDEFINITI["periodico" if meta.get("VOLUME") or meta.get("ISSUE") else "quotidiano"]
+    if tipo in PREDEFINITI:
+        return PREDEFINITI[tipo]
+    return PREDEFINITI["periodico" if meta.get("ISSUE") else "volume"]
 
 
 def citazione(meta, file="", pagina=""):

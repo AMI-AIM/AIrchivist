@@ -444,10 +444,29 @@ oppure copia `<lingua>.traineddata` da https://github.com/tesseract-ocr/tessdata
 (albanese: `sqi`). Se Tesseract o i modelli sono in cartelle diverse da quelle predefinite, indicale in
 `config.ini`, sezione `[ocr]` (`tesseract = ...`, `modelli = ...`).
 
-**Serie.** Ogni testata o raccolta ha una scheda nel `series.ini` del progetto: tipo (periodico o volume),
-lingua, cartella dentro `data\`, sigla dei file e modello della citazione (es. `Zëri i Popullit, {data}[, n.
-{numero}]`, che diventa «Zëri i Popullit, 12 gennaio 1967»). Ci sono già Zëri i Popullit e Rruga e Partisë;
-le altre si aggiungono copiando un blocco o chiedendo in Jan («crea la serie ...»). Il profilo dice anche
+**Serie.** Ogni testata, rivista, libro o fondo d'archivio ha una scheda nel `series.ini` del progetto. Bastano
+tre campi:
+```
+[Zëri i Popullit]
+tipo = periodico
+lingua = sq
+```
+`tipo` è `periodico` (fascicoli, un file per numero), `articolo` (articoli di una rivista, un file per articolo
+con autore e titolo), `volume` (libro o raccolta) o `archivio` (documenti d'archivio datati). Il resto ha valori
+predefiniti: cartella dentro `data\` (`riviste\zeri_i_popullit`, `volumi\...`, `archivi\...`), sigla dei nomi dei
+file (le iniziali: `ZP`), e la citazione Chicago (nota), che si genera dal tipo:
+- periodico e articolo: «Lara Putnam, “The Transnational and the Text-Searchable,” *The American Historical
+  Review* 121, no. 2 (aprile 2016): 377»; senza volume né numero, la forma del quotidiano: «*Zëri i Popullit*,
+  12 gennaio 1967, 3»;
+- volume: «Enver Hoxha, *Vepra*, vol. 2 (Tirana: Naim Frashëri, 1969), 45»;
+- archivio: «Central Intelligence Agency, “Chinese Support for Foreign Communist Parties,” 3 marzo 1971,
+  segnatura, CIA FOIA Electronic Reading Room, 12» (campi facoltativi del profilo `archivio`, `fondo`).
+
+Nell'intestazione l'autore si scrive «Cognome, Nome» (più autori separati da `;`); nella nota diventa «Nome
+Cognome». Il campo `chicago` serve solo per una forma diversa da quella del tipo (es. `*Renmin ribao* 人民日报,
+{data_o_anno}[, {pagina}]`): le serie che lo hanno citano come prima. I campi avanzati sono descritti in testa a
+`series.ini` (modello: `scripts\series_template.ini`). Le serie si aggiungono con l'importazione guidata (qui
+sotto), scrivendo il blocco o chiedendo in Jan («crea la serie ...»). Il profilo dice anche
 al resto del sistema come trattare la serie: se è un periodico (`tipo`), fin dove arrivano i numeri (`periodo`,
 per i silenzi della cronologia), ogni quanto esce (`periodicita`), con quali altre serie cercarla (`gruppo`),
 come trovare la pagina nel testo (`pagina_regex`). L'elenco dei campi è in testa a `series.ini`. Una serie senza

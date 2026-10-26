@@ -6,9 +6,15 @@ Il motore resta generico: ciò che vale per una sola testata o raccolta sta nel 
 Un file appartiene a un profilo per il nome della serie ([SERIES] dell'intestazione = nome della sezione),
 altrimenti per la cartella (campo «cartella»: il file sta in quella cartella dentro data, o più in profondità).
 
+Profilo minimo (lavoro 30): nome della sezione, tipo e lingua. Gli altri campi hanno un valore predefinito
+(completa): cartella dentro data dal tipo e dal nome, sigla dei file dalle iniziali del nome; la citazione Chicago
+si genera dal tipo (citazioni.py) se il profilo non ha il campo chicago.
+
 Campi usati qui, oltre a quelli descritti in testa a series.ini:
-  tipo            periodico | volume: i periodici hanno date di numero; i volumi e le raccolte no (per i documenti
-                  delle raccolte vale la data interna, date_interne.py)
+  tipo            periodico | articolo | volume | archivio. periodico: fascicoli (un file per numero), con le date
+                  dei numeri; articolo: articoli di una rivista, un file per articolo con autore e titolo; volume:
+                  libri e raccolte (per i documenti delle raccolte vale la data interna, date_interne.py);
+                  archivio: documenti d'archivio datati (rapporti, lettere), con il fondo e l'archivio
   periodo         primo e ultimo numero disponibili, es. 1963-01-01 / 1980-12-31: fine delle fonti per i silenzi
                   della cronologia
   periodicita     quotidiano | settimanale | quindicinale | mensile, con cambi datati: «mensile; 1980: quindicinale»
@@ -26,6 +32,42 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 _PROFILI = None
+TIPI = ("periodico", "articolo", "volume", "archivio")
+# cartella predefinita dentro data, per tipo (i periodici in riviste/, come li conta copertura_fonti)
+CARTELLE = {"periodico": "riviste", "articolo": "riviste", "volume": "volumi", "archivio": "archivi"}
+DATATI = ("periodico", "articolo", "archivio")         # tipi con una data per documento
+
+
+def slug(s):
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_") or "serie"
+
+
+def sigla_predefinita(nome):
+    """Iniziali delle parole con la maiuscola (Zëri i Popullit -> ZP), al massimo quattro; altrimenti le prime
+    lettere del nome."""
+    iniziali = "".join(p[0] for p in re.findall(r"[^\W\d_]+", nome) if p[0].isupper())
+    import unicodedata
+    iniziali = unicodedata.normalize("NFKD", iniziali).encode("ascii", "ignore").decode()
+    return (iniziali if len(iniziali) >= 2 else slug(nome).replace("_", "")[:3].upper())[:4]
+
+
+def completa(nome, p):
+    """Profilo con i valori predefiniti dei campi non scritti (profilo minimo: nome, tipo, lingua)."""
+    p = dict(p)
+    tipo = (p.get("tipo") or "periodico").strip()
+    p["tipo"] = tipo
+    if not (p.get("cartella") or "").strip():
+        p["cartella"] = f"{CARTELLE.get(tipo, 'altre_fonti')}/{slug(nome)}"
+    if tipo in DATATI and not (p.get("sigla") or "").strip():
+        p["sigla"] = sigla_predefinita(nome)
+    return p
+
+
+def datato(profilo):
+    """Vero se i documenti della serie hanno una data ciascuno (dal nome del file, dalla prima pagina)."""
+    return (profilo.get("tipo") or "periodico").strip() in DATATI
 
 
 def file_serie():
@@ -44,7 +86,7 @@ def tutti(ricarica=False):
             cp.read(file_serie(), encoding="utf-8")
         except configparser.Error:
             pass
-        _PROFILI = {s: {k: v.strip() for k, v in cp[s].items()} for s in cp.sections()}
+        _PROFILI = {s: completa(s, {k: v.strip() for k, v in cp[s].items()}) for s in cp.sections()}
     return _PROFILI
 
 

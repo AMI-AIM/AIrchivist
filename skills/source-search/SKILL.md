@@ -56,18 +56,20 @@ citarla. Per creare una serie chiedi all'utente ciò che non si ricava dalle int
 inventare dati bibliografici.
 
 ```
-python M/chat.py serie-crea "Nome" --tipo periodico|volume --lingua it --cartella riviste/nome \
-  --citazione "Nome, {data}" [--sigla XX] [--nota-limiti "frase per la sezione Limiti"] \
-  [--campo "chicago=*Nome*[, {numero_lbl}] ({data_o_anno})[: {pagina}]"] [--campo "pagina_regex=..."]
+python M/chat.py serie-crea "Nome" --tipo periodico|articolo|volume|archivio --lingua it \
+  [--cartella riviste/nome] [--sigla XX] [--nota-limiti "frase per la sezione Limiti"] \
+  [--campo "archivio=Nome dell'archivio"] [--campo "chicago=..."] [--campo "pagina_regex=..."]
 ```
 
-`--cartella` è quella indicata in `serie_senza_profilo`, oppure, per i documenti da importare, una nuova
-(`riviste/<nome>` per i periodici, `volumi/<nome>` per libri e documenti singoli). Il campo `chicago` dà la
-citazione in stile Chicago standard; segnaposto: `{autore} {titolo} {data} {data_o_anno} {anno} {numero}
-{numero_lbl} {volume} {luogo} {editore} {pagina}`; un tratto tra `[ ]` sparisce se manca un suo segnaposto;
-`*...*` è il corsivo. Esempi: periodico `*Rinascita*[ {volume}][, {numero_lbl}] ({data_o_anno})[: {pagina}]`;
-libro `{autore}. *{titolo}*. {luogo}: {editore}, {anno}[, {pagina}]`; documento d'archivio
-`{autore}. *{titolo}*. {data_o_anno}[, {pagina}]`. `python M/chat.py serie` mostra i profili.
+Bastano nome, tipo e lingua. Tipi: `periodico` (fascicoli, un file per numero), `articolo` (articoli di una
+rivista, un file per articolo con autore e titolo), `volume` (libro o raccolta), `archivio` (documenti d'archivio
+datati; `--campo "archivio=..."` e `--campo "fondo=..."` per archivio e fondo). `--cartella` serve solo per una
+cartella già esistente (quella indicata in `serie_senza_profilo`); senza, vale `riviste/<nome>`, `volumi/<nome>` o
+`archivi/<nome>`. La citazione Chicago (nota) si genera dal tipo: rivista «Nome Cognome, “Titolo,” *Rivista* 121,
+no. 2 (aprile 2016): 377», quotidiano «*Giornale*, 12 gennaio 1967, 3», libro «Nome Cognome, *Titolo*, vol. 2
+(Luogo: Editore, 1971), 45», archivio «Nome Cognome, “Titolo,” 3 marzo 1971, fondo, archivio, 12». Il campo
+`chicago` la sostituisce solo per una forma particolare (segnaposto in `series_template.ini`). `python M/chat.py
+serie` mostra i profili.
 Nei periodici il testo dei PDF si legge per colonne (i giornali non mescolano più articoli diversi); per un
 volume impaginato a più colonne aggiungi `--campo "ordine_lettura=colonne"`, per un periodico a colonna unica
 con un'impaginazione insolita `--campo "ordine_lettura=pdf"`.

@@ -321,12 +321,12 @@ def t_elenca_serie():
             "nota": f"Le serie sono descritte in {importa.file_serie()}."}
 
 
-def t_crea_serie(nome, tipo, lingua, cartella, citazione, sigla="", nota_limiti="", autore="", titolo="",
+def t_crea_serie(nome, tipo, lingua, cartella="", citazione="", sigla="", nota_limiti="", autore="", titolo="",
                  luogo="", editore=""):
     import importa
-    msg = importa.aggiungi_serie(nome.strip(), tipo.strip(), lingua.strip().lower(), cartella.strip(),
-                                 citazione.strip(), sigla.strip(), nota_limiti.strip(), autore=autore,
-                                 titolo=titolo, luogo=luogo, editore=editore)
+    msg = importa.aggiungi_serie(nome.strip(), tipo.strip(), lingua.strip().lower(), (cartella or "").strip(),
+                                 (citazione or "").strip(), (sigla or "").strip(), (nota_limiti or "").strip(),
+                                 autore=autore, titolo=titolo, luogo=luogo, editore=editore)
     return {"esito": msg} if msg.startswith("Serie") else {"errore": msg}
 
 
@@ -835,8 +835,8 @@ def t_importa(azione="stato", percorso_file="", serie="", data="", numero="", ti
 def t_serie(azione="elenca", nome="", tipo="", lingua="", cartella="", citazione="", sigla="", nota_limiti="",
             autore="", titolo="", luogo="", editore=""):
     if azione == "crea":
-        if not all((nome, tipo, lingua, cartella, citazione)):
-            return {"errore": "Per creare una serie servono nome, tipo, lingua, cartella e citazione."}
+        if not all((nome, tipo, lingua)):
+            return {"errore": "Per creare una serie servono nome, tipo e lingua (il resto ha valori predefiniti)."}
         return t_crea_serie(nome, tipo, lingua, cartella, citazione, sigla, nota_limiti, autore, titolo, luogo,
                             editore)
     return t_elenca_serie()
@@ -936,10 +936,12 @@ STRUMENTI = {
                 ["azione"]),
     "serie": (t_serie, "Profili delle serie di fonti (series.ini del progetto): elenca, o crea dopo conferma "
               "dell'utente.",
-              {"azione": _azione("elenca", "crea"), "nome": _S, "tipo": _azione("periodico", "volume"),
+              {"azione": _azione("elenca", "crea"), "nome": _S,
+               "tipo": _azione("periodico", "articolo", "volume", "archivio"),
                "lingua": dict(_S, description="codice di due o tre lettere: sq, it, fr, en, zh..."),
-               "cartella": dict(_S, description="dentro data, es. riviste/nome_testata"),
-               "citazione": dict(_S, description="modello, es. Nome della testata, {data}[, n. {numero}]"),
+               "cartella": dict(_S, description="facoltativa, dentro data (predefinita: riviste/, volumi/ o archivi/ "
+                                                "più il nome)"),
+               "citazione": dict(_S, description="facoltativa: senza, la citazione Chicago si genera dal tipo"),
                "sigla": _S, "nota_limiti": _S, "autore": _S, "titolo": _S, "luogo": _S, "editore": _S},
               ["azione"]),
 }

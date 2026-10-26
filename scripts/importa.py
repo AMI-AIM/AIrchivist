@@ -127,22 +127,28 @@ def leggi_serie():
     return cp
 
 
-def aggiungi_serie(nome, tipo, lingua, cartella, citazione, sigla="", nota_limiti="", **fissi):
-    """Aggiunge una serie a series.ini (senza toccare le altre). Restituisce un messaggio."""
+def aggiungi_serie(nome, tipo, lingua, cartella="", citazione="", sigla="", nota_limiti="", **fissi):
+    """Aggiunge una serie a series.ini (senza toccare le altre). Bastano nome, tipo e lingua (lavoro 30): cartella
+    e sigla hanno un valore predefinito (profili.completa), la citazione si genera dal tipo. Restituisce un
+    messaggio."""
+    import profili
     cp = leggi_serie()
     if cp.has_section(nome):
         return f"La serie «{nome}» c'è già in series.ini."
-    if tipo not in ("periodico", "volume"):
-        return "tipo deve essere «periodico» o «volume»."
+    if tipo not in profili.TIPI:
+        return f"tipo deve essere uno di: {', '.join(profili.TIPI)}."
     if not re.fullmatch(r"[a-z]{2,3}", lingua or ""):
         return "lingua: codice di due lettere (sq, it, fr, en...)."
-    cartella = cartella.replace("\\", "/").strip("/")
-    if ".." in cartella or not cartella:
+    cartella = (cartella or "").replace("\\", "/").strip("/")
+    if ".." in cartella:
         return "cartella: percorso dentro data, ad es. riviste/nome_testata."
-    righe = [f"\n[{nome}]", f"tipo = {tipo}", f"lingua = {lingua}", f"cartella = {cartella}"]
-    if sigla:
+    righe = [f"\n[{nome}]", f"tipo = {tipo}", f"lingua = {lingua}"]
+    if cartella and cartella != profili.completa(nome, {"tipo": tipo})["cartella"]:
+        righe.append(f"cartella = {cartella}")
+    if sigla and sigla != profili.completa(nome, {"tipo": tipo}).get("sigla"):
         righe.append(f"sigla = {sigla}")
-    righe.append(f"citazione = {citazione}")
+    if citazione:
+        righe.append(f"citazione = {citazione}")
     for k, v in fissi.items():
         if v:
             righe.append(f"{k} = {v}")
@@ -677,12 +683,16 @@ def componi(modello, valori):
 
 
 def nome_file(scheda, serie, valori, origine):
-    if scheda.get("tipo", "periodico") == "periodico":
+    import profili
+    if profili.datato(scheda):
         sigla = scheda.get("sigla") or re.sub(r"[^A-Z]", "", serie.upper())[:4] or "DOC"
         base = sigla + (valori.get("data_iso") or "s.d.")
         if valori.get("numero") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", valori.get("data_iso") or ""):
             base += f"-n{valori['numero']}"
-        if not valori.get("data_iso") and not valori.get("numero"):
+        if scheda.get("tipo") in ("articolo", "archivio") and valori.get("titolo"):
+            # più articoli o documenti con la stessa data: il titolo li distingue
+            base += "-" + profili.slug(valori["titolo"])[:40]
+        elif not valori.get("data_iso") and not valori.get("numero"):
             base += "-" + re.sub(r"[^\w\-]+", "_", origine)[:60]
         return base + ".txt"
     titolo = valori.get("titolo") or origine
@@ -741,7 +751,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
         data, provenienza = data_da_testo(riga_csv["data"]) or riga_csv["data"].strip(), "dal file dei metadati"
     elif args.data:
         data, provenienza = data_da_testo(args.data) or args.data, "indicata all'importazione"
-    elif scheda.get("tipo", "periodico") == "periodico":
+    elif scheda.get("tipo", "periodico") in ("periodico", "articolo", "archivio"):
         data = data_da_testo(Path(origine).stem)
         if data:
             provenienza = "dal nome del file"
@@ -757,7 +767,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
         stato = "da verificare"
     else:
         stato = ""
-    if scheda.get("tipo", "periodico") == "periodico" and not v.get("numero"):
+    if scheda.get("tipo", "periodico") in ("periodico", "articolo") and not v.get("numero"):
         v["numero"] = numero_da_nome(Path(origine).stem)
         if v["numero"]:
             v["stato_numero"], v["nota_numero"] = "dedotto", "ricavato dal nome del file"
@@ -772,16 +782,17 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
     if not v.get("anno") and data[:4].isdigit():
         v["anno"] = data[:4]
     v["data"] = data_it(data) if data else ("" if scheda.get("tipo") == "volume" else "s.d.")
-    # FULL_CITATION in stile Chicago, se la serie ha il modello "chicago" (senza pagina: vale per il file)
-    if scheda.get("chicago"):
-        from citazioni import valori_da_intestazione, componi as componi_chicago
+    # FULL_CITATION in stile Chicago (senza pagina: vale per il file): il modello chicago della serie o, senza un
+    # modello «citazione» scritto a mano, quello del tipo (lavoro 30)
+    if scheda.get("chicago") or not scheda.get("citazione"):
+        from citazioni import valori_da_intestazione, componi as componi_chicago, modello_di
         meta = {"SERIES": serie, "TITLE": v.get("titolo", ""), "AUTHOR": v.get("autore", ""),
                 "VOLUME": v.get("volume", ""), "ISSUE": v.get("numero", ""), "YEAR": v.get("anno", ""),
                 "DATE": data if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) else "",
                 "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", "")}
-        v["citazione"] = componi_chicago(scheda["chicago"], dict(valori_da_intestazione(meta, scheda), pagina=""))
+        v["citazione"] = componi_chicago(modello_di(scheda, meta), dict(valori_da_intestazione(meta, scheda), pagina=""))
     else:
-        v["citazione"] = componi(scheda.get("citazione") or "{serie}, {data}", v)
+        v["citazione"] = componi(scheda["citazione"], v)
     return v
 
 
@@ -913,7 +924,8 @@ def cmd_importa(args, stampa=print):
     if not serie_ini.has_section(args.serie):
         raise SystemExit(f"La serie «{args.serie}» non è in series.ini. Serie presenti: "
                          + "; ".join(serie_ini.sections()))
-    scheda = dict(serie_ini[args.serie])
+    import profili
+    scheda = profili.completa(args.serie, dict(serie_ini[args.serie]))      # valori predefiniti (lavoro 30)
     from llm import percorso
     dati = percorso(cfg, "dati").resolve()
     dest = (dati / scheda.get("cartella", "altre_fonti")).resolve()
@@ -1018,7 +1030,7 @@ def cmd_importa(args, stampa=print):
             avvisi.append(f"OCR di qualità bassa (confidenza {rap['confidenza']})")
         if rap["pagine_deboli"]:
             avvisi.append(f"{len(rap['pagine_deboli'])} pagine con OCR debole")
-        if not v["data_iso"] and scheda.get("tipo", "periodico") == "periodico":
+        if not v["data_iso"] and scheda.get("tipo", "periodico") in ("periodico", "articolo", "archivio"):
             avvisi.append("data non trovata: aggiungila con --data o --metadati")
         elif v["stato_data"]:
             avvisi.append(f"data con stato «{v['stato_data']}» ({v['nota_data']})")

@@ -46,7 +46,7 @@ COLONNE_RIVEDI = ["file_dati", "serie", "data", "stato_data", "numero", "stato_n
 CAMPI = {"data": "DATE", "stato_data": "DATE_STATUS", "numero": "ISSUE", "stato_numero": "ISSUE_STATUS",
          "titolo": "TITLE", "autore": "AUTHOR", "anno": "YEAR", "volume": "VOLUME", "luogo": "PUBLICATION_PLACE",
          "editore": "PUBLISHER", "lingua": "LANG", "serie": "SERIES"}
-TIPI_SERIE = ("periodico", "volume")
+TIPI_SERIE = ("periodico", "articolo", "volume", "archivio")
 TIPI_DOCUMENTO = ("fascicolo", "articolo", "volume")
 STATI = ("dedotto", "da verificare", "verificato")
 SI = ("sì", "si", "s", "x", "yes", "y", "1", "vero", "true")
@@ -429,7 +429,8 @@ def riga_documento(d, s, radice):
     data, stato_data, numero, stato_numero = d["data_nome"], "", d["numero_nome"], ""
     jstor = fonte_jstor(a["inizio"])
     if tipo_doc == "articolo" and not s["esiste"]:
-        s = dict(s, tipo_serie="periodico", cartella_serie="riviste/" + slug(s["serie"]) if s["serie"] else "")
+        # articoli: serie di tipo articolo (la rivista, un file per articolo con autore e titolo)
+        s = dict(s, tipo_serie="articolo", cartella_serie="riviste/" + slug(s["serie"]) if s["serie"] else "")
     fonte_data = ""
     if jstor and not data:
         data, stato_data, numero = jstor["data"], "dedotto", jstor["numero"] or numero
@@ -605,10 +606,8 @@ def controlla_righe(righe, esistenti):
             continue
         voce = {k: (r.get(k) or "").strip() for k in ("tipo_serie", "lingua", "cartella_serie", "sigla")}
         if not voce["cartella_serie"] and voce["tipo_serie"] in TIPI_SERIE:
-            voce["cartella_serie"] = ("riviste/" if voce["tipo_serie"] == "periodico" else "volumi/") + slug(serie)
-        if not voce["sigla"] and voce["tipo_serie"] == "periodico":
-            voce["sigla"] = "".join(p[0] for p in re.findall(r"[^\W\d_]+", serie) if p[0].isupper())[:4] or \
-                serie[:2].upper()
+            import profili
+            voce["cartella_serie"] = profili.completa(serie, {"tipo": voce["tipo_serie"]})["cartella"]
         if serie in da_creare:
             for k, v in voce.items():
                 if v and da_creare[serie][k] and v != da_creare[serie][k]:
@@ -624,13 +623,9 @@ def controlla_righe(righe, esistenti):
         if not re.fullmatch(r"[a-z]{2,3}", v["lingua"]):
             errori.append(f"serie «{nome}»: lingua «{v['lingua']}» (codice di due lettere: sq, it, en, zh...)")
         cartella = v["cartella_serie"].replace("\\", "/").strip("/")
-        if not cartella or ".." in cartella:
-            errori.append(f"serie «{nome}»: cartella_serie da indicare, dentro data (es. riviste/nome)")
+        if ".." in cartella:
+            errori.append(f"serie «{nome}»: cartella_serie dentro data (es. riviste/nome)")
     return attive, da_creare, errori, avvisi
-
-
-CITAZIONE_SERIE = {"periodico": "[{autore}, ][«{titolo}», ]{serie}, {data}[, n. {numero}]",
-                   "volume": "[{autore}, ]{titolo}[, vol. {volume}][, {luogo}][, {editore}][, {anno}]"}
 
 
 def cmd_applica(args, stampa=print):
@@ -660,8 +655,7 @@ def cmd_applica(args, stampa=print):
         stampa("Prova: nessuna scrittura. Per importare: lo stesso comando senza --prova.")
         return 0
     for nome, v in da_creare.items():
-        stampa(importa.aggiungi_serie(nome, v["tipo_serie"], v["lingua"], v["cartella_serie"],
-                                      CITAZIONE_SERIE[v["tipo_serie"]], sigla=v["sigla"]))
+        stampa(importa.aggiungi_serie(nome, v["tipo_serie"], v["lingua"], v["cartella_serie"], sigla=v["sigla"]))
     proposte = {}
     if file_proposte(args.tabella).exists():
         dati = json.loads(file_proposte(args.tabella).read_text(encoding="utf-8"))

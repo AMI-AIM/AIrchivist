@@ -346,6 +346,15 @@ Verifiche (26/10):
 3. Corretti dopo la prova: una cartella di articoli diversi non è più una serie sola; scansioni con strato di JSTOR riconosciute come articoli; data di scaricamento di JSTOR ignorata; titolo senza il numero di pagina in coda; autore in maiuscolo riportato in forma normale; `DATE_NOTE` con la provenienza vera.
 4. Non fatto: data dalla sequenza dei numeri dei fascicoli; nella citazione Chicago predefinita dei periodici mancano autore e titolo dell'articolo (lavoro 30).
 
+### Serie con meno campi (fase 7, lavoro 30, 26/10/2026)
+
+- **Profilo minimo**: nome, `tipo`, `lingua`. Tipi: `periodico` (fascicoli), `articolo` (articoli di una rivista, un file per articolo), `volume`, `archivio` (documenti d'archivio datati). `profili.completa` dà i valori predefiniti dei campi non scritti: cartella `riviste/`, `volumi/` o `archivi/` più il nome, sigla dalle iniziali (Zëri i Popullit -> ZP). Vale per tutto il motore (`profili.tutti`) e per l'importazione. `aggiungi_serie`, lo strumento `serie` e `chat.py serie-crea` chiedono solo nome, tipo e lingua, e scrivono cartella e sigla solo se diverse da quelle predefinite.
+- **Chicago dal tipo** (`citazioni.PREDEFINITI`, `modello_di`): periodico e articolo in forma di rivista («Lara Putnam, “Titolo,” *Rivista* 121, no. 2 (aprile 2016): 377») se il documento ha volume o numero, altrimenti di quotidiano («*Zëri i Popullit*, 12 gennaio 1967, 3»); volume «Enver Hoxha, *Vepra*, vol. 2 (Tirana: Naim Frashëri, 1969), 45»; archivio «Autore, “Titolo,” data, segnatura, fondo, archivio, luogo, pagina» (campi del profilo `archivio`, `fondo`, `segnatura`, o dell'intestazione `ARCHIVE`, `COLLECTION`, `CALL_NUMBER`; senza archivio, il nome della serie). Segnaposto nuovi: `{autore_nota}` (Cognome, Nome -> Nome Cognome; più autori con «;»: «and», da quattro «et al.»), `{titolo_articolo}` (il titolo del documento, vuoto per un fascicolo), `{fondo}`, `{archivio}`, `{segnatura}`. Il campo `chicago` del profilo prevale.
+- **Importazione**: FULL_CITATION dal modello Chicago della serie o, senza un vecchio modello «citazione» scritto, da quello del tipo; nomi dei file degli articoli e dei documenti d'archivio con il titolo (`TWT1978-02-n2-whither_albania.txt`), così più articoli dello stesso numero non si sovrappongono. L'importazione guidata propone il tipo `articolo` per gli articoli.
+- `series_template.ini`: campi essenziali (tre) e avanzati, con gli esempi delle citazioni per tipo.
+
+Verifiche (26/10): test 288, tutti superati (`tests/test_citazioni_tipo.py`: una nota per tipo da un profilo di tre campi, titolo con «?», campo chicago che prevale, autori nella forma della nota, valori predefiniti, serie minima creata e usata per importare un articolo). Citazioni di 650 file del corpus (600 a caso, 50 di volumi e raccolte) con il codice di prima e con quello nuovo: nessuna differenza (le serie del progetto hanno tutte il campo chicago o non cambiano forma).
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).
