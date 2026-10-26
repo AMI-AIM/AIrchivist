@@ -6,7 +6,9 @@ modello della chat non legge le fonti: usa gli strumenti della pipeline e riport
 Il lavoro è diviso così:
 - **Python, sul tuo PC**: la ricerca delle occorrenze, la verifica delle citazioni e l'impaginazione della
   risposta.
-- **Modelli gratuiti, tramite FreeLLMAPI**: solo la lettura dei passaggi (smistamento, traduzione, sintesi).
+- **Il modello che scegli** (un servizio gratuito con una chiave, Ollama sul tuo PC, l'API di Anthropic o
+  FreeLLMAPI): solo la lettura dei passaggi (smistamento, traduzione, sintesi). Lo si cambia quando si vuole
+  (vedi «Modelli che leggono i passaggi»).
 
 ## Organizzazione delle cartelle
 
@@ -24,7 +26,8 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
   tests\                    test automatici (python -m unittest discover -s tests); test_project\: progetto di prova
   letteratura\              letteratura secondaria sul metodo (PDF, fuori dal controllo di versione)
   scripts\
-    installa.py             installazione delle librerie, controllo dell'ambiente, configurazione dei client
+    installa.py             installazione delle librerie, controllo dell'ambiente, profili dei modelli,
+                            configurazione dei client
     mcp_server.py           il server che collega Jan alla pipeline; istruzioni.py: le regole che consegna
     ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
@@ -43,7 +46,9 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
     valuta.py               prova rapida dei modelli su una lettura di riferimento
     valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
     prova_ocr.py, prova_chat.py   prove dei motori OCR e dei modelli della chat
-    config.ini              configurazione del motore (modelli, parametri, progetto in uso)
+    config.ini              configurazione del motore (profilo di modello in uso, parametri, progetto in uso)
+    models.ini              i tuoi profili di modello (fuori dal controllo di versione; lo crea installa.py modello)
+    models_template.ini     esempi di profili di modello, con la descrizione delle voci
     series_template.ini     modello di series.ini per i progetti nuovi
   projects\                 i progetti di ricerca (fuori dal controllo di versione)
     dissident_communism\    il progetto di questa cartella
@@ -63,7 +68,7 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
         checks\             controlli delle intestazioni
       results\
         archive\            archivio unico dei passaggi già letti
-        searches\           una cartella per ogni ricerca
+        searches\           una cartella per ogni ricerca (modelli.json: i profili di modello con cui è partita)
         answers\            tutte le risposte complete (una per domanda)
         references\         letture di riferimento per valuta.py (nuova_unita, grippa)
         past_sessions\      lavori delle sessioni con Claude (letture assistite, tabelle, rapporti)
@@ -75,12 +80,13 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
         import_jobs\, cache\   importazioni avviate dalla chat e pagine già lette dall'OCR
         backups\            copie dei file fuori dal controllo di versione (fonti, archivio, schede),
                             una cartella per data e argomento
+        model_changes.csv   registro dei cambi di modello (installa.py modello usa)
 ```
 
 ## Requisiti (una volta sola)
 
 1. **Python per Windows** (3.10 o successivo), da https://www.python.org/downloads/. Durante l'installazione spunta **"Add python.exe to PATH"**. Il motore usa solo la libreria standard.
-2. **FreeLLMAPI**: vedi sotto.
+2. **Un modello per leggere i passaggi**: vedi «Modelli che leggono i passaggi».
 3. **Jan**: vedi sotto.
 4. Solo per importare nuovo materiale (vedi «Importare nuove fonti»): **Tesseract** e **PyMuPDF**.
 
@@ -88,18 +94,79 @@ Dalla cartella `scripts`:
 
 ```
 python installa.py librerie
+python installa.py modello
 python installa.py controlla
 python installa.py client jan
 ```
 
 - `librerie` installa nel Python di sistema le librerie facoltative di `requirements.txt` (PyMuPDF).
-- `controlla` verifica Python, SQLite con FTS5, il servizio dei modelli scelto in `config.ini` (chiave
-  presente, servizio raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie e
-  PaddleOCR. Esce con 1 se manca un requisito necessario; `--rapido` salta PaddleOCR.
+- `modello` crea il primo profilo di modello con una procedura guidata (vedi sotto).
+- `controlla` verifica Python, SQLite con FTS5, i profili di modello in uso (chiave presente, servizio
+  raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie e PaddleOCR. Esce con 1 se
+  manca un requisito necessario; `--rapido` salta PaddleOCR.
 - `client` stampa la configurazione del server MCP con i percorsi di questo PC: `jan` (i campi da compilare),
   `claude` (Claude Desktop), `lmstudio`, `json` (blocco `mcpServers` generico). Non modifica i file dei client.
 
-### FreeLLMAPI (i modelli gratuiti)
+### Modelli che leggono i passaggi (profili)
+
+I modelli sono due, e diversi:
+- il **modello che legge i passaggi** (smistamento, traduzione, sintesi), scelto qui;
+- il **modello della chat**, che usa gli strumenti e presenta la risposta: si sceglie nel client (Jan, Claude
+  Desktop, LM Studio).
+
+Ogni modello configurato è un **profilo** con un nome, in `scripts\models.ini`: servizio, nome del modello,
+indirizzo, nome della variabile d'ambiente che contiene la chiave e parametri propri (pausa tra le richieste,
+lunghezza massima delle risposte, modalità JSON...). La chiave non si scrive mai nel file. Esempi commentati e
+descrizione di tutte le voci in `scripts\models_template.ini`.
+
+Nella cartella `scripts`:
+```
+python installa.py modello                       procedura guidata per un profilo nuovo (come «modello nuovo»)
+python installa.py modello elenca                profili, quelli in uso, chiavi presenti
+python installa.py modello prova groq-qwen       prova di collegamento con una richiesta minima
+python installa.py modello usa groq-qwen         sceglie il profilo per tutti i ruoli
+python installa.py modello usa ollama-qwen-9b --ruolo sintesi    solo per un ruolo
+python installa.py modello usa groq-qwen --progetto              solo per il progetto in uso (project.ini)
+python installa.py modello togli gemini-flash    toglie un profilo non in uso (con copia del file)
+```
+
+**Procedura guidata.** Chiede il servizio:
+1. Ollama, sul tuo PC: gratuito, nessuna chiave, serve un PC abbastanza potente. Propone i modelli già
+   installati (`ollama pull <nome>` per scaricarne uno).
+2. Un servizio con una sola chiave: Groq, Google Gemini, OpenRouter o un altro compatibile OpenAI. Indica dove si
+   crea la chiave.
+3. API di Anthropic (Claude), a consumo.
+4. FreeLLMAPI (avanzato): più servizi gratuiti in catena, vedi sotto.
+
+Poi il nome del modello e quello del profilo (ne propone uno). Se serve una chiave e la variabile non c'è, la
+chiede (non si vede mentre la scrivi) e, se confermi, la salva come variabile d'ambiente del tuo utente (su
+Windows con `setx`; su macOS e Linux indica la riga da aggiungere al profilo della shell). Infine prova il
+collegamento e chiede se usare subito il profilo.
+
+**Scelta del profilo.** `usa` prova prima il collegamento e cambia la scelta **solo se la prova riesce**;
+altrimenti resta il profilo di prima e il messaggio spiega il problema (chiave rifiutata, modello inesistente,
+servizio spento, quota esaurita). La scelta sta in `config.ini`, sezione `[modello]`:
+```
+[modello]
+profilo = groq-qwen          per tutti i ruoli
+sintesi = ollama-qwen-9b     facoltativo: un profilo diverso per smistamento, analisi o sintesi
+```
+La stessa sezione in `project.ini` prevale, solo per quel progetto. Ogni cambio si annota in
+`system\model_changes.csv` del progetto (data, ruolo, profilo precedente e nuovo).
+
+**Cambiare modello a metà progetto.** Le letture già fatte restano nell'archivio con il nome del modello che le
+ha fatte e non si rileggono per il solo cambio. Una ricerca usa i profili scelti al suo avvio (vedi «Ricerche
+lunghe e quote esaurite»). Se un modello si rivela inaffidabile, i suoi passaggi si possono far rileggere (vedi
+«Rileggere i passaggi di un modello»). La sezione 5 di ogni risposta dice quali modelli hanno letto i passaggi e
+se sono misurati su queste fonti.
+
+**Configurazione precedente.** Se in `[modello]` non c'è nessun profilo scelto, vale ancora la configurazione di
+prima: voce `backend` e sezioni `[anthropic]`, `[openai]`, `[router]`, `[ollama]` di `config.ini`.
+`python installa.py modello converti` la trasforma in profili: mostra che cosa farà, chiede conferma, salva una
+copia di `config.ini` e di `models.ini` (`<file>.airchivist-<data>.bak`) e sceglie il profilo che corrisponde al
+`backend` di prima.
+
+### FreeLLMAPI (i modelli gratuiti in catena)
 
 FreeLLMAPI gira sul tuo PC. Quando la quota di un servizio gratuito si esaurisce, passa da solo al servizio successivo.
 
@@ -118,9 +185,9 @@ FreeLLMAPI gira sul tuo PC. Quando la quota di un servizio gratuito si esaurisce
    - `chat`: solo modelli capaci di usare strumenti, usati da Jan.
 4. Strategia di instradamento: **Personalizzato**, con affidabilità 0%, velocità 40% e intelligenza 60%.
 5. Copia la chiave unica (`freellmapi-…`, pagina **Chiavi**) e salvala nel Prompt dei comandi con `setx FREELLMAPI_KEY "..."`. Poi chiudi e riapri il Prompt.
-6. In `config.ini`, sezione `[router]`, l'indirizzo è `http://127.0.0.1:31415/v1`. Se cambia, lo trovi in **Chiavi > Chiave API unificata > URL di base**.
+6. Crea il profilo con `python installa.py modello` (scelta 4). L'indirizzo proposto è `http://127.0.0.1:31415/v1`; se cambia, lo trovi in **Chiavi > Chiave API unificata > URL di base**. Il modello `auto:ricerca` è la catena `ricerca`.
 
-`modelli_ammessi` (sezione `[router]`) è una rete di sicurezza: se la compili e risponde un modello che non è nell'elenco, la lettura si ferma senza salvare nulla.
+`modelli_ammessi` (voce del profilo FreeLLMAPI in `models.ini`) è una rete di sicurezza: se la compili e risponde un modello che non è nell'elenco, la lettura si ferma senza salvare nulla. Anche la prova di collegamento di `installa.py modello usa` fallisce, così te ne accorgi prima di avviare una ricerca.
 
 Ogni passaggio registra il modello che ha davvero risposto, nelle colonne `modello_smistamento` e `modello_analisi` di `classificati.csv`.
 
@@ -191,7 +258,7 @@ Nuova chat con l'assistente «Ricerca fonti», poi scrivi la domanda. Esempi:
 - «Quali varianti nuove ci sono per Grippa?»
 - «Il passaggio X non è pertinente: correggilo.»
 
-Strumenti a disposizione del modello della chat (13; quelli con più operazioni hanno il parametro `azione`):
+Strumenti a disposizione del modello della chat (14; quelli con più operazioni hanno il parametro `azione`):
 
 | Strumento | Cosa fa |
 |---|---|
@@ -199,7 +266,8 @@ Strumenti a disposizione del modello della chat (13; quelli con più operazioni 
 | `schede` | `elenca`: trova il nome esatto della scheda; `crea`: crea la scheda con le forme che hai confermato |
 | `esplora_nome` | per un'entità senza scheda: le forme del nome attestate nelle fonti, con conteggi ed esempi |
 | `cerca_testo` | ricerca libera di una parola o frase in tutte le fonti (senza valutazione di pertinenza) |
-| `ricerca` | `avvia`, `attendi` (l'avanzamento; attese brevi, `[mcp] attesa_massima`), `ferma`: ricerca completa nelle fonti |
+| `ricerca` | `avvia`, `attendi` (l'avanzamento e i profili di modello in uso; attese brevi, `[mcp] attesa_massima`), `ferma`: ricerca completa nelle fonti. Con `avvia`, su tua richiesta: `usa_modello_attuale`, `rileggi_modello` (vedi sotto) |
+| `modello` | `elenca`: profili, quelli in uso, chiavi presenti, se il modello è misurato su queste fonti; `prova`: prova di collegamento; `usa`: sceglie un profilo (anche per alcuni ruoli o per il solo progetto), solo se la prova riesce |
 | `risposte` | `elenca`, `leggi`: le risposte salvate nella cartella `results\answers` del progetto, per sezioni |
 | `passaggi_archivio` | passaggi già letti (originale, traduzione, riferimento): risposta immediata |
 | `copertura_fonti` | quanti numeri di ogni periodico (profili di serie) ci sono in un periodo e quali mancano |
@@ -211,6 +279,11 @@ Strumenti a disposizione del modello della chat (13; quelli con più operazioni 
 
 I nomi usati fino al 25/10/2026 (`elenca_entita`, `avvia_ricerca`, `leggi_risposta`...) restano accettati, così un
 assistente che li nomina continua a funzionare.
+
+Dalla chat si può chiedere quale modello legge i passaggi («Quale modello legge i passaggi? È misurato?») e
+cambiarlo («Usa il profilo ollama-qwen-9b per la sintesi»): lo strumento `modello` fa la stessa prova di
+`installa.py modello usa`. Un profilo nuovo si crea solo da riga di comando, perché la chiave non passi dalla
+chat. Il modello della chat stessa si cambia nel client.
 
 ### Istruzioni per l'IA della chat
 
@@ -228,7 +301,7 @@ risposta ha otto sezioni:
 2. Passaggi originali
 3. Dati espliciti
 4. Inferenze
-5. Limiti
+5. Limiti (anche: quali modelli hanno letto i passaggi, quanti ciascuno, e se sono misurati su queste fonti)
 6. Copertura
 7. Risposta finale
 8. Dati tecnici per la verifica (file e righe, che non entrano nelle citazioni)
@@ -253,6 +326,14 @@ dice quanti passaggi mancano.
 La ricerca si ferma solo per errori che non passano da soli (chiave mancante o sbagliata, modello ritirato):
 Jan riporta il messaggio. Se il PC si spegne o va in sospensione, la ricerca si interrompe: rifacendo la
 domanda riprende da dove era. Il registro completo di ogni ricerca è in `system\jobs\<data-ora>\registro.txt` del progetto.
+
+**Profili di modello di una ricerca.** All'avvio la ricerca registra i profili in uso in `modelli.json`, nella sua
+cartella dentro `results\searches`. Se si interrompe e riprende (da sola o rifacendo la domanda), continua con
+quei profili anche se nel frattempo hai scelto un altro modello: così una ricerca non mescola modelli per un cambio
+fatto a metà. Il cambio vale dalla ricerca successiva. Per far proseguire una ricerca interrotta con il modello
+scelto adesso: in chat chiedilo esplicitamente (opzione `usa_modello_attuale`), da riga di comando
+`python ricerca.py "Nome" --usa-modello-attuale`. Quando la ricerca finisce con la risposta completa, la successiva
+usa i profili scelti in quel momento.
 
 ## Schede delle entità e glossario
 
@@ -523,6 +604,20 @@ pertinenza resta. Le letture fatte in sessione compaiono nel piano come «da con
 una scheda: `python archivio.py date_sospette "Enrico Berlinguer"`. Il controllo non vede l'errore opposto (un
 annuncio di un mese precedente alla fonte, che è dell'anno seguente).
 
+### Rileggere i passaggi di un modello
+
+Se un modello si rivela inaffidabile (per esempio dopo le misure di `valutazione.py`), scegli prima un altro
+profilo (`installa.py modello usa`), poi rifai la ricerca chiedendo di rileggere i passaggi di quel modello:
+```
+python ricerca.py "Enrico Berlinguer" --rileggi-modello gpt-oss-20b
+```
+In chat: «Rifai la ricerca su Berlinguer rileggendo i passaggi letti da gpt-oss-20b» (opzione `rileggi_modello`).
+Tornano al modello attuale i passaggi della ricerca la cui pertinenza o traduzione viene da un modello il cui nome
+contiene quella parola (almeno tre caratteri; i nomi esatti sono nella sezione 5 delle risposte e nella riga
+«Lettura» dei passaggi). Le correzioni fatte a mano non si rileggono mai. La lettura nuova sostituisce la vecchia
+nell'archivio, che però resta nel file `readings.jsonl` come storia. Se il modello attuale corrisponde allo stesso
+nome, la ricerca lo segnala: la rilettura userebbe lo stesso modello.
+
 ## Meno richieste al modello
 
 Le impostazioni sono in `config.ini`, sezione `[estrazione]`:
@@ -541,10 +636,10 @@ Le impostazioni sono in `config.ini`, sezione `[estrazione]`:
 
 Nel Prompt dei comandi, nella cartella `scripts`:
 ```
-python valuta.py "Nuova Unità"                                         (i modelli della catena attuale)
+python valuta.py "Nuova Unità"                                         (la configurazione attuale)
 python valuta.py "Nuova Unità" --modelli "glm-4.7; nemotron-3-ultra"   (uno per uno, con tabella di confronto)
 ```
-Lo script confronta lo smistamento dei modelli con la lettura di riferimento in `results\references\nuova_unita`. Quel riferimento è una lettura assistita da Claude, non verificata a mano. Le prove vanno in `results\trials\` e non toccano l'archivio. Obiettivo: richiamo ≥ 95%. Un modello entra nella catena `ricerca` solo dopo questa prova.
+Lo script confronta lo smistamento dei modelli con la lettura di riferimento in `results\references\nuova_unita`. Quel riferimento è una lettura assistita da Claude, non verificata a mano. Le prove vanno in `results\trials\` e non toccano l'archivio. Obiettivo: richiamo ≥ 95%. Un modello entra nella catena `ricerca` solo dopo questa prova. Con `--modelli` (e in `valutazione.py modelli` e `misura`) i modelli si chiedono a FreeLLMAPI, attraverso il suo profilo: quello in uso, se è di FreeLLMAPI, altrimenti il primo di `models.ini`.
 
 ## Prova dei modelli della chat
 
@@ -616,5 +711,7 @@ delle forme inequivocabili, così la misura riguarda solo il modello. I risultat
 - *«Tesseract non trovato»*: installalo (vedi «Importare nuove fonti») e riapri il Prompt dei comandi, oppure riavvia Jan; o indica il percorso in `config.ini`, sezione `[ocr]`.
 - *OCR pieno di errori*: scansione a bassa risoluzione o storta; rifalla a 300 dpi. Per testi con molte parole in un'altra lingua, in `series.ini` metti ad es. `ocr_lingue = sqi+eng`.
 - *Il server «Pipeline» non parte*: controlla che FreeLLMAPI sia acceso e che in Command ci sia il percorso giusto di Python.
-- *Errore 401/403*: chiave sbagliata o scaduta (in FreeLLMAPI). *Errore 404*: modello ritirato; disattivalo nel pannello.
+- *Errore 401/403*: chiave sbagliata o scaduta (in FreeLLMAPI, o nella variabile d'ambiente del profilo). *Errore 404*: modello ritirato; disattivalo nel pannello di FreeLLMAPI o correggi il nome nel profilo. Controlla con `python installa.py modello prova <profilo>`.
+- *«Il profilo di modello … non esiste»*: il nome scelto in `[modello]` di `config.ini` o `project.ini` non è in `models.ini`. `python installa.py modello elenca` mostra i profili; `usa` ne sceglie uno.
+- *La ricerca usa ancora il modello di prima*: è una ricerca interrotta, che riprende con i profili con cui era partita (vedi «Ricerche lunghe e quote esaurite»); usa `--usa-modello-attuale`, o chiedilo in chat.
 - *Jan risponde senza usare gli strumenti*: controlla che sia scelto l'assistente «Ricerca fonti», che il modello abbia **Tools** attivo e che Web Search sia spento.

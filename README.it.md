@@ -12,18 +12,21 @@ cartella. Dalla cartella del repository:
 
 ```
 python scripts\installa.py librerie
+python scripts\installa.py modello
 python scripts\installa.py controlla
 python scripts\installa.py client jan
 ```
 
 - `librerie`: installa le librerie facoltative di `requirements.txt` (PyMuPDF, per importare i PDF).
-- `controlla`: verifica Python, l'indice FTS5, il servizio dei modelli (chiave e raggiungibilità), il progetto
+- `modello`: procedura guidata per il modello che legge i passaggi (Ollama, un servizio con una chiave, API di
+  Anthropic o FreeLLMAPI); si cambia quando si vuole con `installa.py modello usa <profilo>`.
+- `controlla`: verifica Python, l'indice FTS5, il modello scelto (chiave e raggiungibilità), il progetto
   in uso, PyMuPDF, Tesseract e le lingue OCR richieste dalle serie. Se manca qualcosa di necessario, lo dice.
 - `client`: mostra cosa scrivere nel client per collegare il server MCP (`jan`, `claude`, `lmstudio`, `json`).
 
 ## Come si usa
 
-1. Avvia **FreeLLMAPI** (fornisce i modelli gratuiti).
+1. Avvia il servizio del modello scelto, se gira sul tuo PC (**FreeLLMAPI** od Ollama).
 2. Apri **Jan**, nuova chat con l'assistente «Ricerca fonti» e il modello `auto:chat`.
 3. Scrivi la domanda, per esempio «Cosa dicono le fonti di Jacques Grippa nel 1964?».
 
@@ -38,7 +41,7 @@ Il repository contiene il motore:
 
 | Cartella | Contenuto |
 |---|---|
-| `scripts` | programmi, `config.ini` (modelli, parametri, progetto in uso) e `series_template.ini` (modello per i progetti nuovi) |
+| `scripts` | programmi, `config.ini` (profilo di modello in uso, parametri, progetto in uso), `models_template.ini` (esempi di profili di modello) e `series_template.ini` (modello per i progetti nuovi) |
 | `tests` | test automatici e progetto di prova (`tests\test_project`) |
 | `skills` | skill source-search, scritta una volta sola (`source-search`), i README delle confezioni (`readme`) e `package.py`, che produce le confezioni in `skills\build`: zip per claude.ai, plugin per Claude Code, zip per ChatGPT (ognuna con il suo `README.md`) |
 | `docs` | documentazione di progetto: stato, progettazione, piano di lavoro, schede delle entità, guida d'uso (`user_guide.it.md`) |

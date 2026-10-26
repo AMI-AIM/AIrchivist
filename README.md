@@ -32,7 +32,7 @@ Long searches run as separate processes. When the free quotas run out, they wait
 | | Needed for | Notes |
 |---|---|---|
 | Python 3.10 or later, with SQLite FTS5 | everything | The python.org builds include FTS5. The engine uses only the standard library. |
-| A model service | reading passages | FreeLLMAPI (default), Ollama, an OpenAI-compatible service or the Anthropic API (`scripts/config.ini`, `[modello] backend`) |
+| A model service | reading passages | Ollama, an OpenAI-compatible service (Groq, Gemini, OpenRouter), the Anthropic API or FreeLLMAPI: a model profile in `scripts/models.ini`, created with `installa.py modello` |
 | An MCP client | asking questions | Jan, Claude Desktop, LM Studio, or any client that speaks MCP over STDIO or HTTP |
 | PyMuPDF | importing PDFs (optional) | `requirements.txt` |
 | Tesseract with the language data you need | importing scans (optional) | Windows: [UB Mannheim build](https://github.com/UB-Mannheim/tesseract/wiki) |
@@ -46,14 +46,17 @@ Install requirements system-wide, never inside the project folder.
 git clone <repository URL> AIrchivist
 cd AIrchivist
 python scripts/installa.py librerie
+python scripts/installa.py modello
 python scripts/installa.py controlla
 ```
 
-`librerie` installs the optional libraries listed in `requirements.txt` into the system Python. `controlla` checks
-Python, FTS5, the model service (key and reachability), the research project in use, PyMuPDF, Tesseract and the
+`librerie` installs the optional libraries listed in `requirements.txt` into the system Python. `modello` walks you
+through a model profile (service, model, the name of the environment variable holding the key) and switches to it
+only if a test request succeeds; `installa.py modello elenca | usa | prova` list, switch and test profiles later.
+`controlla` checks Python, FTS5, the model profiles in use (key and reachability), the research project in use, PyMuPDF, Tesseract and the
 OCR languages that the project's series require. It exits with status 1 if a required item is missing.
 
-The engine stays where you put it. `scripts/config.ini` (models, router, parameters) sits next to the code so
+The engine stays where you put it. `scripts/config.ini` (model profile in use, parameters) sits next to the code so
 that you can edit it.
 
 ### Connecting a client
