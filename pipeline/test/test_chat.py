@@ -173,6 +173,73 @@ class PdfConPypdf(unittest.TestCase):
                     doc[0].get_pixmap(dpi=300)
 
 
+def pdf_a_mano(f, pagine):
+    """PDF minimo scritto senza librerie: una pagina per elemento di `pagine` (righe di testo, dall'alto),
+    font Helvetica. Serve a provare la lettura con pypdf dove PyMuPDF non c'è."""
+    oggetti = ["<< /Type /Catalog /Pages 2 0 R >>", None,
+               "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    figli = []
+    for righe in pagine:
+        flusso = "BT /F1 11 Tf 60 780 Td 14 TL " + " ".join(
+            "(" + r.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)") + ") Tj T*" for r in righe) + " ET"
+        oggetti.append(f"<< /Length {len(flusso.encode('latin-1'))} >>\nstream\n{flusso}\nendstream")
+        oggetti.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+                       f"/Resources << /Font << /F1 3 0 R >> >> /Contents {len(oggetti)} 0 R >>")
+        figli.append(f"{len(oggetti)} 0 R")
+    oggetti[1] = f"<< /Type /Pages /Kids [{' '.join(figli)}] /Count {len(figli)} >>"
+    corpo, posizioni = b"%PDF-1.4\n", []
+    for i, o in enumerate(oggetti, 1):
+        posizioni.append(len(corpo))
+        corpo += f"{i} 0 obj\n{o}\nendobj\n".encode("latin-1")
+    xref = len(corpo)
+    corpo += f"xref\n0 {len(oggetti) + 1}\n0000000000 65535 f \n".encode("latin-1")
+    corpo += "".join(f"{p:010d} 00000 n \n" for p in posizioni).encode("latin-1")
+    corpo += f"trailer\n<< /Size {len(oggetti) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode("latin-1")
+    Path(f).write_bytes(corpo)
+    return Path(f)
+
+
+class PdfSenzaPyMuPDF(unittest.TestCase):
+    """Ambiente senza PyMuPDF (come la chat): chat.py ambiente lo dice e i PDF con testo si importano con
+    pypdf, con i numeri di pagina stampati. PyMuPDF è nascosto con moduli finti che non si importano."""
+    def test_ripiego_su_pypdf(self):
+        try:
+            import pypdf  # noqa: F401
+        except ImportError:
+            self.skipTest("serve pypdf")
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            finti = t / "senza_pymupdf"
+            finti.mkdir()
+            for m in ("fitz", "pymupdf"):
+                (finti / f"{m}.py").write_text("raise ImportError('PyMuPDF assente (prova)')\n", encoding="utf-8")
+            (t / "fonti").mkdir()
+            corpo = [r for r in RIEMPITIVO.split(". ") if r.strip()]
+            pdf_a_mano(t / "fonti" / "rinascita.pdf",
+                       [["Rinascita. Settimanale del Partito comunista italiano.", *corpo, "", "41"],
+                        ["Il compagno Enrico Berlinguer, capo della delegazione del PCI,",
+                         "ha dichiarato che le condizioni non sono mature.", *corpo, "", "42"],
+                        ["Cronache delle federazioni.", *corpo, "", "43"]])
+            env = dict(os.environ, AIRCHIVIST_PROGETTO=str(t / "progetto"), PYTHONIOENCODING="utf-8",
+                       PYTHONPATH=str(finti))
+
+            def chat(*argomenti):
+                r = subprocess.run([sys.executable, str(PIPELINE / "chat.py"), *map(str, argomenti)], cwd=PIPELINE,
+                                   env=env, capture_output=True, text=True, encoding="utf-8")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                return r.stdout
+
+            self.assertEqual(json.loads(chat("ambiente"))["pdf"], "pypdf")
+            chat("apri", t / "fonti")
+            chat("serie-crea", "Rinascita", "--tipo", "periodico", "--lingua", "it", "--cartella",
+                 "riviste/rinascita", "--citazione", "Rinascita, {data}")
+            chat("importa", t / "fonti" / "rinascita.pdf", "--serie", "Rinascita", "--data", "1965-03-13")
+            testo = next((t / "progetto" / "data" / "riviste" / "rinascita").glob("*.txt")).read_text(
+                encoding="utf-8")
+            self.assertIn("Enrico Berlinguer", testo)
+            self.assertIn("[[p. 42 | pdf 2]]", testo)
+
+
 def confeziona_in(dist):
     from contextlib import redirect_stdout
     import io

@@ -12,10 +12,13 @@ PIPELINE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PIPELINE))
 import importa as I  # noqa: E402
 
-try:
-    FITZ = I.carica_pymupdf()
-except ImportError:     # PyMuPDF è facoltativo: senza, si saltano i test sui PDF
-    FITZ = None
+try:                         # PyMuPDF vero, che serve a creare i PDF di prova; senza, questi test si saltano
+    import pymupdf as FITZ   # (il ripiego su pypdf per leggerli è provato in test_chat.PdfSenzaPyMuPDF)
+except ImportError:
+    try:
+        import fitz as FITZ
+    except ImportError:
+        FITZ = None
 TESTO = ("Shoku Jacques Grippa foli ne mbledhjen e Komitetit Qendror per ceshtjet e levizjes "
          "marksiste-leniniste ne Evrope dhe per lidhjet me partite motra. ") * 4
 
@@ -61,7 +64,7 @@ class Regola(unittest.TestCase):
         self.assertEqual(I.pagine_campione([1, 2, 3], 0), [])
 
 
-@unittest.skipIf(FITZ is None, "PyMuPDF non installato")
+@unittest.skipIf(FITZ is None, "PyMuPDF assente: servirebbe a creare i PDF di prova")
 class Pdf(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

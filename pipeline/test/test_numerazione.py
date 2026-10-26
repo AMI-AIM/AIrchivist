@@ -19,10 +19,13 @@ import citazioni as C  # noqa: E402
 import importa as I  # noqa: E402
 import numerazione as N  # noqa: E402
 
-try:
-    FITZ = I.carica_pymupdf()
-except ImportError:          # PyMuPDF è facoltativo: senza, si saltano i test sui PDF
-    FITZ = None
+try:                         # PyMuPDF vero, che serve a creare i PDF di prova; senza, questi test si saltano
+    import pymupdf as FITZ   # (il ripiego su pypdf per leggerli è provato in test_chat.PdfSenzaPyMuPDF)
+except ImportError:
+    try:
+        import fitz as FITZ
+    except ImportError:
+        FITZ = None
 
 PAROLE = "The Party continued the struggle against revisionism and for the construction of socialism. " * 6
 
@@ -110,7 +113,7 @@ chicago = *{titolo}*[, {pagina}]
 """
 
 
-@unittest.skipIf(FITZ is None, "PyMuPDF non installato")
+@unittest.skipIf(FITZ is None, "PyMuPDF assente: servirebbe a creare i PDF di prova")
 class ImportazionePdf(unittest.TestCase):
     def pdf(self, cartella, testi, etichette=None):
         f = cartella / "prova.pdf"
