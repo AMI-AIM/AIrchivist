@@ -173,6 +173,68 @@ Requisiti di sistema (da installare): Tesseract UB Mannheim con la lingua Albani
 
 Provato solo su una scansione sintetica: mancano prove su scansioni vere e una prova dei modelli sulla lettura dell'albanese.
 
+### Skill e plugin presso i provider: verifiche (fase 5, fase A di `roadmap_skill.md`, 26/10/2026)
+
+Verifiche sulla documentazione ufficiale (fonti primarie, elenco in fondo alla sezione), lette il 26/10. Dove la documentazione tace è scritto.
+
+**Claude, skill su claude.ai**
+- Zip: la cartella della skill alla radice dello zip, con lo stesso nome della skill (`ricerca-fonti.zip` → `ricerca-fonti/SKILL.md`), non i file sciolti. Caricamento da Customize > Skills > «+» > Create skill > Upload a skill.
+- Intestazione: `name` (max 64 caratteri, solo minuscole, cifre e trattini, senza «anthropic» né «claude») e `description` obbligatori. Il centro assistenza indica per `description` un massimo di **200 caratteri**, la documentazione per sviluppatori **1.024**; l'attuale `skill_chat/SKILL.md` ne ha 620 ed è stata caricata senza errori il 25/10. Campi accettati nel caricamento: `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`.
+- Dimensione massima dello zip: non indicata («ZIP file exceeds size limits» tra le cause d'errore, senza il valore). File caricati nella conversazione: 30 MB per file; i PDF più grandi si elaborano nell'ambiente di calcolo senza entrare nel contesto.
+- Piani: il centro assistenza indica Free, Pro, Max, Team ed Enterprise, con l'esecuzione del codice attiva; la pagina per sviluppatori dice ancora Pro, Max, Team ed Enterprise. Le skill caricate sono personali; su Team ed Enterprise si possono condividere o pubblicare nell'organizzazione.
+- Rete: Free, Pro e Max con accesso attivo ai gestori di pacchetti (PyPI, npm, GitHub e pochi altri domini); Team ed Enterprise secondo le impostazioni dell'organizzazione (l'articolo è contraddittorio sul valore iniziale per Team). Claude può installare pacchetti da PyPI quando la rete lo consente.
+- Pacchetti Python preinstallati su claude.ai: nessun elenco ufficiale. Per l'ambiente dell'API (strumento di esecuzione del codice) l'elenco c'è: Python 3.11, pypdf, pdfplumber, pypdfium2, pdf2image, pandas, ecc., sqlite; **PyMuPDF e Tesseract non ci sono**; nessuna rete, 5 GiB di RAM e di disco.
+- Posizione dei file caricati (`/mnt/user-data/uploads`, `/mnt/user-data/attachments`): non documentata; nota solo dalle prove del 25-26/10.
+- Le skill attive sull'account claude.ai si scaricano anche in Claude Code (v2.1.273 o successive, accesso con l'account claude.ai), in `~/.claude/skills/synced/`, in sola lettura.
+
+**Claude Code**
+- Posizioni: personale `~/.claude/skills/<nome>/SKILL.md` (tutti i progetti della macchina), di progetto `.claude/skills/<nome>/` (solo quella cartella o repository), aziendale, plugin `<plugin>/skills/<nome>/SKILL.md`. Precedenza: aziendale > personale > progetto; le skill dei plugin hanno lo spazio dei nomi (`/plugin:skill`) e convivono con le altre.
+- Plugin: cartella con `.claude-plugin/plugin.json` e `skills/`; si installa da un marketplace (anche un repository GitHub con `.claude-plugin/marketplace.json`) o da una cartella (`--plugin-dir`). Conviene quando si vogliono installazione con un comando e aggiornamenti; per un uso personale basta la cartella in `~/.claude/skills/`.
+- Rete e pacchetti: quelli del computer dell'utente; installazioni globali sconsigliate.
+
+**ChatGPT, plugin**
+- Un plugin può contenere **solo skill**, senza app né server MCP: la documentazione lo dice espressamente («Skills only»; «Some plugins include only skills»).
+- Formato portabile: `plugin.json` alla radice (schema Agent Plugins, `name` in minuscole e trattini, max 64 caratteri) e `skills/<nome>/SKILL.md`; impostazioni OpenAI in `extensions.com.openai`. Plugin Creator genera invece la disposizione di compatibilità `.codex-plugin/plugin.json`. OpenAI accetta anche i manifesti di Claude: un archivio con `.claude-plugin/plugin.json` (con `description` non vuota) e almeno `skills/<nome>/SKILL.md` si carica direttamente come plugin di sole skill e il portale lo converte. Le istruzioni che nominano Claude vanno rese neutre («the model»).
+- Creazione: con `@plugin-creator` (in Work o in Codex) oppure a mano. Prova locale: marketplace personale `~/.agents/plugins/marketplace.json` nell'app desktop di ChatGPT.
+- Distribuzione: (1) caricamento dello zip nella console d'amministrazione, solo per proprietari e amministratori di un'area di lavoro; (2) pubblicazione nell'area di lavoro, solo amministratori; (3) directory pubblica, condivisa da ChatGPT e Codex: zip caricato nel portale `platform.openai.com/plugins`, percorso «Skills only», con verifica dell'identità (individuale o aziendale) e revisione. Per le sole skill non servono casi di prova né video.
+- Piani: la directory dei plugin è visibile su tutti i piani; installare e usare un plugin «dipende da piano, area di lavoro, ruolo, regione»; su Free e Go niente estensioni dei plugin. Le skill personali sono indicate per Business, Enterprise, Healthcare ed Edu. **Se un utente Plus possa installare un plugin pubblico di sole skill, o crearne uno personale con Plugin Creator, la documentazione non lo dice**: va provato su un account Plus.
+
+**ChatGPT, skill**
+- Stesso standard (agentskills.io): cartella con `SKILL.md`, `name` e `description` obbligatori, poi `scripts/`, `references/`, `assets/`; facoltativo `agents/openai.yaml` (presentazione, dipendenze MCP).
+- Dove funzionano: le skill sciolte nell'app desktop di ChatGPT, in Codex CLI e nell'estensione per gli IDE; quelle dentro un plugin anche in Chat e Work, sul web, sul desktop e sul cellulare. Posizioni locali: `~/.agents/skills`, `.agents/skills` del repository.
+- `/home/oai/skills`: non compare nella documentazione ufficiale (solo in Willison 2025).
+- Esecuzione degli script nella chat: non documentata per le skill. L'analisi dei dati usa un notebook Jupyter con Python, **senza richieste alla rete**; nessun elenco dei pacchetti; posizione dei file caricati non documentata.
+- File caricati: 512 MB per documento, 2 milioni di token per file di testo, 80 file ogni 3 ore (Free: 3 al giorno).
+
+**Ripiego per ChatGPT**
+- Il GPT personalizzato non è un ripiego: sui piani personali (Free, Go, Plus, Pro) **non si possono più creare GPT nuovi**, e i GPT personalizzati saranno ritirati l'**11 dicembre 2026** (per le aree Enterprise con proroga l'11 febbraio 2027), con migrazione verso i plugin.
+- Resta, non verificato, un progetto di ChatGPT con istruzioni e file (Plus: fino a 25 file per progetto); che vi si possano eseguire gli script della skill non è documentato.
+
+**Conseguenze per le fasi B e C**
+- Una sola cartella con `.claude-plugin/plugin.json` e `skills/ricerca-fonti/` serve da plugin di Claude Code e, così com'è, da zip di sole skill per la directory di ChatGPT; un `plugin.json` portabile alla radice la rende installabile anche dal marketplace locale di ChatGPT. Lo zip per claude.ai resta a parte (cartella `ricerca-fonti/` alla radice).
+- `SKILL.md` neutro rispetto al provider è richiesto da OpenAI per la pubblicazione, non solo una scelta di stile.
+- `description` sotto i 1.024 caratteri; sotto i 200 se si vuole stare nel limite del centro assistenza di Claude.
+- Nessun ambiente garantisce PyMuPDF né la rete: il ripiego su pypdf (`importa.carica_pymupdf`) è necessario; pypdf è preinstallato almeno nell'ambiente dell'API di Claude.
+- Da provare nella fase D: piano Plus di ChatGPT (installazione e creazione di plugin, esecuzione degli script, posizione dei file caricati); limite reale di dimensione dello zip su claude.ai.
+
+Fonti (lette il 26/10/2026; tutte primarie e ufficiali):
+- Anthropic. "Agent Skills." *Claude Platform Docs*. https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview.
+- Anthropic. "Code Execution Tool." *Claude Platform Docs*. https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.
+- Anthropic. "How to Create Custom Skills." *Claude Help Center*. https://support.claude.com/en/articles/12512198-creating-custom-skills.
+- Anthropic. "Using Skills in Claude." *Claude Help Center*. https://support.claude.com/en/articles/12512180-using-skills-in-claude.
+- Anthropic. "Create and Edit Files with Claude." *Claude Help Center*. https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude.
+- Anthropic. "Extend Claude with Skills." *Claude Code Docs*. https://code.claude.com/docs/en/skills.
+- Anthropic. "Plugins." *Claude Code Docs*. https://code.claude.com/docs/en/plugins/overview.
+- OpenAI. "Skills in ChatGPT." *OpenAI Help Center*. https://help.openai.com/en/articles/20001066-skills-in-chatgpt.
+- OpenAI. "Plugins in ChatGPT." *OpenAI Help Center*. https://help.openai.com/en/articles/20001256-plugins-in-chatgpt.
+- OpenAI. "Troubleshooting Plugins and Apps in ChatGPT." *OpenAI Help Center*. https://help.openai.com/en/articles/20001497-troubleshooting-plugins-and-apps-in-chatgpt.
+- OpenAI. "Custom GPT Retirement and Migration FAQ." *OpenAI Help Center*. https://help.openai.com/en/articles/20001519-custom-gpt-retirement-and-migration-faq.
+- OpenAI. "Creating and Editing GPTs." *OpenAI Help Center*. https://help.openai.com/en/articles/8554397-creating-and-editing-gpts.
+- OpenAI. "Data Analysis with ChatGPT." *OpenAI Help Center*. https://help.openai.com/en/articles/8437071-data-analysis-with-chatgpt.
+- OpenAI. "Uploading Files and Audio to ChatGPT." *OpenAI Help Center*. https://help.openai.com/en/articles/8555545-uploading-files-and-audio-to-chatgpt.
+- OpenAI. "Plugin Architecture"; "Build Skills"; "Package Your Plugin"; "Connect and Test Your Plugin"; "Upload and Submit Your Plugin"; "Submit Your Claude Code Plugin to OpenAI." *OpenAI Developers*. https://developers.openai.com/plugins/.
+- OpenAI. "Agent Skills." *OpenAI Developers (Codex)*. https://developers.openai.com/codex/skills.
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).
