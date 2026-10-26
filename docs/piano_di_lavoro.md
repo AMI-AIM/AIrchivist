@@ -74,3 +74,23 @@ Istruzioni dettagliate in `roadmap_skill.md`. Accanto al sistema principale, una
 
 24. **Insieme di riferimento verificato a mano** (aperto) con `valutazione.py`, e misure di precisione e richiamo. Va fatto da Ivan: è la condizione per ogni dato pubblicato.
 25. **Articolo metodologico** (aperto) con le misure dello strumento di valutazione.
+
+
+## Fase 7 — Semplificazione dell'installazione e dell'uso
+
+Istruzioni dettagliate in `roadmap_simplification.md`. Obiettivo: un ricercatore esterno, con un proprio corpus di PDF, installa il sistema, importa le fonti e fa la prima ricerca in meno di un'ora di lavoro attivo, su Windows, macOS e Linux, senza modificare file di configurazione a mano. Punto di arrivo: un'interfaccia propria sul modello di Chronos (menu a tendina per progetto e modello, visore della fonte, citazioni cliccabili). I lavori 26-28 vanno fatti per primi; l'eseguibile unico che contiene l'interfaccia è rimandato a dopo i lavori 17 e 34.
+
+26. **Scelta del modello, modificabile in ogni momento** (in corso): profili di modello (servizio, modello, parametri propri, variabile della chiave); `installa.py modello` per crearli, `usa` per cambiarli solo dopo una prova riuscita; ricerche in corso legate al profilo con cui sono partite; rilettura facoltativa dei passaggi di un modello; «Limiti» con i modelli che hanno letto e se sono misurati. Fatto il 26/10: profili in `models.ini` (`models_template.ini`), scelta in `[modello] profilo` o per ruolo, configurazione precedente ancora letta; `installa.py modello nuovo | elenca | usa | prova | togli | converti`, con i cambi annotati in `system/model_changes.csv`; test con un servizio finto. Da fare: profilo registrato nello stato delle ricerche e ripresa con lo stesso profilo (`--usa-modello-attuale`), `--rileggi-modello`, «Limiti» per modello, misure legate al profilo, strumento MCP `modello`, guida d'uso, prova reale con una ricerca prima e dopo il cambio.
+27. **Configurazione automatica della chat** (aperto): `installa.py client <nome> --scrivi` (con copia e conferma) e `--verifica`.
+28. **Avvio guidato** (aperto): `installa.py inizia` (controllo, modello, primo progetto, chat, riepilogo).
+29. **Importazione guidata con tabella di revisione** (aperto): `importa.py proponi`, `applica`, `rivedi`; serie e metadati proposti con il loro stato, corretti in Excel o LibreOffice.
+30. **Serie con meno campi** (aperto): profilo minimo (nome, tipo, lingua), citazione Chicago generata dal tipo.
+31. **La risposta come documento** (aperto): HTML autonomo accanto a `risposta.md`; il server MCP consegna riassunto e percorso.
+32. **Documentazione per utenti esterni** (aperto): quickstart in inglese e in italiano, guida completa in inglese, Windows, macOS e Linux.
+33. **Corpus d'esempio e confezione** (aperto): corpus libero da diritti con progetto pronto; installatore per Windows; MCP Bundle per Claude Desktop se la specifica lo consente.
+34. **Prova con utenti esterni** (aperto): 2-3 ricercatori installano da soli con il proprio corpus; tempi, blocchi, correzioni.
+
+35. **Interfaccia: struttura e menu** (aperto): `app.py`, server locale con libreria standard aperto nel browser; menu a tendina «Progetto» e «Modello»; percorso guidato della ricerca.
+36. **Interfaccia: visore della fonte e citazioni cliccabili** (aperto): pagina dell'originale con il passaggio evidenziato; schede «Passaggi» e «Glossario».
+37. **Interfaccia: importazione e revisione** (aperto): file o cartelle, tabella dei metadati modificabile nell'interfaccia.
+38. **Interfaccia: conversazione sulle fonti** (aperto): con il modello scelto e gli strumenti del motore; disattivata con spiegazione se il modello non sa usare gli strumenti.
