@@ -18,7 +18,8 @@ controllare in Excel o LibreOffice, invece di concetti tecnici da scrivere a man
       riga in audit/changes.csv per ogni campo cambiato.
 
 Stati dei valori (colonne stato_data, stato_numero): «dedotto» (dal nome del file, dalle etichette del PDF),
-«da verificare» (letto nella prima pagina), «verificato». Un valore cambiato a mano vale «verificato».
+«da verificare» (letto nella prima pagina), «verificato». Un valore cambiato a mano vale «verificato». La colonna
+fonte_data dice da dove viene la data proposta e diventa DATE_NOTE dell'intestazione.
 """
 import argparse
 import csv
@@ -37,7 +38,7 @@ sys.path.insert(0, str(CARTELLA))
 
 # colonne della tabella: prima quelle da controllare, in fondo quelle informative
 COLONNE = ["importa", "file", "serie", "tipo_serie", "lingua", "cartella_serie", "sigla", "tipo_documento",
-           "data", "stato_data", "numero", "stato_numero", "titolo", "autore", "anno", "volume", "luogo", "editore",
+           "data", "stato_data", "fonte_data", "numero", "stato_numero", "titolo", "autore", "anno", "volume", "luogo", "editore",
            "prima_pagina", "da_pagina", "pagine", "formato", "testo", "qualita_ocr", "da_controllare", "percorso"]
 COLONNE_RIVEDI = ["file_dati", "serie", "data", "stato_data", "numero", "stato_numero", "titolo", "autore", "anno",
                   "volume", "luogo", "editore", "lingua", "pagine", "da_controllare"]
@@ -60,6 +61,30 @@ PAROLE = {"sq": "dhe të në për që një nga me është u së ka do ishte jan�
           "es": "el la de que y los las en por una del con para",
           "pt": "o a de que e os do da em não um uma para com"}
 SCRITTURE_LINGUA = {"CJK": "zh", "CYRILLIC": "ru", "GREEK": "el", "ARABIC": "ar", "HEBREW": "he"}
+# righe con la data di scaricamento o di consultazione, non di pubblicazione
+SCARICAMENTO = re.compile(r"download|accessed|retrieved|this content|scaricat|consultat|t[ée]l[ée]charg|\bUTC\b|"
+                          r"jstor\.org/terms", re.IGNORECASE)
+# frontespizio di JSTOR: «Source: The American Historical Review, APRIL 2016, Vol. 121, No. 2 (APRIL 2016), pp. 377-402»
+FONTE_JSTOR = re.compile(r"Source:\s*(?P<serie>[^,\n]+),\s*(?P<data>[^,\n]*?\d{4})(?:\s*,\s*Vol\.\s*(?P<volume>[\w.]+))?"
+                         r"(?:\s*,\s*No\.\s*(?P<numero>[\w./-]+))?", re.IGNORECASE)
+
+
+def fonte_jstor(testo):
+    """Rivista, data, volume e numero dal frontespizio di JSTOR; {} se non c'è."""
+    import importa
+    m = FONTE_JSTOR.search((testo or "").replace("\x00", "\n")[:3000])
+    if not m:
+        return {}
+    data = importa.data_da_testo(m.group("data"))
+    if not data:
+        mese = re.search(r"([A-Za-zé]+)\s+(\d{4})", m.group("data"))
+        if mese and mese.group(1).lower() in importa.MESI:
+            data = f"{mese.group(2)}-{importa.MESI[mese.group(1).lower()]:02d}"
+        else:
+            data = (re.search(r"\d{4}", m.group("data")) or [""])[0]
+    autore = re.search(r"Author\(s\):\s*([^\n]+)", (testo or "").replace("\x00", "\n")[:3000])
+    return {"serie": m.group("serie").strip(), "data": data, "volume": m.group("volume") or "",
+            "numero": m.group("numero") or "", "autore": autore.group(1).strip() if autore else ""}
 TITOLI_INUTILI = re.compile(r"^(untitled|senza titolo|microsoft word|document\d*|scan\d*|\S+\.(docx?|pdf|tiff?))",
                             re.IGNORECASE)
 
@@ -303,10 +328,21 @@ def proponi(percorsi, serie_forzata="", stampa=print):
     # gruppi di serie: la sottocartella; nella cartella principale, lo schema dei nomi dei file
     per_serie = defaultdict(list)
     for d in documenti:
-        stessi = sum(1 for x in documenti if not x["cartella"] and x["schema"] == d["schema"])
-        # un file da solo nella cartella principale fa serie a sé (un articolo, un libro)
-        chiave = d["cartella"] or (d["schema"] if stessi > 1 and "#" in d["schema"] else f"#solo#{d['stem']}")
-        per_serie[chiave].append(d)
+        per_serie[d["cartella"]].append(d)
+    # una cartella è una serie se i suoi file si somigliano: nome con le stesse cifre (ZP1967-01-12) o la
+    # stessa testata in prima pagina. Altrimenti (articoli di riviste diverse, libri) ogni file fa serie a sé,
+    # salvo i gruppi di nomi uguali a meno delle cifre
+    gruppi_serie = defaultdict(list)
+    for cartella, docs in per_serie.items():
+        schemi = Counter(d["schema"] for d in docs if "#" in d["schema"])
+        simili = schemi and schemi.most_common(1)[0][1] >= max(2, len(docs) / 2)
+        if cartella and len(docs) > 1 and (simili or titolo_ricorrente([d["a"]["inizio"] for d in docs])):
+            gruppi_serie[cartella] += docs
+            continue
+        for d in docs:
+            stessi = schemi.get(d["schema"], 0) > 1
+            gruppi_serie[f"{cartella}#{d['schema']}" if stessi else f"#solo#{cartella}/{d['stem']}"].append(d)
+    per_serie = gruppi_serie
     righe = []
     for chiave, docs in per_serie.items():
         proposta = proponi_serie(chiave, docs, esistenti, serie_forzata)
@@ -335,12 +371,18 @@ def proponi_serie(chiave, docs, esistenti, serie_forzata=""):
     periodico = con_data >= max(1, len(docs) / 2) or (len(docs) > 1 and all(d["a"]["pagine_pdf"] < PAGINE_VOLUME
                                                                              for d in docs))
     titolo = titolo_ricorrente([d["a"]["inizio"] for d in docs])
+    riviste = {fonte_jstor(d["a"]["inizio"]).get("serie") for d in docs}
+    if not nome and len(riviste) == 1 and None not in riviste and "" not in riviste:
+        nome = riviste.pop()
+        periodico = True
+        dubbi.append("rivista dal frontespizio di JSTOR")
     if not nome:
         if titolo:
             nome = titolo.title() if titolo.isupper() else titolo
             dubbi.append(f"nome della serie dalla testata ricorrente «{titolo}»")
         elif sotto:
             nome = Path(sotto).name.replace("_", " ").strip()
+            nome = nome.title() if nome.islower() else nome
             dubbi.append("nome della serie dal nome della cartella")
         elif len(docs) == 1 and docs[0]["a"]["pagine_pdf"] >= PAGINE_VOLUME:
             # un libro da solo: la serie è il libro stesso (o la sua collana)
@@ -378,33 +420,49 @@ def riga_documento(d, s, radice):
     nativo = a["testo"] == "testo nativo"
     if pagine >= PAGINE_VOLUME or (s["tipo_serie"] == "volume" and pagine > PAGINE_ARTICOLO):
         tipo_doc = "volume"
-    elif nativo and pagine and pagine <= PAGINE_ARTICOLO and (
-            (titolo_plausibile(meta.get("title")) and meta.get("author")) or a["etichette"]):
+    elif (nativo or "strato" in a["testo"]) and pagine and pagine <= PAGINE_ARTICOLO and (
+            (titolo_plausibile(meta.get("title")) and meta.get("author")) or a["etichette"] or
+            (a["pagine"] and not a["pagine"].split("-")[0] in ("1", "i"))):
         tipo_doc = "articolo"
     else:
         tipo_doc = "fascicolo" if s["tipo_serie"] == "periodico" else "volume"
     data, stato_data, numero, stato_numero = d["data_nome"], "", d["numero_nome"], ""
-    if data:
-        stato_data = "dedotto"
+    jstor = fonte_jstor(a["inizio"])
+    if tipo_doc == "articolo" and not s["esiste"]:
+        s = dict(s, tipo_serie="periodico", cartella_serie="riviste/" + slug(s["serie"]) if s["serie"] else "")
+    fonte_data = ""
+    if jstor and not data:
+        data, stato_data, numero = jstor["data"], "dedotto", jstor["numero"] or numero
+        stato_numero = "dedotto" if jstor["numero"] else ""
+        fonte_data = "dal frontespizio di JSTOR"
+        dubbi.append("data, volume e numero dal frontespizio di JSTOR")
+    elif data:
+        stato_data, fonte_data = "dedotto", "dal nome del file"
         dubbi += [d["dubbio_nome"]] if d["dubbio_nome"] else []
     elif a["inizio"]:
-        data = importa.data_da_testo(a["inizio"][:1500])
+        data = importa.data_da_testo("\n".join(r for r in a["inizio"][:1500].splitlines()
+                                               if not SCARICAMENTO.search(r)))
         if data:
-            stato_data = "da verificare"
+            stato_data, fonte_data = "da verificare", "letta nella prima pagina"
             dubbi.append("data letta nella prima pagina")
     if not data and tipo_doc != "volume":
         dubbi.append("data non trovata: indicala")
-    if numero:
+    if numero and not stato_numero:
         stato_numero = "dedotto"
     titolo = autore = anno = ""
     if tipo_doc in ("articolo", "volume"):
         titolo = titolo_plausibile(meta.get("title"))
-        autore = (meta.get("author") or "").strip()
+        autore = (meta.get("author") or jstor.get("autore") or "").strip()
+        autore = autore.title() if autore.isupper() else autore
         if not titolo:
             righe = prime_righe(a["inizio"], 3)
-            titolo = righe[0][:150] if righe else ""
+            titolo = re.sub(r"\s+\d{1,4}$", "", righe[0])[:150] if righe else ""
+            titolo = titolo.title() if titolo.isupper() else titolo
             dubbi.append("titolo dalla prima riga della prima pagina" if titolo else "titolo da indicare")
-        if autore and "," not in autore and len(autore.split()) >= 2:
+        if autore and (";" in autore or " and " in autore or
+                       ("," in autore and len(autore.split(",")[0].split()) >= 2)):
+            dubbi.append("più autori nei metadati del PDF: scrivili come vanno citati (Cognome, Nome, Nome Cognome…)")
+        elif autore and "," not in autore and len(autore.split()) >= 2:
             parti = autore.split()
             autore = f"{parti[-1]}, {' '.join(parti[:-1])}"            # Cognome, Nome
             dubbi.append("autore dai metadati del PDF, messo nella forma Cognome, Nome")
@@ -431,9 +489,11 @@ def riga_documento(d, s, radice):
         file_rel += f" (+ {len(g['file']) - 1} pagine)"
     return {"importa": "sì", "file": file_rel, "serie": s["serie"], "tipo_serie": s["tipo_serie"],
             "lingua": s["lingua"], "cartella_serie": s["cartella_serie"], "sigla": s["sigla"],
-            "tipo_documento": tipo_doc, "data": data, "stato_data": stato_data, "numero": numero,
+            "tipo_documento": tipo_doc, "data": data, "stato_data": stato_data, "fonte_data": fonte_data,
+            "numero": numero,
             "stato_numero": stato_numero, "titolo": titolo, "autore": autore, "anno": anno or data[:4],
-            "volume": "", "luogo": "", "editore": "", "prima_pagina": "", "da_pagina": "", "pagine": a["pagine"],
+            "volume": jstor.get("volume", ""), "luogo": "", "editore": "", "prima_pagina": "", "da_pagina": "",
+            "pagine": a["pagine"],
             "formato": a["formato"] + (f", {pagine} pagine" if pagine and a["formato"] == "PDF" else ""),
             "testo": a["testo"], "qualita_ocr": a["qualita_ocr"],
             "da_controllare": "; ".join(dict.fromkeys(x for x in dubbi if x)), "percorso": percorso}
@@ -544,6 +604,11 @@ def controlla_righe(righe, esistenti):
                                   "vale series.ini")
             continue
         voce = {k: (r.get(k) or "").strip() for k in ("tipo_serie", "lingua", "cartella_serie", "sigla")}
+        if not voce["cartella_serie"] and voce["tipo_serie"] in TIPI_SERIE:
+            voce["cartella_serie"] = ("riviste/" if voce["tipo_serie"] == "periodico" else "volumi/") + slug(serie)
+        if not voce["sigla"] and voce["tipo_serie"] == "periodico":
+            voce["sigla"] = "".join(p[0] for p in re.findall(r"[^\W\d_]+", serie) if p[0].isupper())[:4] or \
+                serie[:2].upper()
         if serie in da_creare:
             for k, v in voce.items():
                 if v and da_creare[serie][k] and v != da_creare[serie][k]:
@@ -621,8 +686,8 @@ def cmd_applica(args, stampa=print):
             da_pagina=int(valori["da_pagina"] or 1), senza_pagine=False, unisci=";" in r["percorso"],
             sovrascrivi=args.sovrascrivi, processi=None, dpi=300, prova=None, senza_indice=True,
             stato_data=None if valori["stato_data"] == "verificato" else valori["stato_data"],
-            nota_data=("dalla tabella di revisione" if valori["stato_data"] in ("dedotto", "da verificare")
-                       else ""),
+            nota_data=(valori["fonte_data"] or "dalla tabella di revisione")
+            if valori["stato_data"] in ("dedotto", "da verificare") else "",
             stato_numero=None if valori["stato_numero"] == "verificato" else valori["stato_numero"],
             esiti=esiti)
         stampa(f"\n=== riga {n}: {r.get('file')} -> {valori['serie']}")

@@ -453,7 +453,41 @@ per i silenzi della cronologia), ogni quanto esce (`periodicita`), con quali alt
 come trovare la pagina nel testo (`pagina_regex`). L'elenco dei campi è in testa a `series.ini`. Una serie senza
 `periodo` non ha silenzi finali nella cronologia.
 
-**Importare.** In Jan: «importa la cartella C:\...\scansioni nella serie Zëri i Popullit». La prima volta
+**Importazione guidata con la tabella di revisione** (il modo più semplice per una cartella di documenti nuovi:
+non serve sapere prima che cosa sono serie e metadati). Dalla cartella `scripts`:
+
+```
+python importa.py proponi "C:\documenti da importare"
+python importa.py applica "<progetto>\audit\review_<data>.csv" --prova
+python importa.py applica "<progetto>\audit\review_<data>.csv"
+```
+
+1. `proponi` legge tutti i file **senza importarli** (niente OCR: testo e metadati dei PDF, etichette e numeri di
+   pagina, nome del file, risoluzione delle scansioni, frontespizio di JSTOR) e scrive in `audit\` del progetto
+   la tabella `review_<data>.csv`, una riga per documento. Propone le serie (una sottocartella i cui file si
+   somigliano, come `ZP1967-01-12.pdf`, `ZP1967-01-13.pdf`, è un periodico; un libro o un articolo da solo fa
+   serie a sé, o va nella sua rivista), e per ogni documento tipo (fascicolo, articolo, volume), data con il suo
+   stato e la sua provenienza, numero, titolo, autore, anno, lingua, pagine stampate, testo nativo o scansione,
+   qualità prevista dell'OCR. La colonna **da_controllare** spiega i dubbi.
+2. Apri la tabella con Excel o LibreOffice (punto e virgola: si apre già divisa in colonne), correggi i valori,
+   scrivi `no` nella colonna `importa` per saltare un documento, salva (anche come `.xlsx`). Per una serie nuova
+   bastano nome, `tipo_serie` (periodico o volume) e lingua: cartella e sigla, se vuote, si ricavano dal nome.
+3. `applica --prova` controlla la tabella e dice che cosa farebbe; senza `--prova` crea le serie che mancano in
+   `series.ini`, importa i documenti (con l'OCR dove serve) con i valori della tabella e aggiorna l'indice. Un valore
+   che hai cambiato vale «verificato»; uno lasciato com'era resta «dedotto» o «da verificare», con la provenienza
+   (`DATE_NOTE`). Le importazioni vanno in `audit\imports.csv`, i valori che hai corretto rispetto alla proposta in
+   `audit\changes.csv`.
+
+Per i documenti **già importati**, la stessa tabella: `python importa.py rivedi --serie "Zëri i Popullit"
+--solo-dubbi` scrive `audit\review_rivedi_<data>.csv` con le intestazioni (solo i documenti con valori dedotti, da
+verificare o mancanti); correggi e `applica` riscrive solo i campi cambiati (codifica e fine riga restano quelli del
+file), con una copia di prima in `system\backups\` e una riga per campo in `audit\changes.csv`. Un valore corretto
+diventa verificato.
+
+Dalla chat lo stesso percorso: strumento `importa`, azioni `proponi`, `applica` (prima con `prova`) e `rivedi`;
+la chat dice quale file aprire e non compila la tabella al posto tuo.
+
+**Importare un file in una serie che c'è già.** In Jan: «importa la cartella C:\...\scansioni nella serie Zëri i Popullit». La prima volta
 per una serie o un tipo di scansione Jan fa una **prova** sulle prime pagine e mostra testo, qualità e data
 letta. Oppure dal Prompt dei comandi:
 

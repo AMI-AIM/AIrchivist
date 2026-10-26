@@ -355,8 +355,7 @@ class AvvioGuidato(unittest.TestCase):
         doc = json.loads((self.client / "claude.json").read_text(encoding="utf-8"))
         self.assertIn(I.NOME_SERVER, doc["mcpServers"])
         self.assertIn("AIrchivist è nella configurazione di Claude Desktop", testo)
-        self.assertIn("python importa.py importa", testo)
-        self.assertNotIn("proponi", testo)
+        self.assertIn("python importa.py proponi", testo)                  # comando che esiste (lavoro 29)
         self.assertTrue(testo.rstrip().endswith("Tutto pronto."))
 
     def test_conferma_della_chat(self):

@@ -165,6 +165,8 @@ Dalla chat, lo strumento MCP `importa` guida la stessa procedura e indica il fil
 
 Completo quando: su un corpus di prova misto (articoli nativi digitali con etichette di pagina, scansioni di un periodico con la data nel nome, un volume) la tabella proposta ha i campi giusti per la maggior parte dei file e i dubbi segnalati per gli altri; l'applicazione produce intestazioni che passano `importa.py controlla`. Test automatici su PDF generati, come quelli attuali.
 
+**Stato (26/10/2026): fatto** (`revisione.py`; dettagli e prova reale in `stato_del_sistema.md`, «Importazione guidata»). Non fatto: data dalla sequenza dei numeri.
+
 
 
 ### 30. Serie con meno campi

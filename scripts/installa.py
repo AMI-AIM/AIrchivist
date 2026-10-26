@@ -1294,9 +1294,9 @@ def riepilogo(stampa, file_client_fn=None):
         stampa("- Manca ancora: " + ", ".join(v.strip() for v in controlli.mancanti) +
                " (dettagli: python installa.py controlla)")
         return 1
-    stampa("- Prossimo passo: descrivi le serie delle tue fonti (glossary/series.ini del progetto, o dalla chat con "
-           "lo strumento serie) e importa i documenti (python importa.py importa <file o cartella> --serie \"...\", "
-           "o dalla chat con lo strumento importa); vedi «Importare nuove fonti» in docs/user_guide.it.md")
+    stampa("- Prossimo passo: importa le fonti con la tabella di revisione: python importa.py proponi <cartella dei "
+           "documenti>, controlla la tabella in Excel o LibreOffice, poi python importa.py applica <tabella> (o dalla "
+           "chat: strumento importa, azioni proponi e applica); vedi «Importare nuove fonti» in docs/user_guide.it.md")
     return 0
 
 

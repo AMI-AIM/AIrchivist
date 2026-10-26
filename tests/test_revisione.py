@@ -145,7 +145,7 @@ class Revisione(unittest.TestCase):
         self.assertEqual(serie["The World Today"]["tipo"], "periodico")
         dati = self.progetto / "data"
         m12 = leggi_intestazione((dati / "riviste/zeri_i_popullit/ZP1967-01-12.txt").read_text(encoding="utf-8"))[0]
-        self.assertEqual((m12["DATE"], m12["DATE_STATUS"]), ("1967-01-12", "dedotto"))
+        self.assertEqual((m12["DATE"], m12["DATE_STATUS"], m12["DATE_NOTE"]), ("1967-01-12", "dedotto", "dal nome del file"))
         m15 = leggi_intestazione((dati / "riviste/zeri_i_popullit/ZP1967-01-15.txt").read_text(encoding="utf-8"))[0]
         self.assertEqual(m15["DATE"], "1967-01-15")
         self.assertNotIn("DATE_STATUS", m15)                                   # corretta a mano: verificata
@@ -249,6 +249,14 @@ class Lingua(unittest.TestCase):
         self.assertEqual(R.lingua_del_testo(INGLESE), "en")
         self.assertEqual(R.lingua_del_testo("中国共产党中央委员会发表声明，支持阿尔巴尼亚劳动党的立场。" * 5), "zh")
         self.assertEqual(R.lingua_del_testo("1967 12 3"), "")
+
+    def test_frontespizio_jstor(self):
+        testo = ("The Transnational and the Text-Searchable\nAuthor(s): Lara Putnam\nSource: The American Historical "
+                 "Review, APRIL 2016, Vol. 121, No. 2 (APRIL 2016), pp. 377-402\x005.91.141.123 on Sat, 24 Oct 2026 "
+                 "08:53:48 UTC")
+        self.assertEqual(R.fonte_jstor(testo), {"serie": "The American Historical Review", "data": "2016-04",
+                                                "volume": "121", "numero": "2", "autore": "Lara Putnam"})
+        self.assertEqual(R.fonte_jstor("Senza frontespizio, 1967."), {})
 
     def test_nome_ambiguo(self):
         self.assertIn("mese o il numero", R.data_e_numero("PR1967-11")[2])
