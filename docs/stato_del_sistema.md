@@ -20,14 +20,14 @@ Il progetto è partito con il tentativo di costruire un sistema RAG locale, ma q
 
 Il tool è attualmente adattato alla mia ricerca sul "marxismo-leninismo globale", tendenza comunista emersa negli anni Sessanta del Novecento e collegata alla Cina maoista e l'Albania enverista.
 
-Il corpus documentario è contenuto nella cartella `data`, ed è così suddiviso:
+Il corpus documentario è contenuto nella cartella `data` del progetto (`projects\dissident_communism\data`), ed è così suddiviso:
 - `riviste\renmin_ribao` (testo digitale, un paragrafo per riga; pagine 第N版 rilevate), `riviste\peking_review`, `riviste\hongqi_1963-1976` (cinese), `riviste\hongqi_1977-1988` (traduzioni JPRS);
 - `fonti_primarie\` (raccolte di documenti: 中共中央文件选集, 文化大革命 ecc., K.H. Fan 1968);
 - `opere\` (Selected Works, voll. 1-5).
 
 In tutto 7858 file .txt (6712 cinesi, 1146 in lingue occidentali). Ogni file ha un'intestazione `[SERIES]`, `[DATE]`, `[FULL_CITATION]`, `[LANG]`, `[YEAR]`, `[DATE_STATUS]`... letta da `estrai_occorrenze.leggi_intestazione`.
 
-`audit_fonti\` contiene `registro_modifiche.csv` (correzioni ai metadati, citato nelle intestazioni) e `problemi_residui.csv` (lacune e problemi aperti).
+`audit\` contiene `changes.csv` (correzioni ai metadati, citato nelle intestazioni come `audit_fonti/registro_modifiche.csv`) e `open_issues.csv` (lacune e problemi aperti).
 
 
 
@@ -37,11 +37,11 @@ Il tool si usa attualmente dalla chat del programma Jan (assistente «Ricerca fo
 
 ### Come funziona una ricerca
 
-- Scheda dell'entità in `entita.ini` (cartella del progetto) (varianti, contesto, forme ambigue, collegate); fa anche da glossario. Entità nuove: `esplora_nome` propone solo forme attestate (anche per allineamento Peking Review -> Renmin Ribao), poi `crea_scheda` dopo conferma.
-- `avvia_ricerca` lancia un processo indipendente (`lavori.py`; stato in `RAG\lavori\<id>`): estrazione con espressioni regolari tolleranti all'OCR (`estrai_occorrenze.py`), smistamento e analisi con i modelli (`classifica.py`), sintesi (`sintesi.py` / `evoluzione.py`). Attese automatiche quando finiscono le quote (10, 15, 30, poi 60 minuti, fino a 36 ore). Codici d'uscita di classifica: 0 tutto letto, 3 limiti temporanei, 4 errore permanente.
-- Archivio unico dei passaggi già letti (`risultati\_archivio\letture.jsonl`): non si rilegge nulla.
-- La risposta salvata in `risposte\` ha 7 sezioni; Jan presenta «risposta_pronta» (presentazione della pipeline) senza ricostruirla.
-- Indice SQLite FTS5 (`indice\fonti.sqlite`, circa 870 MB): serve a `esplora_nome`, `cerca_testo` e a scegliere i file del Renmin Ribao da leggere. Si aggiorna da solo (solo file nuovi o modificati).
+- Scheda dell'entità in `glossary\entities.ini` (cartella del progetto) (varianti, contesto, forme ambigue, collegate); fa anche da glossario. Entità nuove: `esplora_nome` propone solo forme attestate (anche per allineamento Peking Review -> Renmin Ribao), poi `crea_scheda` dopo conferma.
+- `avvia_ricerca` lancia un processo indipendente (`lavori.py`; stato in `system\jobs\<id>` del progetto): estrazione con espressioni regolari tolleranti all'OCR (`estrai_occorrenze.py`), smistamento e analisi con i modelli (`classifica.py`), sintesi (`sintesi.py` / `evoluzione.py`). Attese automatiche quando finiscono le quote (10, 15, 30, poi 60 minuti, fino a 36 ore). Codici d'uscita di classifica: 0 tutto letto, 3 limiti temporanei, 4 errore permanente.
+- Archivio unico dei passaggi già letti (`results\archive\readings.jsonl`): non si rilegge nulla.
+- La risposta salvata in `results\answers\` ha 7 sezioni; Jan presenta «risposta_pronta» (presentazione della pipeline) senza ricostruirla.
+- Indice SQLite FTS5 (`system\index\sources.sqlite`, circa 870 MB): serve a `esplora_nome`, `cerca_testo` e a scegliere i file del Renmin Ribao da leggere. Si aggiorna da solo (solo file nuovi o modificati).
 
 ### Provenienza, citazioni, valutazione (fase 1, 22/10/2026)
 
@@ -60,7 +60,7 @@ Il tool si usa attualmente dalla chat del programma Jan (assistente «Ricerca fo
 
 ### Profili di serie (fase 3, lavoro 12, 25/10/2026)
 
-Le regole che il codice scriveva per le serie del corpus attuale stanno ora nei profili di `serie.ini` (cartella del progetto), letti da `pipeline\profili.py`. Un file appartiene a un profilo per serie o per cartella (la più specifica).
+Le regole che il codice scriveva per le serie del corpus attuale stanno ora nei profili di `glossary\series.ini` (cartella del progetto), letti da `scripts\profili.py`. Un file appartiene a un profilo per serie o per cartella (la più specifica).
 - Campi nuovi: `periodo` (primo e ultimo numero: fine delle fonti per i silenzi), `periodicita` (anche con cambi datati, per collocare nel mese le lacune dei fascicoli indicati per numero), `gruppo` (Hongqi + Red Flag; «documenti» per le raccolte), `righe_intere` (il Renmin Ribao: l'indice sceglie con certezza i file da leggere), `allinea_con`/`allinea_giorni` (Peking Review -> Renmin Ribao, 21 giorni, per `esplora_nome`); `pagina_regex` ora vale anche per la pagina dei passaggi e per i riferimenti di `cerca_testo`. Nuovo profilo «Raccolte di documenti» (cartella `fonti_primarie`).
 - Codice: `cronologia.py` (periodici dal profilo; fine delle fonti = ultimo numero tra le serie in cui l'entità compare; lacune di tutte le serie, con il nome della serie; i fascicoli datati all'anno contano nella presenza per anno), `sintesi.py` (lacune e mesi dalle sigle e periodicità dei profili; note dei «Limiti» dal profilo di ogni documento, senza più la frase doppia sulla stampa cinese; frase sulle raccolte solo per i documenti senza data dedotta), `indice.py`, `classifica.py`, `esplora.py`, `ricerca.py`, `mcp_server.py` (fonti selezionabili = gruppi dei profili, compresi «documenti» e le serie albanesi).
 - Corretto un residuo del lavoro 9: `ricerca.py` rifiltrava i passaggi per anno di edizione dopo l'estrazione, così con `--al` le raccolte del 2012-2013 sparivano di nuovo.
@@ -237,13 +237,55 @@ Fonti (lette il 26/10/2026; tutte primarie e ufficiali):
 - OpenAI. "Plugin Architecture"; "Build Skills"; "Package Your Plugin"; "Connect and Test Your Plugin"; "Upload and Submit Your Plugin"; "Submit Your Claude Code Plugin to OpenAI." *OpenAI Developers*. https://developers.openai.com/plugins/.
 - OpenAI. "Agent Skills." *OpenAI Developers (Codex)*. https://developers.openai.com/codex/skills.
 
+### Riorganizzazione della cartella (26/10/2026)
+
+Istruzioni in `reorganization.md`. Nomi di cartelle e file in inglese; codice, moduli, funzioni, messaggi, campi delle schede, chiavi di `config.ini` e `project.ini` e file generati dentro le ricerche (`passaggi.jsonl`, `classificati.jsonl`, `risposta.md`...) restano in italiano fino alla traduzione del codice. Nelle sezioni precedenti, datate, i percorsi sono quelli dell'epoca: vale la mappa qui sotto.
+
+Struttura: il repository contiene il motore (`scripts\`, con `config.ini` e `series_template.ini`), i test (`tests\`, progetto di prova `tests\test_project\`), la skill (`skills\source-search\`, `skills\readme\`, `skills\package.py`, che scrive in `skills\build\`), `docs\`, `README.md`, `README.it.md`. I progetti di ricerca stanno in `projects\` (fuori da git); questo è `projects\dissident_communism\`, scelto in `scripts\config.ini` (`[progetto] cartella = ../projects/dissident_communism`).
+
+| Prima | Dopo |
+|---|---|
+| `pipeline\*.py`, `config.ini`, `serie_modello.ini` | `scripts\*.py`, `config.ini`, `series_template.ini` |
+| `pipeline\test\`, `pipeline\test\progetto_prova\` | `tests\`, `tests\test_project\` (`project.ini`, `glossary\`) |
+| `pipeline\ISTRUZIONI.md`, `LEGGIMI.md` | `docs\user_guide.it.md`, `README.it.md` |
+| `pipeline\confeziona.py`, `dist\` | `skills\package.py`, `skills\build\` |
+| `skills\ricerca-fonti\`, `skills\leggimi\` | `skills\source-search\` (`name: source-search`), `skills\readme\`; nelle confezioni `README.md` al posto di `LEGGIMI.md` e il motore in `scripts\` al posto di `motore\` |
+| `progetto.ini` | `project.ini` |
+| `entita.ini`, `serie.ini`, `istruzioni.md` | `glossary\entities.ini`, `glossary\series.ini`, `glossary\instructions.md` |
+| — | `sources\` (originali caricati; vuota per il corpus attuale) |
+| `data\` | `data\` |
+| `audit_fonti\registro_modifiche.csv`, `problemi_residui.csv` | `audit\changes.csv`, `audit\open_issues.csv` |
+| `importazioni\controllo_*.csv`, `registro.csv`, `_cache\` | `audit\checks\`, `audit\imports.csv`, `system\cache\imports\` |
+| importazioni avviate dalla chat (`importazioni\lavori\`) | `system\import_jobs\` |
+| `indice\fonti.sqlite` | `system\index\sources.sqlite` |
+| `lavori\`, `pipeline\_backup\` | `system\jobs\`, `system\backups\` |
+| `risultati\_archivio\letture.jsonl`, `equivalenze.json`, `varianti_scartate.json` | `results\archive\readings.jsonl`, `equivalences.json`, `rejected_variants.json` |
+| `risultati\<ricerca>\` | `results\searches\<ricerca>\` |
+| `risultati\_riferimenti\`, `_sessioni_precedenti\`, `_prove\`, `_valutazione\` | `results\references\`, `past_sessions\`, `trials\`, `evaluation\` |
+| `risposte\` | `results\answers\` |
+
+- Codice: `progetto.py` ha le posizioni nuove (chiavi nuove: `originali`, `registro_importazioni`, `lavori_importazioni`, `cache`; `cartella_ricerche()` per `results\searches`); `progetto.py nuovo` crea la struttura nuova. Tolta la disposizione storica: senza progetto scelto valgono solo i percorsi scritti in `[percorsi]` e per gli altri il motore lo dice e indica `progetto.py nuovo`. `archivio.py` cerca le letture in `results\searches`, `references` e `past_sessions`. `chat.py` accetta i file di progetto caricati con i nomi nuovi e con quelli di prima.
+- Le intestazioni del corpus che citano `audit_fonti/registro_modifiche.csv` (917 file) non sono state riscritte: la corrispondenza è in `audit\README.md` del progetto.
+- `project.ini` non tiene più `backup = pipeline/_backup`. Configurazione di Jan (`%APPDATA%\Jan\data\mcp_config.json`): server «Pipeline» su `scripts\mcp_server.py` (copia precedente in `system\backups\2026-10-26_riorganizzazione\`). Claude Desktop non ha una configurazione su questo PC. `AIRCHIVIST_PROGETTO` non è impostata nelle variabili d'utente né di sistema.
+- Copia di sicurezza prima dello spostamento: `system\backups\2026-10-26_riorganizzazione\` (archivio, schede, serie, `progetto.ini`, `istruzioni.md`, `audit_fonti`, `importazioni`).
+
+Verifiche (26/10):
+1. Test: 212, tutti superati; con PyMuPDF bloccato 212, 14 saltati in modo esplicito, nessun errore.
+2. `progetto.py stato`: tutti i percorsi nella struttura nuova; `audit\imports.csv` nasce alla prima importazione.
+3. `installa.py controlla`: requisiti necessari presenti.
+4. Indice: 0 file nuovi, 0 modificati, 0 tolti; firma allineata alle fonti, nessuna ricostruzione.
+5. Archivio: 14.320 letture prima e dopo; `archivio.py stato` identico salvo il percorso del file.
+6. `ricerca.py "Jacques Grippa" --solo-estrazione`: 166 passaggi, `passaggi.jsonl` identico byte per byte a quello di prima. Ricerca completa su Franz Strobl (21 passaggi, tutti nell'archivio), con il codice di prima e con quello nuovo su due copie del progetto e senza modelli (sintesi `--senza-modello`): `passaggi.jsonl`, `classificati.jsonl` e `rapporto.md` identici; `risposta.md` identica salvo il percorso di `open_issues.csv` nei «Limiti».
+7. Server MCP avviato in stdio sul progetto nuovo: 13 strumenti; `schede`, `passaggi_archivio`, `risposte`, `serie` rispondono. Domanda di prova in Jan: da fare.
+8. `skills\package.py`: `source-search-claude.zip`, `claude-code\`, `source-search-chatgpt.zip` in `skills\build\`.
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).
 - Librerie: il codice usa la libreria standard più PyMuPDF (1.28.0, MuPDF 1.29.0), solo in `importa.py`. SQLite 3.50.4 con FTS5 funzionante.
 - Tesseract 5.5.3 in `C:\Program Files\Tesseract-OCR` (non nel PATH: `importa.py` lo trova nella cartella consueta). Lingue: deu, eng, fra, ita, ita_old, osd, rus, spa, sqi; al 25/10 anche chi_sim e chi_sim_vert (manca chi_tra).
 - FreeLLMAPI: app desktop installata (`%LOCALAPPDATA%\Programs\freellmapi-desktop`), chiave `FREELLMAPI_KEY` presente nelle variabili d'utente. Al momento della verifica il servizio **non era avviato** (nessuna risposta su 127.0.0.1:31415): le ricerche richiedono di aprire prima l'app.
-- Controllo di versione: git attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false` per conservare i fine riga). Esclusi: `data/`, `audit_fonti/`, `indice/`, `risultati/`, `risposte/`, `lavori/`, `importazioni/`, `letteratura/`, `dist/`, `pipeline/_backup/` e, dal 25/10, `entita.ini`, `serie.ini`, `progetto.ini`, `istruzioni.md`.
+- Controllo di versione: git attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false` per conservare i fine riga). Esclusi, dal 26/10: `projects/` (corpus, schede, serie, risultati, indice, copie di sicurezza), `letteratura/`, `skills/build/`, `__pycache__/`.
 
 
 

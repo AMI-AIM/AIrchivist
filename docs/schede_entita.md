@@ -1,6 +1,6 @@
 # Schede delle entità
 
-Formato e regole delle schede in `entita.ini` (cartella del progetto) (22/10/2026). Le regole valgono per qualsiasi corpus. Il controllo automatico è `python schede.py controlla` (dalla cartella `pipeline`); `--solo-errori` mostra solo i problemi che falsano le ricerche.
+Formato e regole delle schede in `glossary/entities.ini` (cartella del progetto) (22/10/2026). Le regole valgono per qualsiasi corpus. Il controllo automatico è `python schede.py controlla` (dalla cartella `scripts`); `--solo-errori` mostra solo i problemi che falsano le ricerche.
 
 ## 1. Formato
 

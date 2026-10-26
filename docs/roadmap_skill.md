@@ -59,7 +59,7 @@ Se un'informazione non si trova nella documentazione ufficiale, scrivilo: non va
    - `source-search-claude.zip` per claude.ai;
    - la cartella per Claude Code (installabile in `~/.claude/skills/` o come plugin di Claude Code, secondo la fase A);
    - il pacchetto del plugin per ChatGPT (formato secondo la fase A).
-2. Ogni confezione contiene un `LEGGIMI` breve con installazione, limiti e rimando al sistema principale.
+2. Ogni confezione contiene un `README.md` breve con installazione, limiti e rimando al sistema principale.
 3. **Eliminare** `.claude/skills/ricerca-fonti/` (`skill_chat/` è già diventata `skills/source-search/` nella riorganizzazione). Aggiornare `CLAUDE.md` (tabella «Dove sono le cose»), `README.md`, `README.it.md`, `docs/user_guide.it.md`.
 
 
@@ -83,7 +83,7 @@ Test automatici:
 
 ## Fase E — Documentazione e presentazione
 
-Nel `README.md` e nei `LEGGIMI` delle confezioni, una tabella che confronta sistema principale e sistemi minori:
+Nel `README.md` e nei `README.md` delle confezioni, una tabella che confronta sistema principale e sistemi minori:
 
 | | Sistema principale | Skill / plugin |
 |---|---|---|

@@ -42,9 +42,9 @@ Al 26/10/2026 i lavori 1-14 sono fatti e il 15 in parte (dettagli in `stato_del_
 
 13. **Separare i dati di progetto dal motore**: una cartella per progetto di ricerca, scelta in `config.ini`.
 14. **Server MCP generico**: strumenti ridotti e generici, istruzioni di comportamento consegnate dal server e non scritte per un solo client.
-15. **Distribuzione**: pacchetto installabile, file dei requisiti, documentazione in italiano e in inglese, licenza, corpus d'esempio libero da diritti. Fatti il 25/10/2026: `installa.py` (librerie, controllo dell'ambiente, configurazione dei client), `requirements.txt`, licenza AGPL-3.0, `README.md` in inglese. **Restano:** corpus d'esempio (rimandato), traduzione inglese di `ISTRUZIONI.md`, separazione dei dati di ricerca dell'autore dal repository pubblico.
+15. **Distribuzione**: pacchetto installabile, file dei requisiti, documentazione in italiano e in inglese, licenza, corpus d'esempio libero da diritti. Fatti il 25/10/2026: `installa.py` (librerie, controllo dell'ambiente, configurazione dei client), `requirements.txt`, licenza AGPL-3.0, `README.md` in inglese. **Restano:** corpus d'esempio (rimandato), traduzione inglese di `docs/user_guide.it.md`, separazione dei dati di ricerca dell'autore dal repository pubblico.
 16. **Modello scelto dal ricercatore** (aperto). Nessun filtro imposto: il motore offre la struttura su cui il ricercatore innesta il modello che preferisce.
-    - `modelli_ammessi` resta facoltativo, vuoto di default, impostabile per progetto (`progetto.ini`).
+    - `modelli_ammessi` resta facoltativo, vuoto di default, impostabile per progetto (`project.ini`).
     - Ogni risposta dichiara quale modello ha letto i passaggi e se è stato misurato su quelle fonti. Senza misura, la sezione «Limiti» lo dice.
     - Documentazione (italiano e inglese) del percorso per innestare un modello: servizio (FreeLLMAPI, Ollama, servizio compatibile OpenAI, API Anthropic), insieme di riferimento, `valutazione.py modelli`, filtro facoltativo.
 17. **Verifica del bisogno** (aperto) presso 5-10 ricercatori di ambiti vicini.
@@ -53,7 +53,7 @@ Al 26/10/2026 i lavori 1-14 sono fatti e il 15 in parte (dettagli in `stato_del_
 
 ## Prima della fase 5 — Riorganizzazione della cartella
 
-Struttura in inglese, progetti in `projects/` fuori da git, solo cartelle e file rinominati: istruzioni in `reorganization.md`. Va fatta prima della fase 5, che usa già i percorsi nuovi.
+Struttura in inglese, progetti in `projects/` fuori da git, solo cartelle e file rinominati: istruzioni in `reorganization.md`. Va fatta prima della fase 5, che usa già i percorsi nuovi. Fatta il 26/10/2026 (mappa dei percorsi ed esito delle verifiche in `stato_del_sistema.md`); resta la regola di `sources/` per le importazioni future (`reorganization.md`, sezione 4).
 
 
 

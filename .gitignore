@@ -1,23 +1,15 @@
-# Corpus e dati generati (dimensioni e diritti delle fonti)
-data/
-audit_fonti/
-indice/
-risultati/
-risposte/
-lavori/
-importazioni/
-letteratura/
-# Dati di ricerca del progetto in questa cartella (schede, serie, nome, regole per la chat): non si pubblicano.
-# Il motore porta solo il modello pipeline/serie_modello.ini; un progetto nuovo: python pipeline/progetto.py nuovo
-/entita.ini
-/serie.ini
-/progetto.ini
-/istruzioni.md
-# altri progetti di ricerca creati qui dentro (python pipeline/progetto.py nuovo progetti/<nome>)
-progetti/
+# Progetti di ricerca (corpus, schede, serie, risultati, indice, copie di sicurezza): non si pubblicano, per le
+# dimensioni e per i diritti delle fonti. Il motore porta solo il modello scripts/series_template.ini e il
+# progetto di prova dei test (tests/test_project/); un progetto nuovo: python scripts/progetto.py nuovo projects/<nome>
+projects/
 
-# Copie di sicurezza e file temporanei
-pipeline/_backup/
+# Letteratura secondaria sul metodo (va spostata fuori dal repository)
+letteratura/
+
+# Confezioni della skill generate da skills/package.py
+skills/build/
+
+# File temporanei
 __pycache__/
 *.pyc
 *.bak
@@ -28,4 +20,3 @@ __pycache__/
 Thumbs.db
 desktop.ini
 .claude/settings.local.json
-dist/
