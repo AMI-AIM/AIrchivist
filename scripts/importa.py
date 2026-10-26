@@ -782,18 +782,21 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
     if not v.get("anno") and data[:4].isdigit():
         v["anno"] = data[:4]
     v["data"] = data_it(data) if data else ("" if scheda.get("tipo") == "volume" else "s.d.")
-    # FULL_CITATION in stile Chicago (senza pagina: vale per il file): il modello chicago della serie o, senza un
-    # modello «citazione» scritto a mano, quello del tipo (lavoro 30)
-    if scheda.get("chicago") or not scheda.get("citazione"):
-        from citazioni import valori_da_intestazione, componi as componi_chicago, modello_di
-        meta = {"SERIES": serie, "TITLE": v.get("titolo", ""), "AUTHOR": v.get("autore", ""),
-                "VOLUME": v.get("volume", ""), "ISSUE": v.get("numero", ""), "YEAR": v.get("anno", ""),
-                "DATE": data if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) else "",
-                "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", "")}
-        v["citazione"] = componi_chicago(modello_di(scheda, meta), dict(valori_da_intestazione(meta, scheda), pagina=""))
-    else:
-        v["citazione"] = componi(scheda["citazione"], v)
+    v["citazione"] = citazione_documento(serie, scheda, v)
     return v
+
+
+def citazione_documento(serie, scheda, v, pagine=""):
+    """FULL_CITATION: voce Chicago autore-data del documento (citazioni.voce), senza pagina citata; per gli
+    articoli con l'intervallo delle pagine stampate, quando è noto."""
+    from citazioni import voce
+    data = v.get("data_iso", "")
+    meta = {"SERIES": serie, "TITLE": v.get("titolo", ""), "AUTHOR": v.get("autore", ""),
+            "VOLUME": v.get("volume", ""), "ISSUE": v.get("numero", ""), "YEAR": v.get("anno", ""),
+            "DATE": data if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) else "",
+            "DATE_STATUS": v.get("stato_data", ""), "PAGES": pagine,
+            "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", "")}
+    return voce(meta, scheda)
 
 
 def registra(cfg, riga):
@@ -1011,6 +1014,8 @@ def cmd_importa(args, stampa=print):
             stampa("  nessun testo: non importato (serve l'OCR)")
             continue
         v = valori_documento(args.serie, scheda, args, metadati.get(doc["nome"], {}), doc["nome"], testo)
+        if rap.get("pagine_stampate") and v.get("titolo"):          # articoli: pagine nella voce
+            v["citazione"] = citazione_documento(args.serie, scheda, v, rap["pagine_stampate"])
         nome = nome_file(scheda, args.serie, v, doc["base"])
         out = dest / nome
         avvisi = []

@@ -40,7 +40,7 @@ AIrchivist\                 il repository (il motore: si può pubblicare)
     pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py
                             parti dell'importazione: XML, numeri di pagina, ordine delle colonne nei giornali,
                             motori OCR, confronto dei testi
-    citazioni.py            citazioni in stile Chicago dalle intestazioni e dai profili di serie
+    citazioni.py            citazioni Chicago autore-data dalle intestazioni e dai profili di serie
     sessione.py             lettura dei passaggi in sessione (skill source-search)
     chat.py                 comandi della skill source-search (chat.py ambiente: dove si trova)
     valuta.py               prova rapida dei modelli su una lettura di riferimento
@@ -322,8 +322,9 @@ risposta ha otto sezioni:
 
 In chat compaiono per prime le sezioni 3, 4 e 7; le altre si chiedono a parte.
 
-Le citazioni sono in stile Chicago e si fermano alla pagina, quando il file la indica. La citazione nasce
-dall'intestazione del file e dal profilo della serie in `series.ini` (campo `chicago`). Sotto ogni passaggio
+Le citazioni sono in stile Chicago, 17ª edizione, sistema autore-data: la voce della bibliografia, con la pagina
+citata in coda quando il file la indica («*Renmin ribao* 人民日报. 1965. 28 giugno 1965, p. 4.»). La voce nasce
+dall'intestazione del file e dal profilo della serie in `series.ini` (tipo, nome della testata, campo `chicago`). Sotto ogni passaggio
 la riga «Lettura» dice chi ha deciso la pertinenza e chi ha tradotto: un modello (quale), una sessione
 assistita, una regola. La sezione 6 riporta i conteggi.
 
@@ -454,17 +455,20 @@ lingua = sq
 `tipo` è `periodico` (fascicoli, un file per numero), `articolo` (articoli di una rivista, un file per articolo
 con autore e titolo), `volume` (libro o raccolta) o `archivio` (documenti d'archivio datati). Il resto ha valori
 predefiniti: cartella dentro `data\` (`riviste\zeri_i_popullit`, `volumi\...`, `archivi\...`), sigla dei nomi dei
-file (le iniziali: `ZP`), e la citazione Chicago (nota), che si genera dal tipo:
-- periodico e articolo: «Lara Putnam, “The Transnational and the Text-Searchable,” *The American Historical
-  Review* 121, no. 2 (aprile 2016): 377»; senza volume né numero, la forma del quotidiano: «*Zëri i Popullit*,
-  12 gennaio 1967, 3»;
-- volume: «Enver Hoxha, *Vepra*, vol. 2 (Tirana: Naim Frashëri, 1969), 45»;
-- archivio: «Central Intelligence Agency, “Chinese Support for Foreign Communist Parties,” 3 marzo 1971,
-  segnatura, CIA FOIA Electronic Reading Room, 12» (campi facoltativi del profilo `archivio`, `fondo`).
+file (le iniziali: `ZP`), e la citazione Chicago 17 autore-data (voce di bibliografia, con la pagina citata in
+coda), che si genera dal tipo:
+- periodico e articolo: «Putnam, Lara. 2016. “The Transnational and the Text-Searchable.” *The American
+  Historical Review* 121, no. 2 (aprile): 377–402, p. 380.»; senza autore la testata ne prende il posto:
+  «*Zëri i Popullit*. 1967. 12 gennaio 1967, p. 3.»;
+- volume: «Hoxha, Enver. 1969. *Vepra*. Vol. 2. Tirana: Naim Frashëri, p. 45.»;
+- archivio: «Central Intelligence Agency. 1971. “Chinese Support for Foreign Communist Parties.” 3 marzo 1971.
+  CIA-RDP85T00875R001100010023-9, CIA FOIA Electronic Reading Room, p. 12.» (campi facoltativi del profilo
+  `archivio`, `fondo`, `segnatura`).
 
-Nell'intestazione l'autore si scrive «Cognome, Nome» (più autori separati da `;`); nella nota diventa «Nome
-Cognome». Il campo `chicago` serve solo per una forma diversa da quella del tipo (es. `*Renmin ribao* 人民日报,
-{data_o_anno}[, {pagina}]`): le serie che lo hanno citano come prima. I campi avanzati sono descritti in testa a
+Nell'intestazione l'autore si scrive «Cognome, Nome» (più autori separati da `;`: nella voce il primo resta
+«Cognome, Nome», gli altri diventano «Nome Cognome»). Anno sconosciuto: «s.d.». `nome_citazione` dà il nome della
+testata come va scritto (es. `*Renmin ribao* 人民日报`). Il campo `chicago` serve solo per una forma diversa da
+quella del tipo (es. le traduzioni JPRS di Red Flag). I campi avanzati sono descritti in testa a
 `series.ini` (modello: `scripts\series_template.ini`). Le serie si aggiungono con l'importazione guidata (qui
 sotto), scrivendo il blocco o chiedendo in Jan («crea la serie ...»). Il profilo dice anche
 al resto del sistema come trattare la serie: se è un periodico (`tipo`), fin dove arrivano i numeri (`periodo`,
@@ -518,8 +522,8 @@ python importa.py importa "C:\scansioni\ZP 1967" --serie "Zëri i Popullit"
 - **Data**: per i periodici si prende dal nome del file (`1967-01-12`, `12.01.1967`, `12 janar 1967`...);
   se manca, dalla testata della prima pagina (segnata «da controllare»); oppure `--data`, o un file
   `--metadati elenco.csv` con le colonne `file, data, numero, titolo, autore, anno, volume`.
-- **Articoli** di un periodico: `--titolo` e `--autore` entrano nell'intestazione (`TITLE`, `AUTHOR`) e, se il
-  modello `chicago` della serie li usa, nella citazione (es. `{autore}. "{titolo}." *The World Today*[ {volume}]…`).
+- **Articoli** di un periodico: `--titolo` e `--autore` entrano nell'intestazione (`TITLE`, `AUTHOR`) e nella
+  citazione («Larrabee, F. Stephen. 1978. “Whither Albania?” *The World Today* 34, no. 2 (febbraio).»).
 - `--unisci`: le foto delle pagine di un solo numero diventano un solo documento.
 - L'importazione si può interrompere: le pagine già lette restano in `system\cache\imports` e alla ripresa
   non si rileggono. I documenti già importati si saltano (`--sovrascrivi` per rifarli).

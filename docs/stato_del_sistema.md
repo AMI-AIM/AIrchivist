@@ -355,6 +355,16 @@ Verifiche (26/10):
 
 Verifiche (26/10): test 288, tutti superati (`tests/test_citazioni_tipo.py`: una nota per tipo da un profilo di tre campi, titolo con «?», campo chicago che prevale, autori nella forma della nota, valori predefiniti, serie minima creata e usata per importare un articolo). Citazioni di 650 file del corpus (600 a caso, 50 di volumi e raccolte) con il codice di prima e con quello nuovo: nessuna differenza (le serie del progetto hanno tutte il campo chicago o non cambiano forma).
 
+### Citazioni Chicago autore-data (26/10/2026)
+
+Su indicazione di Ivan le citazioni non sono più note a piè di pagina ma voci di bibliografia Chicago, 17ª edizione, sistema autore-data, con la pagina citata in coda (`citazioni.voce`):
+- articolo di rivista «Putnam, Lara. 2016. “The Transnational and the Text-Searchable.” *The American Historical Review* 121, no. 2 (aprile): 377–402, p. 380.»; quotidiano o fascicolo senza autore, con la testata al posto dell'autore (17, 15.49) «*Renmin ribao* 人民日报. 1965. 28 giugno 1965, p. 4.», «*Peking Review*. 1967. Vol. 10, no. 11, 10 marzo 1967.», «*Hongqi* 红旗. 1963. Nos. 10–11.»; libro «Mao Zedong. 1965. *Selected Works of Mao Tsetung*. Vol. 4. Peking: Foreign Languages Press, p. 3.»; archivio «Autore. Anno. “Titolo.” Data. Segnatura, fondo, archivio.»; anno sconosciuto «s.d.».
+- Autori: il primo «Cognome, Nome», gli altri «Nome Cognome», «and» prima dell'ultimo; oltre dieci, i primi sette e «et al.» (`autore_bibliografia`).
+- Serie del progetto convertite (copia in `system/backups/2026-10-26_citazioni_autore_data/series.ini`): tolti i modelli in forma di nota di Zëri i Popullit, Rruga e Partisë e Peking Review e i vecchi campi `citazione`; Renmin Ribao e Hongqi con `nome_citazione` (*Renmin ribao* 人民日报, *Hongqi* 红旗); Red Flag con un modello autore-data «Joint Publications Research Service. 1979. JPRS 73956, 3 agosto 1979. Trad. ingl. di *Hongqi* 红旗, no. 6, 1 giugno 1979, p. 3.». Stesso cambio nel progetto di prova dei test.
+- FULL_CITATION delle importazioni nuove: la voce autore-data (con l'intervallo delle pagine per gli articoli). Le FULL_CITATION già scritte nel corpus restano come sono: le risposte compongono le citazioni dall'intestazione.
+- Verifiche: test 291, tutti superati (attese aggiornate); risposta di prova su Franz Strobl rigenerata senza modello con le serie convertite (sezioni 1 e 2 in forma autore-data).
+- Aperto: un autore scritto senza virgola nell'intestazione («K.H. Fan») resta com'è, perché non si sa quale parte sia il cognome; va corretto nell'intestazione («Fan, K. H.»).
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).

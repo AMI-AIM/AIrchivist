@@ -1,5 +1,5 @@
 """
-Test delle citazioni in stile Chicago (citazioni.py), della provenienza delle letture (archivio.py) e delle
+Test delle citazioni in stile Chicago autore-data (citazioni.py), della provenienza delle letture (archivio.py) e delle
 funzioni di calcolo dello strumento di valutazione (valutazione.py). Senza corpus né modelli.
 """
 import sys
@@ -18,30 +18,30 @@ class Citazioni(unittest.TestCase):
     def test_periodico_con_volume_numero_data_pagina(self):
         meta = {"SERIES": "Peking Review", "VOLUME": "X", "ISSUE": "11", "DATE": "1967-03-10"}
         self.assertEqual(C.citazione(meta, "riviste/peking_review/PR1967-11.txt", "5"),
-                         "*Peking Review* 10, no. 11 (10 marzo 1967): 5")
+                         "*Peking Review*. 1967. Vol. 10, no. 11, 10 marzo 1967, p. 5.")
 
     def test_data_inattendibile_diventa_anno(self):
         meta = {"SERIES": "Peking Review", "VOLUME": "X", "ISSUE": "11", "DATE": "1967-03-10", "YEAR": "1967",
                 "METADATA_SOURCE": "filename+local_header"}
-        self.assertEqual(C.citazione(meta, "riviste/peking_review/PR1967-11.txt"), "*Peking Review* 10, no. 11 (1967)")
+        self.assertEqual(C.citazione(meta, "riviste/peking_review/PR1967-11.txt"), "*Peking Review*. 1967. Vol. 10, no. 11.")
 
     def test_numero_doppio_e_supplemento(self):
         self.assertEqual(C.citazione({"SERIES": "Hongqi", "ISSUE": "10-11", "YEAR": "1963"}),
-                         "*Hongqi* 红旗, nos. 10–11 (1963)")
+                         "*Hongqi* 红旗. 1963. Nos. 10–11.")
         meta = {"SERIES": "Peking Review", "VOLUME": "XVI", "ISSUE": "41", "DATE": "1973-10-12",
                 "FULL_CITATION": "Peking Review (1973), no. 41, supplement"}
-        self.assertEqual(C.citazione(meta), "*Peking Review* 16, no. 41, supplement (12 ottobre 1973)")
+        self.assertEqual(C.citazione(meta), "*Peking Review*. 1973. Vol. 16, no. 41, supplement, 12 ottobre 1973.")
 
     def test_volume_senza_profilo(self):
         meta = {"SERIES": "关于国际共产主义运动总路线的论战", "PUBLISHER": "人民出版社", "PUBLICATION_PLACE": "北京",
                 "YEAR": "1965"}
-        self.assertEqual(C.citazione(meta, "fonti_primarie/x.txt", "12"), "*关于国际共产主义运动总路线的论战* (北京: 人民出版社, 1965), 12")
+        self.assertEqual(C.citazione(meta, "fonti_primarie/x.txt", "12"), "*关于国际共产主义运动总路线的论战*. 1965. 北京: 人民出版社, p. 12.")
 
     def test_traduzione_jprs(self):
         meta = {"SERIES": "Red Flag", "ISSUE": "10", "DATE": "1977-10-08", "REPORT_DATE": "1977-12-01",
                 "JPRS_ID": "70256"}
-        self.assertEqual(C.citazione(meta), "Joint Publications Research Service, JPRS 70256 (1 dicembre 1977), "
-                                            "trad. ingl. di *Hongqi* 红旗, no. 10 (8 ottobre 1977)")
+        self.assertEqual(C.citazione(meta), "Joint Publications Research Service. 1977. JPRS 70256, 1 dicembre 1977. "
+                                            "Trad. ingl. di *Hongqi* 红旗, no. 10, 8 ottobre 1977.")
 
     def test_pagina_dal_marcatore_e_dal_profilo(self):
         testo = "[SERIES: X]\n\n[[p. 11]]\ntesto\n[[p. 12 | pdf 17]]\nqui il nome\n[[p. 13]]\n"
@@ -53,7 +53,7 @@ class Citazioni(unittest.TestCase):
     def test_mai_file_ne_riga(self):
         meta = {"SERIES": "Renmin Ribao", "DATE": "1971-07-09"}
         cit = C.citazione(meta, "riviste/renmin_ribao/1971-07-09.txt", "5")
-        self.assertEqual(cit, "*Renmin ribao* 人民日报, 9 luglio 1971, 5")
+        self.assertEqual(cit, "*Renmin ribao* 人民日报. 1971. 9 luglio 1971, p. 5.")
         self.assertNotIn(".txt", cit)
 
 

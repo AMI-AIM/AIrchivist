@@ -65,10 +65,12 @@ Bastano nome, tipo e lingua. Tipi: `periodico` (fascicoli, un file per numero), 
 rivista, un file per articolo con autore e titolo), `volume` (libro o raccolta), `archivio` (documenti d'archivio
 datati; `--campo "archivio=..."` e `--campo "fondo=..."` per archivio e fondo). `--cartella` serve solo per una
 cartella già esistente (quella indicata in `serie_senza_profilo`); senza, vale `riviste/<nome>`, `volumi/<nome>` o
-`archivi/<nome>`. La citazione Chicago (nota) si genera dal tipo: rivista «Nome Cognome, “Titolo,” *Rivista* 121,
-no. 2 (aprile 2016): 377», quotidiano «*Giornale*, 12 gennaio 1967, 3», libro «Nome Cognome, *Titolo*, vol. 2
-(Luogo: Editore, 1971), 45», archivio «Nome Cognome, “Titolo,” 3 marzo 1971, fondo, archivio, 12». Il campo
-`chicago` la sostituisce solo per una forma particolare (segnaposto in `series_template.ini`). `python M/chat.py
+`archivi/<nome>`. La citazione è la voce Chicago 17 autore-data, generata dal tipo, con la pagina in coda: rivista
+«Cognome, Nome. 2016. “Titolo.” *Rivista* 121, no. 2 (aprile): 377–402, p. 380.», quotidiano «*Giornale*. 1967.
+12 gennaio 1967, p. 3.», libro «Cognome, Nome. 1971. *Titolo*. Vol. 2. Luogo: Editore, p. 45.», archivio
+«Cognome, Nome. 1971. “Titolo.” 3 marzo 1971. Fondo, archivio, p. 12.». `--campo "nome_citazione=*Nome* 名"` dà il
+nome della testata come va scritto; il campo `chicago` sostituisce la voce solo per una forma particolare
+(segnaposto in `series_template.ini`). `python M/chat.py
 serie` mostra i profili.
 Nei periodici il testo dei PDF si legge per colonne (i giornali non mescolano più articoli diversi); per un
 volume impaginato a più colonne aggiungi `--campo "ordine_lettura=colonne"`, per un periodico a colonna unica

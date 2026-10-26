@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """
-Citazioni delle fonti del corpus in stile Chicago standard (nota), fino alla pagina quando c'è.
+Citazioni delle fonti del corpus in stile Chicago, 17ª edizione, sistema autore-data: la voce della bibliografia
+(reference list entry), con la pagina citata in coda quando c'è («…, p. 3.»).
 
-La citazione si compone dall'intestazione del file ([SERIES: ...], [ISSUE: ...], [DATE: ...] ...) e dal profilo
-della serie in series.ini (campo "chicago", modello con segnaposto; un tratto tra [ ] sparisce se manca uno dei
-suoi segnaposto). Le serie senza profilo usano il modello predefinito del loro tipo (periodico, volume). Nome del file e numero di riga non entrano mai nella citazione.
+La voce si compone dall'intestazione del file ([SERIES: ...], [AUTHOR: ...], [DATE: ...] ...) e dal profilo della
+serie in series.ini: tipo (periodico, articolo, volume, archivio, voce_autore_data), nome della testata come va
+scritto (campo «nome_citazione», es. *Renmin ribao* 人民日报), valori fissi. Il campo «chicago» del profilo, se
+c'è, è un modello con segnaposto che sostituisce la voce del tipo (un tratto tra [ ] sparisce se manca uno dei
+suoi segnaposto). Nome del file e numero di riga non entrano mai nella citazione.
+
+Forme (Chicago 17, 15.9 e seguenti):
+  articolo di rivista  Putnam, Lara. 2016. “Titolo.” *The American Historical Review* 121, no. 2 (aprile): 377–402.
+  quotidiano           Autore. 1967. “Titolo.” *Zëri i Popullit*, 12 gennaio 1967.  /  senza autore la testata
+                       al posto dell'autore: *Zëri i Popullit*. 1967. 12 gennaio 1967.
+  libro                Hoxha, Enver. 1969. *Vepra*. Vol. 2. Tirana: Naim Frashëri.
+  archivio             Central Intelligence Agency. 1971. “Titolo.” 3 marzo 1971. Segnatura, fondo, archivio.
 
 La pagina è quella dell'ultimo marcatore [[p. N]] che precede il passaggio nel file; per le serie che segnano le
 pagine in altro modo il profilo indica un'espressione regolare ("pagina_regex", es. 第N版 del Renmin Ribao).
@@ -35,20 +45,8 @@ MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio
            "settembre", "ottobre", "novembre", "dicembre"]
 ROMANI = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
 
-# Modelli predefiniti per tipo di serie (Chicago, nota), usati quando il profilo non ha il campo chicago (lavoro
-# 30). Segnaposto in valori_da_intestazione(); {autore_nota} è l'autore nella forma della nota (Nome Cognome),
-# {titolo_articolo} il titolo del singolo documento (vuoto per un fascicolo senza titolo).
-ARTICOLO = "[{autore_nota}, ][“{titolo_articolo},” ]"
-PREDEFINITI = {
-    # rivista con volume o numero: Autore, “Titolo,” *Rivista* 121, no. 2 (aprile 2016): 377
-    "periodico": ARTICOLO + "*{serie}*[ {volume}][, {numero_lbl}][, {contenitore}] ({data_o_anno})[: {pagina}]",
-    # quotidiano o fascicolo senza volume né numero: Autore, “Titolo,” *Giornale*, 12 gennaio 1967, 3
-    "quotidiano": ARTICOLO + "*{serie}*[, {contenitore}], {data_o_anno}[, {pagina}]",
-    "volume": "[{autore_nota}, ]*{titolo}*[, {volume_lbl}] ([{luogo}: ][{editore}, ]{anno})[, {pagina}]",
-    # Autore, “Titolo,” data, fondo, archivio, luogo, pagina
-    "archivio": "[{autore_nota}, ][“{titolo_articolo},” ][{data_o_anno}, ][{segnatura}, ][{fondo}, ]{archivio}"
-                "[, {luogo}][, {pagina}]",
-}
+TIPI_VOCE = ("periodico", "articolo", "volume", "archivio")
+SENZA_DATA = "s.d."                                   # Chicago «n.d.»: anno sconosciuto
 DATE_INATTENDIBILI = {"filename+local_header"}      # METADATA_SOURCE con date ricavate dal testo (Peking Review)
 
 
@@ -161,12 +159,17 @@ def valori_da_intestazione(meta, profilo=None):
     # titolo del singolo documento (articolo, documento d'archivio), non quello fisso della serie
     v["titolo_articolo"] = titolo_proprio if titolo_proprio and titolo_proprio != v["serie"] else ""
     v["autore_nota"] = nome_in_nota(v["autore"])
+    v["autore_bib"] = autore_bibliografia(v["autore"])
+    v["testata"] = (profilo.get("nome_citazione") or "").strip() or (f"*{v['serie']}*" if v["serie"] else "")
+    v["pagine"] = re.sub(r"\s*[-–]\s*", "–", meta.get("PAGES", "") or "")
     data = meta.get("DATE", "")
     if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) and data_affidabile(meta):     # anche al mese
         v["data"] = data_it(data)
+    v["mese"] = v["data"].split()[0] if re.fullmatch(r"\d{4}-\d{2}", data) and v["data"] else ""   # (aprile)
     if not v["anno"] and data[:4].isdigit():
         v["anno"] = data[:4]
     v["data_o_anno"] = v["data"] or v["anno"]
+    v["anno_o_sd"] = v["anno"] or SENZA_DATA
     vol = v["volume"]
     vol = re.sub(r",\s*\(", " (", vol)
     v["volume_lbl"] = f"vol. {vol}" if re.match(r"\d", vol) and "vol" not in vol.lower() else vol
@@ -205,6 +208,98 @@ def nome_in_nota(autore):
     return a + et_al
 
 
+def autore_bibliografia(autore):
+    """Autore nella forma della bibliografia: il primo «Cognome, Nome», gli altri «Nome Cognome», «and» prima
+    dell'ultimo; oltre dieci autori i primi sette e «et al.» (Chicago 17, 15.9); enti e nomi senza virgola
+    restano come sono."""
+    a = (autore or "").strip()
+    if ";" not in a:
+        return a
+    nomi = [x.strip() for x in a.split(";") if x.strip()]
+    et_al = len(nomi) > 10
+    nomi = nomi[:7] if et_al else nomi
+    altri = [nome_in_nota(x) for x in nomi[1:]]
+    if not altri:
+        return nomi[0]
+    if et_al:
+        return nomi[0] + ", " + ", ".join(altri) + ", et al."
+    return nomi[0] + ", " + (", ".join(altri[:-1]) + ", " if len(altri) > 1 else "") + "and " + altri[-1]
+
+
+def maiuscola(s):
+    return s[:1].upper() + s[1:] if s else s
+
+
+def voce_del_tipo(tipo, v):
+    """Voce di bibliografia autore-data (senza punto finale e senza pagina citata) per il tipo della serie."""
+    autore, anno, titolo = v["autore_bib"], v["anno"] or SENZA_DATA, v["titolo_articolo"]
+    testata = v["testata"]
+    if tipo == "volume":
+        libro = f"*{v['titolo']}*" if v["titolo"] else testata
+        s = f"{autore}. {anno}. {libro}." if autore else f"{libro}. {anno}."
+        editoriale = (f"{v['luogo']}: {v['editore']}" if v["luogo"] and v["editore"] else
+                      v["luogo"] or v["editore"])
+        for parte in (f"Vol. {v['volume']}" if v["volume"] else "", editoriale):
+            if parte:
+                s += f" {parte}."
+        return s.rstrip(".")
+    if tipo == "archivio":
+        capo = autore or testata
+        s = f"{capo}. {anno}." + (f" “{titolo}.”" if titolo else "")
+        if v["data"] and v["data"] != anno:
+            s += f" {v['data']}."
+        archivio = "" if not autore and f"*{v['archivio']}*" == testata else v["archivio"]
+        coda = ", ".join(x for x in (v["segnatura"], v["fondo"], archivio, v["luogo"]) if x)
+        return (s + (f" {maiuscola(coda)}" if coda else "")).rstrip(".")
+    # periodico e articolo: rivista (con mese) o quotidiano (con giorno); la data completa è parte della voce
+    giorno = v["data"] if v["data"] and not v["mese"] else ""
+    numerazione = [f"{v['volume']}" if v["volume"] else "", v["numero_lbl"], v["contenitore"]]
+    if autore:
+        s = f"{autore}. {anno}." + (f" “{titolo}.”" if titolo else "") + f" {testata}"
+        if v["volume"]:
+            s += f" {v['volume']}"
+        s += "".join(f", {x}" for x in numerazione[1:] if x)
+        if giorno:
+            s += f", {giorno}"
+        elif v["mese"]:
+            s += f" ({v['mese']})"
+        if v["pagine"]:
+            s += (", " if giorno else ": ") + v["pagine"]
+        return s
+    # senza autore la testata ne prende il posto (Chicago 17, 15.49)
+    s = f"{testata}. {anno}." + (f" “{titolo}.”" if titolo else "")
+    elementi = [f"vol. {v['volume']}" if v["volume"] else "", v["numero_lbl"], v["contenitore"],
+                giorno or (v["data"] if v["mese"] else "")]
+    corpo = ", ".join(x for x in elementi if x)
+    if corpo:
+        s += " " + maiuscola(corpo)
+    if v["pagine"] and titolo:
+        s += f": {v['pagine']}"
+    return s
+
+
+def tipo_della_voce(profilo, meta):
+    tipo = (profilo.get("tipo") or "").strip()
+    if tipo in TIPI_VOCE:
+        return tipo
+    return "periodico" if meta.get("ISSUE") or meta.get("DATE") else "volume"
+
+
+def voce(meta, profilo=None, pagina=""):
+    """Voce di bibliografia autore-data del documento, con la pagina citata in coda («…, p. 3.»). Il campo chicago
+    del profilo, se c'è, è il modello da usare al posto della voce del tipo (la pagina va nel modello)."""
+    profilo = profilo or {}
+    v = valori_da_intestazione(meta, profilo)
+    v["pagina"] = pagina or ""
+    if profilo.get("chicago"):
+        return componi(profilo["chicago"], v)
+    s = voce_del_tipo(tipo_della_voce(profilo, meta), v)
+    if pagina:
+        s += f", p. {pagina}"
+    s = dopo_punto_interrogativo(re.sub(r"\s{2,}", " ", s).strip(" ,:"))
+    return s if s.endswith((".", "?", "!", "”")) else s + "."
+
+
 def componi(modello, valori):
     """Riempie il modello; un tratto tra [ ] sparisce se uno dei suoi segnaposto è vuoto."""
     def opzionale(m):
@@ -214,6 +309,7 @@ def componi(modello, valori):
     s = re.sub(r"\[([^\]]*)\]", opzionale, modello)
     s = re.sub(r"\{(\w+)\}", lambda m: str(valori.get(m.group(1)) or ""), s)
     s = re.sub(r"\(\s*\)", "", s)
+    s = re.sub(r"\.(\s*\.)+", ".", s)                  # tratti spariti tra due punti: «2016. . Trad.»
     s = re.sub(r"\s+([,:;)])", r"\1", s)
     s = re.sub(r"\(\s+", "(", s)
     s = re.sub(r",\s*,", ",", s)
@@ -228,25 +324,9 @@ def dopo_punto_interrogativo(s):
     return re.sub(r"([?!])([\"”’'*»]*)[.,]", r"\1\2", s)
 
 
-def modello_di(profilo, meta):
-    """Il campo chicago del profilo, se c'è; altrimenti il modello del tipo della serie (lavoro 30). Per i periodici
-    e gli articoli: forma della rivista se il documento ha volume o numero, altrimenti quella del quotidiano."""
-    if profilo.get("chicago"):
-        return profilo["chicago"]
-    tipo = (profilo.get("tipo") or "").strip()
-    if tipo in ("periodico", "articolo"):
-        return PREDEFINITI["periodico" if meta.get("VOLUME") or meta.get("ISSUE") else "quotidiano"]
-    if tipo in PREDEFINITI:
-        return PREDEFINITI[tipo]
-    return PREDEFINITI["periodico" if meta.get("ISSUE") else "volume"]
-
-
 def citazione(meta, file="", pagina=""):
-    """Nota in stile Chicago per il file (e la pagina, se data)."""
-    pr = profilo_di(meta, file)
-    v = valori_da_intestazione(meta, pr)
-    v["pagina"] = pagina or ""
-    return componi(modello_di(pr, meta), v)
+    """Voce Chicago autore-data per il file, con la pagina citata se data."""
+    return voce(meta, profilo_di(meta, file), pagina)
 
 
 # ---------------------------------------------------------------- pagina

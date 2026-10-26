@@ -180,10 +180,10 @@ class StatiDeiCampi(unittest.TestCase):
         self.assertEqual(E.metadati(p, Path("/c"), meta)[3:], ("1967-03-10", True))
         import citazioni
         self.assertEqual(citazioni.citazione(meta, "riviste/peking_review/PR1967-11.txt"),
-                         "*Peking Review* 10, no. 11 (10 marzo 1967)")
+                         "*Peking Review*. 1967. Vol. 10, no. 11, 10 marzo 1967.")
         meta["DATE_STATUS"] = "probabile (poche occorrenze nel testo)"
         self.assertEqual(citazioni.citazione(meta, "riviste/peking_review/PR1967-11.txt"),
-                         "*Peking Review* 10, no. 11 (1967)")
+                         "*Peking Review*. 1967. Vol. 10, no. 11.")
 
     def test_provenienza_nei_file_storici(self):
         # nei file vecchi la provenienza è dentro DATE_STATUS: nota_del_campo la recupera
