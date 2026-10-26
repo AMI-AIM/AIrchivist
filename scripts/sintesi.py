@@ -269,11 +269,10 @@ def note_limiti(fonte, file):
     return [x.strip() for x in profili.di(fonte, file).get("nota_limiti", "").split(" | ") if x.strip()]
 
 
-def modelli_misurati(risultati):
-    """Modelli che hanno risposto nelle prove su passaggi verificati a mano di questo progetto (valutazione.py
-    modelli e prova rapida), con almeno un passaggio misurato."""
+def misure_salvate(risultati):
+    """Righe delle prove su passaggi verificati a mano di questo progetto (valutazione.py misura e prova rapida)
+    con almeno un passaggio misurato."""
     ris = Path(risultati)
-    nomi = set()
     for f in list((ris / "evaluation").glob("*/modelli_*.jsonl")) + list((ris / "trials").glob("prova_rapida_*/*.jsonl")):
         try:
             righe = f.read_text(encoding="utf-8").splitlines()
@@ -285,8 +284,18 @@ def modelli_misurati(risultati):
             except ValueError:
                 continue
             if isinstance(r, dict) and r.get("misure") and r.get("letti"):
-                nomi |= {x.strip() for x in (r.get("risposto") or "").split(",") if x.strip()}
-    return nomi
+                yield r
+
+
+def modelli_misurati(risultati):
+    """Nomi dei modelli che hanno risposto nelle prove misurate (per le letture, che registrano quel nome)."""
+    return {x.strip() for r in misure_salvate(risultati) for x in (r.get("risposto") or "").split(",") if x.strip()}
+
+
+def profili_misurati(risultati):
+    """(servizio, modello) dei profili con cui sono state fatte le prove misurate."""
+    return {(r["servizio"], r["modello_profilo"]) for r in misure_salvate(risultati)
+            if r.get("servizio") and r.get("modello_profilo")}
 
 
 def misurato(modello, misurati):

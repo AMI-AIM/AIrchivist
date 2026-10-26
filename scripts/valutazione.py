@@ -22,9 +22,12 @@ Procedura (ogni insieme sta in results/evaluation/<nome>/):
      come CSV oppure come cartella di lavoro Excel (campione.xlsx, candidati.xlsx): vale il più recente.
   4. python valutazione.py importa <nome>
        Controlla i CSV compilati e scrive insieme.jsonl (passaggi con il giudizio) ed estrazione.json.
-  5. python valutazione.py misura <nome> [--modelli "nome1; nome2"] [--config config.ini]
+  5. python valutazione.py misura <nome> [--modelli "nome1; nome2"] [--profili "p1; p2"] [--config config.ini]
        Misure sulle letture in archivio (per livello di provenienza), sui modelli indicati (smistamento,
-       senza archivio, in una cartella di prova) e sull'estrazione. Scrive misure_<data>.md.
+       senza archivio, in una cartella di prova) e sull'estrazione. Scrive misure_<data>.md. --modelli: nomi dei
+       modelli del router (FreeLLMAPI); --profili: profili di modello di models.ini, di qualsiasi servizio.
+       Ogni misura registra il profilo con cui è fatta (nome, servizio, modello: modelli_<data>.jsonl), così
+       installa.py modello elenca e lo strumento MCP «modello» sanno se un profilo è misurato su queste fonti.
 
 Metriche: richiamo = pertinenti veri trovati come «sì» o «incerto» / pertinenti veri; precisione = «sì»
 davvero pertinenti / «sì». Intervalli di confidenza al 95% (Wilson). Un «incerto» del riferimento non entra
@@ -563,9 +566,40 @@ NON_LETTORI = re.compile(r"^(auto|fusion)\b|guard|safety|topic-control|code|fim\
                          r"robotics|diffusion|parse|translate|calibration|-lora$", re.IGNORECASE)
 
 
+PROFILO = "profilo:"          # voce dell'elenco dei modelli che indica un profilo di models.ini (--profili)
+
+
+def config_grezza(cfg_file):
+    """La configurazione di una prova così com'è scritta, senza il project.ini del progetto in uso: il modello
+    misurato è quello della prova anche se il progetto ne sceglie un altro."""
+    import configparser
+    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
+    cp.read(cfg_file, encoding="utf-8")
+    return cp
+
+
+def info_profilo(cfg_file):
+    """Profilo con cui è fatta una prova: nome, servizio e modello (le misure si legano al profilo)."""
+    from llm import ErroreModello, profilo
+    try:
+        nome, p = profilo(config_grezza(cfg_file), "smistamento")
+    except ErroreModello:
+        return {}
+    return {"profilo": nome, "servizio": p.get("servizio", ""), "modello_profilo": p.get("modello", "")}
+
+
+def fissa_prova(prova, cfg_file):
+    """modelli.json della cartella di prova: classifica.py usa questi profili, qualunque cosa scelga il project.ini
+    del progetto in uso (llm.py, AIRCHIVIST_PROFILI_RICERCA)."""
+    from llm import RUOLI, profilo
+    grezza = config_grezza(cfg_file)
+    dati = {"stato": "prova", "ruoli": {r: dict(zip(("nome", "voci"), profilo(grezza, r))) for r in RUOLI}}
+    (Path(prova) / "modelli.json").write_text(json.dumps(dati, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def elenco_modelli(args, cfg):
     """Modelli da provare: quelli indicati, «tutti» (i modelli attivi nel router, senza i NON_LETTORI e quelli
-    di --escludi) oppure la configurazione attuale (--config-attuale)."""
+    di --escludi), i profili di --profili oppure la configurazione attuale (--config-attuale)."""
     voce = (args.modelli or "").strip()
     if voce.lower() == "tutti":
         from valuta import modelli_disponibili
@@ -580,6 +614,14 @@ def elenco_modelli(args, cfg):
         modelli = scelti
     else:
         modelli = [x.strip() for x in voce.split(";") if x.strip()]
+    profili_chiesti = [x.strip() for x in (getattr(args, "profili", "") or "").split(";") if x.strip()]
+    if profili_chiesti:
+        from llm import leggi_profili
+        esistenti = leggi_profili(cfg)
+        assenti = [x for x in profili_chiesti if x not in esistenti]
+        if assenti:
+            sys.exit(f"Profili inesistenti: {', '.join(assenti)} (profili: {', '.join(esistenti) or 'nessuno'}).")
+        modelli += [PROFILO + x for x in profili_chiesti]
     if args.config_attuale:
         modelli.append(None)
     if args.solo_elenco:
@@ -659,7 +701,8 @@ def salva_stato_modelli(f_mod, stato, leggibili):
         risposto, mm = risultato_prova(s["cartella"], leggibili)
         righe.append(json.dumps({"modello": m or "configurazione attuale", "risposto": risposto, "letti": s["letti"],
                                  "da_leggere": len(leggibili), "giri": s["giri"], "stato": s["fine"] or "in corso",
-                                 "cartella": s["cartella"].name, "misure": mm}, ensure_ascii=False) + "\n")
+                                 "cartella": s["cartella"].name, "misure": mm,
+                                 **info_profilo(s["cartella"] / "config_prova.ini")}, ensure_ascii=False) + "\n")
     tmp = f_mod.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.writelines(righe)
@@ -692,11 +735,15 @@ def risultato_prova(cartella, leggibili):
 def esegui_prova(cfg, cartella):
     """Un passo di lettura: classifica.py riprende da dove era arrivato e si ferma quando il servizio lo ferma."""
     import os
-    from llm import percorso
+    from llm import VARIABILE_FISSATI, percorso
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+    env.pop(VARIABILE_FISSATI, None)
+    if (Path(cartella) / "modelli.json").exists():
+        env[VARIABILE_FISSATI] = str(Path(cartella) / "modelli.json")
     r = subprocess.run([sys.executable, "-u", str(CARTELLA / "classifica.py"), str(cartella),
                         str(percorso(cfg, "entita")), "--solo-smistamento", "--config",
                         str(Path(cartella) / "config_prova.ini")],
-                       cwd=CARTELLA, env=dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8"))
+                       cwd=CARTELLA, env=env)
     return r.returncode
 
 
@@ -718,11 +765,11 @@ def prepara_prova(args, cfg, validi, modello):
     cfg_file = prova / "config_prova.ini"
     cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
     cp.optionxform = str
-    if modello:
+    if modello and not modello.startswith(PROFILO):
         config_per_modello(cfg_base, modello, cfg_file)
         cp.read(cfg_file, encoding="utf-8")
-    else:                                   # configurazione attuale, con i percorsi del progetto resi assoluti
-        from llm import leggi_config
+    else:                                   # configurazione attuale o un profilo, con i percorsi resi assoluti
+        from llm import RUOLI, leggi_config
         from progetto import percorsi_assoluti
         cp = leggi_config(cfg_base)         # config.ini più project.ini del progetto in uso
         if cp.has_section("progetto"):
@@ -731,11 +778,16 @@ def prepara_prova(args, cfg, validi, modello):
             cp.add_section("percorsi")
         for k, v in percorsi_assoluti(cfg).items():
             cp["percorsi"][k] = v
+        if modello:
+            for r in RUOLI:
+                cp.remove_option("modello", r)
+            cp["modello"]["profilo"] = modello[len(PROFILO):]
     if not cp.has_section("estrazione"):
         cp.add_section("estrazione")
     cp["estrazione"]["forme_sicure"] = "no"
     with open(cfg_file, "w", encoding="utf-8") as fc:
         cp.write(fc)
+    fissa_prova(prova, cfg_file)
     return prova
 
 
@@ -812,9 +864,9 @@ def scegli_modelli(args, cfg):
 
 def leggi_con_modello(cfg_file, modello, gruppi, schede, n, stampa):
     """Smistamento dei lotti con un modello: {(id, entita): pertinente}, modelli che hanno risposto, errore finale."""
-    from llm import LLM, ErroreModello, leggi_config
+    from llm import LLM, ErroreModello
     from classifica import SISTEMA
-    llm = LLM(leggi_config(cfg_file), "smistamento")
+    llm = LLM(config_grezza(cfg_file), "smistamento")
     esiti, usati, errore = {}, Counter(), ""
     for k, gruppo in enumerate(gruppi, 1):
         try:
@@ -915,6 +967,7 @@ def prova_rapida(args, cfg):
                       if (c["id"], c["entita"]) in esiti]
             return {"modello": m, "risposto": ", ".join(x for x, _ in usati.most_common(3)), "letti": len(coppie),
                     "da_leggere": len(insieme_fase), "errore": errore, "misure": misure(coppie) if coppie else None,
+                    **info_profilo(cf),
                     # decisione del modello su ogni passaggio, per confrontare gli errori tra i modelli
                     "decisioni": {f"{i}|{e}": v for (i, e), v in esiti.items()}}
 
@@ -1092,6 +1145,8 @@ def main():
     m.add_argument("--limite", type=int, default=None, help="solo i primi N passaggi (prova veloce)")
     m.add_argument("--giri", type=int, default=8, help="giri di lettura al massimo (i modelli fermati dalle quote "
                                                        "riprendono al giro successivo)")
+    m.add_argument("--profili", default="", help="profili di modello di models.ini da provare, separati da ';' "
+                                                 "(qualsiasi servizio: Ollama, Groq, Anthropic, FreeLLMAPI)")
     m.add_argument("--config-attuale", action="store_true", help="prova anche i modelli di config.ini")
     r = sub.add_parser("modelli", help="prova rapida di molti modelli (lotti misti, in parallelo, a due fasi)")
     r.add_argument("nome")

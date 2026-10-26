@@ -292,7 +292,7 @@ class StrumentoMcp(Base):
         voci = {p["nome"]: p for p in out["profili"]}
         self.assertEqual(voci["buono"]["in_uso_per"], ["smistamento", "analisi", "sintesi"])
         self.assertEqual((voci["buono"]["chiave"], voci["spento"]["chiave"]), ("presente", "non serve"))
-        self.assertFalse(voci["buono"]["misurato"])
+        self.assertEqual(voci["buono"]["misurato"], "no")
         self.assertIn("non qui", out["nota_chat"])
 
     def test_prova_e_usa(self):
@@ -318,6 +318,54 @@ class StrumentoMcp(Base):
         schema = {n: p for n, (_, _, p, _) in self.M.STRUMENTI.items()}
         self.assertIn("rileggi_modello", schema["ricerca"])
         self.assertEqual(schema["modello"]["azione"]["enum"], ["elenca", "prova", "usa"])
+
+
+class MisurePerProfilo(Base):
+    """Misure legate al profilo (servizio + modello): prove di valutazione.py con --profili."""
+    def test_prova_di_un_profilo(self):
+        import valutazione as V
+        # il progetto sceglie un altro profilo: la prova misura comunque quello chiesto
+        (self.progetto / "project.ini").write_text("[progetto]\nnome = prova\n[modello]\nprofilo = rotto\n",
+                                                   encoding="utf-8")
+        args = argparse.Namespace(config=str(self.config))
+        passaggio = {"id": "p1", "entita": "X", "passaggio": "testo", "riferimento": {"giudizio": "sì"}}
+        with mock.patch.dict(os.environ, {VARIABILE: str(self.progetto)}):
+            cfg = leggi_config(self.config)
+            prova = V.prepara_prova(args, cfg, [passaggio], V.PROFILO + "secondo")
+            self.assertEqual(V.info_profilo(prova / "config_prova.ini"),
+                             {"profilo": "secondo", "servizio": "openai", "modello_profilo": "finto-2"})
+            with mock.patch.dict(os.environ, {L.VARIABILE_FISSATI: str(prova / "modelli.json")}):
+                self.assertEqual(L.LLM(leggi_config(prova / "config_prova.ini"), "smistamento").modello, "finto-2")
+        self.assertTrue((prova / ".senza_archivio").exists())
+        self.assertNotIn("riferimento", (prova / "passaggi.jsonl").read_text(encoding="utf-8"))
+
+    def test_elenco_con_profili(self):
+        import valutazione as V
+        args = argparse.Namespace(modelli="", profili="buono; secondo", escludi="", config_attuale=False,
+                                  solo_elenco=False)
+        self.assertEqual(V.elenco_modelli(args, self.cfg()), ["profilo:buono", "profilo:secondo"])
+        with self.assertRaises(SystemExit):
+            V.elenco_modelli(dict_ns(args, profili="inesistente"), self.cfg())
+
+    def test_stato_della_misura(self):
+        from sintesi import profili_misurati
+        d = self.progetto / "results" / "evaluation" / "rif"
+        d.mkdir(parents=True)
+        righe = [{"modello": "profilo:buono", "risposto": "finto-1", "letti": 4, "misure": {"n": 4},
+                  "profilo": "buono", "servizio": "openai", "modello_profilo": "finto-1"},
+                 {"modello": "x", "risposto": "groq/finto-2", "letti": 4, "misure": {"n": 4},
+                  "profilo": "prova", "servizio": "router", "modello_profilo": "x"}]
+        (d / "modelli_20261026_1500.jsonl").write_text("".join(json.dumps(r) + "\n" for r in righe), encoding="utf-8")
+        self.assertEqual(profili_misurati(self.progetto / "results"), {("openai", "finto-1"), ("router", "x")})
+        voci = {p["nome"]: p["misurato"] for p in I.stato_profili(self.cfg())["profili"]}
+        self.assertEqual((voci["buono"], voci["secondo"], voci["rotto"]),
+                         ("questo profilo", "stesso modello, altro servizio", "no"))
+        self.esegui("elenca")
+        self.assertIn("misurato: questo profilo", self.uscita())
+
+
+def dict_ns(ns, **k):
+    return argparse.Namespace(**{**vars(ns), **k})
 
 
 class Voci(unittest.TestCase):

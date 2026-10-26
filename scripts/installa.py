@@ -454,15 +454,28 @@ def sn(chiedi, domanda, predefinito):
     return predefinito if not r else r in ("s", "si", "sì", "y", "yes")
 
 
+def stato_misura(p, misurati, coppie):
+    """«questo profilo» se una prova misurata è stata fatta con lo stesso servizio e modello; «stesso modello,
+    altro servizio» se il modello ha risposto in una prova fatta attraverso un altro servizio (un router sceglie
+    il modello a ogni richiesta: per lui conta solo la prova del profilo); altrimenti «no»."""
+    from sintesi import misurato
+    if (p.get("servizio", ""), p.get("modello", "")) in coppie:
+        return "questo profilo"
+    if p.get("servizio") != "router" and misurato(p.get("modello", ""), misurati):
+        return "stesso modello, altro servizio"
+    return "no"
+
+
 def stato_profili(cfg):
     """Profili, scelta per ruolo, chiavi e misure, come dati (per lo strumento MCP «modello»)."""
     from llm import RUOLI, ErroreModello, file_profili, leggi_profili, nome_scelto, profilo, usa_profili
     from progetto import NessunProgetto, percorso
-    from sintesi import misurato, modelli_misurati
+    from sintesi import modelli_misurati, profili_misurati
     try:
         misurati = modelli_misurati(percorso(cfg, "risultati"))
+        coppie = profili_misurati(percorso(cfg, "risultati"))
     except NessunProgetto:
-        misurati = set()
+        misurati, coppie = set(), set()
     scelti = {r: nome_scelto(cfg, r) for r in RUOLI}
     out = {"file_profili": str(file_profili(cfg)), "profili": []}
     for nome, p in leggi_profili(cfg).items():
@@ -470,8 +483,7 @@ def stato_profili(cfg):
         voce = {"nome": nome, "servizio": p.get("servizio", ""), "modello": p.get("modello", ""),
                 "chiave": ("presente" if os.environ.get(env) else "assente") if env else "non serve",
                 "in_uso_per": [r for r in RUOLI if scelti[r] == nome]}
-        if p.get("servizio") != "router":           # un router sceglie il modello a ogni richiesta
-            voce["misurato"] = misurato(p.get("modello", ""), misurati)
+        voce["misurato"] = stato_misura(p, misurati, coppie)
         out["profili"].append(voce)
     try:
         out["in_uso"] = {r: profilo(cfg, r)[0] for r in RUOLI}
@@ -487,6 +499,7 @@ def modello_elenca(args, stampa, **_):
     from llm import RUOLI, ErroreModello, file_profili, leggi_profili, nome_scelto, profilo, usa_profili
     cfg = leggi_cfg()
     profili = leggi_profili(cfg)
+    misure = {v["nome"]: v["misurato"] for v in stato_profili(cfg)["profili"]}
     f = file_profili(cfg)
     if profili:
         stampa(f"Profili di modello in {f} (* = in uso):")
@@ -497,7 +510,7 @@ def modello_elenca(args, stampa, **_):
         ruoli = [r for r in RUOLI if scelti[r] == nome]
         env = p.get("chiave_env", "") or ("ANTHROPIC_API_KEY" if p.get("servizio") == "anthropic" else "")
         chiave = f"; chiave {env} " + ("presente" if os.environ.get(env) else "ASSENTE") if env else ""
-        stampa(f"{'*' if ruoli else ' '} {nome}: {descrivi(p)}{chiave}"
+        stampa(f"{'*' if ruoli else ' '} {nome}: {descrivi(p)}{chiave}; misurato: {misure.get(nome, 'no')}"
                + (f"  [in uso per {', '.join(ruoli)}]" if ruoli else ""))
     if not usa_profili(cfg):
         try:
