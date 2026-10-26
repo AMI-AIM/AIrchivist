@@ -323,7 +323,7 @@ file `.txt` con l'intestazione dei metadati, come le altre fonti; registra in `a
 il metodo, le pagine, la qualità dell'OCR e gli avvisi; aggiorna l'indice. Nei PDF segna le pagine stampate (vedi
 «Pagine dei PDF»), così le citazioni arrivano alla pagina.
 
-L'originale (PDF, scansione, esportazione PAGE/ALTO, Word convertito, `.txt`) si copia intatto in `sources\`, nella
+L'originale (PDF, scansione, esportazione PAGE/ALTO, `.txt`) si copia intatto in `sources\`, nella
 stessa sottocartella che il `.txt` ha in `data\`; un documento di più file (pagine XML, `--unisci`) diventa una
 cartella con il nome del documento. `SOURCE_FILE` dell'intestazione indica quella copia (percorso relativo a
 `sources\`) e `SOURCE_HASH` la sua impronta SHA-256 (per una cartella: l'impronta dell'elenco dei file con le loro
