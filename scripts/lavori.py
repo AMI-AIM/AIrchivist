@@ -188,6 +188,22 @@ def ferma(d):
     (Path(d) / "ferma").touch()
 
 
+def termina(proc):
+    """Chiude il processo della ricerca con i suoi figli (classifica.py, sintesi.py): terminate() da solo
+    lascerebbe vivo il figlio, che continuerebbe a leggere passaggi."""
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True,
+                       creationflags=SENZA_FINESTRA)
+    else:
+        import signal
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            proc.terminate()
+
+
 # ---------------------------------------------------------------- esecuzione (processo indipendente)
 class Esecutore:
     def __init__(self, d, config=None):
@@ -212,9 +228,16 @@ class Esecutore:
             scrivi_json(self.d / "stato.json", self.stato)
 
     def _battito(self):
+        # la richiesta di fermarsi si controlla anche qui: durante un'attesa del servizio il processo della
+        # ricerca può non stampare nulla per molti minuti, e il ciclo di lancia() non arriverebbe a vederla
+        ultimo = 0
         while True:
-            time.sleep(20)
-            self.aggiorna()
+            time.sleep(5)
+            if self.fermato() and self.proc is not None and self.proc.poll() is None:
+                termina(self.proc)
+            if time.time() - ultimo >= 20:
+                self.aggiorna()
+                ultimo = time.time()
 
     def fermato(self):
         return (self.d / "ferma").exists()
@@ -234,7 +257,8 @@ class Esecutore:
                                      stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
                                      env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                                               PYTHONUNBUFFERED="1"),    # anche i processi figli della ricerca
-                                     **({"creationflags": SENZA_FINESTRA} if os.name == "nt" else {}))
+                                     **({"creationflags": SENZA_FINESTRA} if os.name == "nt"
+                                        else {"start_new_session": True}))     # un gruppo: termina() lo chiude tutto
         ultimo_agg = 0
         for riga in self.proc.stdout:
             riga = riga.rstrip("\n")
@@ -247,7 +271,7 @@ class Esecutore:
                 self.aggiorna(avanzamento=f"{m.group(1)}/{m.group(2)} passaggi letti in questo tentativo")
                 ultimo_agg = time.time()
             if self.fermato():
-                self.proc.terminate()
+                termina(self.proc)
         return self.proc.wait()
 
     def profili(self):
