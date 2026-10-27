@@ -658,8 +658,10 @@ async function salvaTabella() {
   });
   try {
     const s = await api("/api/tabella", { percorso: t.tabella, righe });
-    $("imp-stato").textContent = `Tabella salvata (${s.righe} righe): «Controlla senza scrivere», poi «Importa».`;
-    await caricaTabella(t.tabella);
+    const nome = s.tabella !== t.tabella ? ` in ${s.tabella} (il file Excel resta com'era)` : "";
+    $("imp-stato").textContent =
+      `Tabella salvata${nome} (${s.righe} righe): «Controlla senza scrivere», poi «Importa».`;
+    await caricaTabella(s.tabella || t.tabella);
   } catch (e) {
     avviso(e.message, true);
   }

@@ -5,7 +5,10 @@ dei modelli finto:
 - menu «Progetto»: elenco, cambio (scritto in config.ini), nuovo progetto, cambio bloccato da una ricerca in corso;
 - menu «Modello»: un profilo il cui collegamento fallisce non diventa quello in uso; uno che funziona sì;
 - percorso guidato: scheda trovata, ricerca avviata dall'interfaccia su un'entità già in archivio con lo stesso
-  risultato della riga di comando; documento della risposta servito solo dalle cartelle del progetto.
+  risultato della riga di comando; documento della risposta servito solo dalle cartelle del progetto;
+- importazione (lavoro 37): tabella di revisione letta e corretta dalla pagina solo nelle cartelle del progetto,
+  righe che non coincidono rifiutate, file Excel mai riscritto (le correzioni vanno nel CSV accanto), stato del
+  lavoro con avanzamento e tabella pronta.
 """
 import http.client
 import json
@@ -20,13 +23,17 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
+from urllib.parse import quote
 
 MOTORE = Path(__file__).resolve().parents[1] / "scripts"
 PROVA = Path(__file__).resolve().parent / "test_project"
 sys.path.insert(0, str(MOTORE))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import app as A  # noqa: E402
+import revisione as R  # noqa: E402
 from llm import VARIABILE_FISSATI  # noqa: E402
 from progetto import VARIABILE  # noqa: E402
+from test_revisione import xlsx  # noqa: E402
 
 CHIAVE = "chiave-di-prova"
 INTESTAZIONE = ("[DOC_ID: RMB-{data}]\n[SERIES: Renmin Ribao]\n[DOC_TYPE: newspaper]\n[LANG: zh]\n[YEAR: {anno}]\n"
@@ -282,6 +289,118 @@ class Interfaccia(unittest.TestCase):
         storico = self.get("/api/storico")[1]
         self.assertTrue(storico["risposte"])
         self.assertIn("enrico_berlinguer", [x["cartella"] for x in storico["ricerche"]])
+
+    # ------------------------------------------------------------ importazione (lavoro 37)
+    def audit(self):
+        d = A.percorso(self.app.cfg(), "registro_modifiche").parent
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def tabella_di_prova(self, f):
+        righe = [{"importa": "sì", "file": "a.pdf", "serie": "", "data": "1967-01-12", "da_controllare": "serie",
+                  "percorso": "C:/fonti/a.pdf"},
+                 {"importa": "sì", "file": "b.pdf", "serie": "Renmin Ribao", "data": "", "da_controllare": "",
+                  "percorso": "C:/fonti/b.pdf"}]
+        R.scrivi_tabella(f, list(righe[0]), righe)
+        return righe
+
+    def test_tabella_di_revisione(self):
+        f = self.audit() / "review_prova.csv"
+        righe = self.tabella_di_prova(f)
+        try:
+            codice, t = self.get("/api/tabella?percorso=" + quote(str(f)))
+            self.assertEqual(codice, 200, t)
+            self.assertEqual(t["tipo"], "proposta")
+            self.assertEqual(t["colonne"][:3], ["importa", "file", "serie"])
+            self.assertEqual(t["colonne"][-1], "percorso")                   # le avanzate dopo le essenziali
+            self.assertEqual([r["file"] for r in t["righe"]], ["a.pdf", "b.pdf"])
+            self.assertIn("serie", t)
+
+            corrette = [dict(righe[0], serie="Renmin Ribao"), {"percorso": "C:/fonti/b.pdf", "importa": "no"}]
+            codice, s = self.post("/api/tabella", {"percorso": str(f), "righe": corrette})
+            self.assertEqual(codice, 200, s)
+            self.assertEqual((s["righe"], s["tabella"]), (2, str(f.resolve())))
+            grezzo = f.read_bytes()
+            self.assertTrue(grezzo.startswith(b"\xef\xbb\xbf"))                  # BOM e CRLF come proponi
+            self.assertTrue(grezzo[3:].startswith(b"importa;file;serie;data;da_controllare;percorso\r\n"))
+            nuove = R.leggi_tabella(f)
+            self.assertEqual(nuove[0]["serie"], "Renmin Ribao")
+            self.assertEqual(nuove[1]["importa"], "no")
+            self.assertEqual(nuove[1]["serie"], "Renmin Ribao")              # colonna non mandata: resta com'è
+
+            codice, r = self.post("/api/tabella", {"percorso": str(f), "righe": corrette[:1]})
+            self.assertEqual(codice, 400)
+            self.assertIn("ricaricala", r["errore"])
+            scambiate = [corrette[1], corrette[0]]
+            self.assertEqual(self.post("/api/tabella", {"percorso": str(f), "righe": scambiate})[0], 400)
+            self.assertEqual(R.leggi_tabella(f), nuove)                      # nessuna scrittura dopo un rifiuto
+        finally:
+            f.unlink()
+
+    def test_tabella_solo_dal_progetto(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "review_fuori.csv"
+            self.tabella_di_prova(f)
+            prima = f.read_bytes()
+            codice, r = self.get("/api/tabella?percorso=" + quote(str(f)))
+            self.assertEqual(codice, 400)
+            self.assertIn("cartelle del progetto", r["errore"])
+            self.assertEqual(self.post("/api/tabella", {"percorso": str(f), "righe": []})[0], 400)
+            self.assertEqual(f.read_bytes(), prima)
+            self.assertEqual(self.post("/api/importa", {"azione": "applica", "percorso": str(f)})[0], 400)
+        self.assertEqual(self.get("/api/tabella?percorso=" + quote(str(self.audit() / "assente.csv")))[0], 400)
+
+    def test_tabella_excel_non_riscritta(self):
+        f = self.audit() / "review_excel.xlsx"
+        xlsx(f, [["importa", "file", "serie", "percorso"], ["sì", "a.pdf", "", "C:/fonti/a.pdf"]])
+        prima = f.read_bytes()
+        csv_ = f.with_suffix(".csv")
+        try:
+            codice, t = self.get("/api/tabella?percorso=" + quote(str(f)))
+            self.assertEqual(codice, 200, t)
+            self.assertEqual(t["righe"][0]["file"], "a.pdf")
+            codice, s = self.post("/api/tabella", {"percorso": str(f),
+                                                   "righe": [dict(t["righe"][0], serie="Renmin Ribao")]})
+            self.assertEqual(codice, 200, s)
+            self.assertEqual(f.read_bytes(), prima)                           # il file Excel resta intatto
+            self.assertEqual(s["tabella"], str(csv_.resolve()))
+            self.assertEqual(R.leggi_tabella(csv_)[0]["serie"], "Renmin Ribao")
+            self.assertEqual(self.get("/api/tabella?percorso=" + quote(s["tabella"]))[0], 200)
+        finally:
+            f.unlink()
+            csv_.unlink(missing_ok=True)
+
+    def test_stato_importazione(self):
+        f = self.audit() / "review_stato.csv"
+        self.tabella_di_prova(f)
+        lavoro = A.percorso(self.app.cfg(), "lavori_importazioni") / "20990101-000000-prova"
+        lavoro.mkdir(parents=True)
+        try:
+            (lavoro / "registro.txt").write_text("Lettura dei file\npagina 3/12 a.pdf\n", encoding="utf-8")
+            codice, r = self.get("/api/importa?id=" + lavoro.name)
+            self.assertEqual(codice, 200, r)
+            self.assertFalse(r["finita"])
+            self.assertEqual(r["avanzamento"]["fatto"], 3)
+            self.assertEqual(r["avanzamento"]["totale"], 12)
+            self.assertNotIn("tabella", r)
+            self.assertNotIn("registro", r)                                   # alla pagina solo le ultime righe
+
+            (lavoro / "registro.txt").write_text(f"pagina 12/12 b.pdf\n\nTabella: {f}\n", encoding="utf-8")
+            (lavoro / "esito.json").write_text(json.dumps({"codice": 0}), encoding="utf-8")
+            codice, r = self.get("/api/importa?id=" + lavoro.name)
+            self.assertTrue(r["finita"])
+            self.assertTrue(r["pronta"])
+            self.assertEqual(r["tabella"], str(f))
+            self.assertEqual(r["ultime"][-1], f"Tabella: {f}")
+            self.assertEqual(self.get("/api/importa?id=assente")[0], 400)
+        finally:
+            shutil.rmtree(lavoro)
+            f.unlink()
+
+    def test_importa_azioni_controllate(self):
+        codice, r = self.post("/api/importa", {"azione": "stato"})
+        self.assertEqual(codice, 400)
+        self.assertEqual(self.post("/api/importa", {"azione": "proponi", "percorso": " "})[0], 400)
 
 
 def sezione(testo, titolo):

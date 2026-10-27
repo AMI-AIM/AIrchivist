@@ -503,7 +503,7 @@ class App:
     def tabella(self, id=""):
         """La tabella di revisione letta dal motore, per la tabella modificabile della scheda «Importazioni».
         Le colonne si dividono nella pagina: essenziali quelle che servono davvero, il resto sotto «avanzate».
-        Con serie=true le righe portano anche l'elenco delle serie del progetto (per i menu a tendina)."""
+        Se la tabella ha la colonna «serie», arriva anche l'elenco delle serie del progetto (per i menu a tendina)."""
         f = self._tabella_safe(id)
         righe = revisione.leggi_tabella(f)
         if not righe:
@@ -516,7 +516,7 @@ class App:
                "tipo": "revisione" if "file_dati" in colonne else "proposta",
                "colonne": [c for c in essenziali if c in colonne] + [c for c in colonne if c not in essenziali],
                "righe": [{k: str(v or "") for k, v in r.items()} for r in righe]}
-        if _bool(id and True) and "serie" in colonne:          # le serie del progetto, per scegliere senza scrivere
+        if "serie" in colonne:                       # le serie del progetto, per scegliere senza scrivere
             import importa
             out["serie"] = importa.leggi_serie().sections()
         return out
@@ -524,7 +524,8 @@ class App:
     def salva_tabella(self, id, righe):
         """Sovrascrive la tabella con le righe corrette dalla pagina (CSV ; BOM UTF-8, come proponi). Il file
         delle proposte (.json accanto) non si tocca: applica lo confronta e segna «verificato» ciò che hai
-        cambiato tu."""
+        cambiato tu. Una tabella salvata da Excel come .xlsx non si riscrive (la si rovinerebbe): le correzioni
+        vanno nel CSV con lo stesso nome accanto, che diventa la tabella da applicare."""
         f = self._tabella_safe(id)
         vecchie = revisione.leggi_tabella(f)
         if not vecchie:
@@ -544,8 +545,9 @@ class App:
                 raise Errore(f"Riga {i}: il file non coincide con quello della tabella sul computer: ricaricala.")
             # una cella lasciata vuota nella pagina cancella il valore; una colonna non mandata resta com'è
             nuove.append({c: str(r[c]).strip() if c in r else str(vecchia.get(c) or "") for c in colonne})
-        revisione.scrivi_tabella(f, colonne, nuove)
-        return {"salvata": True, "righe": len(nuove)}
+        destinazione = f.with_suffix(".csv")         # .xlsx → .csv; un .csv (anche se Excel dentro) resta lui
+        revisione.scrivi_tabella(destinazione, colonne, nuove)
+        return {"salvata": True, "righe": len(nuove), "tabella": str(destinazione)}
 
     def stato(self):
         return {"progetto": self.progetto_in_uso(), "progetti": self.progetti(),

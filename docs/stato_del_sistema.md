@@ -406,6 +406,17 @@ Fermando quella ricerca è emerso un secondo difetto: «Ferma» (strumento `rice
 
 Non provati: macOS e Linux; un'importazione completa dall'interfaccia (la proposta e il controllo sì, l'importazione è quella del lavoro 29). Aperti per i lavori successivi: visore della fonte, passaggi e glossario (36), tabella di revisione modificabile nell'interfaccia (37), conversazione sulle fonti (38).
 
+### Interfaccia: importazione e revisione (fase 7, lavoro 37, in corso, 27/10/2026)
+
+Codice proposto da un contributore esterno (PR #5, `dec4646`) e corretto qui.
+
+- **Scheda «Importazioni»**: cartella o file da importare, serie facoltativa per tutti i file, «Proponi» e «Rivedi i già importati» (`t_importa` con `proponi` o `rivedi`); la tabella di revisione compare nella pagina appena il lavoro la scrive, con le celle modificabili, le righe con «da_controllare» in rosso e le colonne «avanzate» nascoste se non le si chiede; «Salva le correzioni», «Controlla senza scrivere» (`applica --prova`), «Importa» (con «Sostituisce i documenti già importati»); barra dell'avanzamento dell'OCR e ultime righe del registro. I lavori restano i processi indipendenti del server MCP: chiusa la pagina, continuano.
+- **`app.py`**: `stato_importazione` (esito, avanzamento ricavato dall'ultima riga «n/m», tabella dalla riga «Tabella:» del registro o dal comando del lavoro), `tabella` (righe e colonne, essenziali prima; elenco delle serie se la tabella ha la colonna «serie») e `salva_tabella` (rifiuta un numero di righe diverso o righe il cui file non coincide con quello sul computer; una colonna non mandata resta com'è). `_tabella_safe` ammette solo file esistenti nelle cartelle `audit/` e `system/import_jobs/` del progetto. Endpoint: `GET /api/importa?id=`, `GET`/`POST /api/tabella`.
+- **Correzioni alla PR**: `tabella` chiamava una funzione `_bool` inesistente, quindi la tabella non si caricava mai (errore 500); `salva_tabella` riscriveva come CSV anche una tabella salvata da Excel come `.xlsx`, rovinandola: ora il file Excel resta intatto e le correzioni vanno nel CSV con lo stesso nome accanto (il file delle proposte `.json` è lo stesso), che la pagina adotta come tabella.
+- **Test**: 317, tutti superati; in `tests/test_app.py` cinque nuovi (15 in tutto): tabella letta e corretta (BOM, punto e virgola, CRLF; righe mancanti o scambiate rifiutate senza scrivere), tabella fuori dal progetto rifiutata in lettura, scrittura e `applica`, file `.xlsx` non riscritto, stato del lavoro con avanzamento e tabella pronta, azioni sconosciute o senza percorso rifiutate. I due test sulla tabella falliscono con la versione della PR.
+
+Non provati: la pagina nel browser (JavaScript della tabella, pulsanti, barra) e un'importazione completa dall'interfaccia.
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).
