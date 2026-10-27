@@ -232,7 +232,8 @@ class Esecutore:
         self.log(f"--- tentativo {self.stato['tentativo']} ({dt.datetime.now():%d/%m %H:%M})")
         self.proc = subprocess.Popen(comando, cwd=CARTELLA, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
-                                     env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1"),
+                                     env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+                                              PYTHONUNBUFFERED="1"),    # anche i processi figli della ricerca
                                      **({"creationflags": SENZA_FINESTRA} if os.name == "nt" else {}))
         ultimo_agg = 0
         for riga in self.proc.stdout:

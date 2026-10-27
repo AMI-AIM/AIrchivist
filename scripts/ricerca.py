@@ -168,7 +168,9 @@ def chiudi_profili(cart):
 
 
 def esegui(*argomenti):
-    r = subprocess.run([sys.executable, *map(str, argomenti)], cwd=CARTELLA)
+    # -u: con l'uscita in una pipe (ricerche avviate da lavori.py) le righe «[n/m]» devono arrivare subito,
+    # altrimenti l'avanzamento resta fermo per tutta la lettura dei passaggi
+    r = subprocess.run([sys.executable, "-u", *map(str, argomenti)], cwd=CARTELLA)
     if r.returncode != 0:
         sys.exit(r.returncode)
 

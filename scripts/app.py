@@ -348,11 +348,32 @@ class App:
         out.pop("nota", None)                # le indicazioni per il modello della chat qui non servono
         out.update({"id": s_.get("id", d.name), "domanda": s_.get("domanda", ""),
                     "entita": (s_.get("parametri") or {}).get("principale", "")})
+        if not out.get("finito"):
+            ultimi = [m for m in s_.get("ultimi_messaggi") or [] if not m.startswith("---")]
+            if ultimi:
+                out["ultimo_messaggio"] = ultimi[-1]
+            # quanti passaggi sono già letti, dal file della ricerca: non dipende da ciò che il processo stampa
+            letti = self._passaggi_letti(s_.get("parametri") or {})
+            if letti:
+                out["letti"] = letti
         pronta = out.get("risposta_pronta")
         if pronta:
             pronta.pop("nota", None)
             out["documento"] = "/documento?" + urllib.parse.urlencode({"risposta": pronta.get("file", "")})
         return out
+
+    def _passaggi_letti(self, parametri):
+        """(letti, estratti) della ricerca: righe distinte di classificati.jsonl e di passaggi.jsonl."""
+        def ids(f):
+            with open(f, encoding="utf-8") as h:
+                return {m.group(1) for m in (re.search(r'"id":\s*"([^"]+)"', r) for r in h) if m}
+        try:
+            d = lavori.cartella_ricerca(self.cfg(), parametri)
+            estratti = ids(d / "passaggi.jsonl")
+            letti = ids(d / "classificati.jsonl") & estratti      # non le letture di ricerche precedenti
+        except (OSError, KeyError, TypeError):
+            return None
+        return {"letti": len(letti), "estratti": len(estratti)} if estratti else None
 
     def ferma(self):
         return M.t_ferma_ricerca()

@@ -461,15 +461,18 @@ function mostraRicerca(r, allAvvio) {
     mostra("passo-forme", false);
   }
   $("ricerca-titolo").textContent = r.domanda || r.entita;
-  const parti = [r.stato, r.fase, r.avanzamento, r.minuti ? `${r.minuti} min` : ""].filter(Boolean);
+  const letti = r.letti ? `${r.letti.letti}/${r.letti.estratti} passaggi letti` : "";
+  const parti = [r.stato, r.fase, letti || r.avanzamento, r.minuti ? `${r.minuti} min` : ""].filter(Boolean);
   if (r.prossimo_tentativo) parti.push(`nuovo tentativo: ${r.prossimo_tentativo}`);
+  if (r.ultimo_messaggio && !(r.fase && r.ultimo_messaggio.includes(r.fase))) parti.push(r.ultimo_messaggio);
   $("ricerca-stato").textContent = parti.join(" · ");
   // la barra segue le tre fasi (estrazione, lettura, risposta) e, dentro la lettura, i passaggi letti
   const f = /(\d)\s*\/\s*3/.exec(r.fase || "");
   const m = /(\d+)\s*\/\s*(\d+)/.exec(r.avanzamento || "");
   if (f) {
     const fase = +f[1];
-    const dentro = fase === 2 && m && +m[2] ? m[1] / m[2] : 0;
+    const dentro = fase !== 2 ? 0 : r.letti && r.letti.estratti ? r.letti.letti / r.letti.estratti
+      : m && +m[2] ? m[1] / m[2] : 0;
     $("ricerca-barra").style.width = `${Math.min(100, ((fase - 1 + dentro) / 3) * 100)}%`;
   }
   $("b-ferma").disabled = !!r.finito;
