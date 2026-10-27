@@ -536,34 +536,133 @@ async function caricaStorico() {
   }
 }
 
-// ------------------------------------------------------------------ importazione
-async function importa(azione, prova) {
-  const percorso = azione === "proponi" ? $("imp-cartella").value.trim() : $("imp-tabella").value.trim();
-  if (!percorso) return;
-  const reg = $("imp-registro");
-  reg.hidden = false;
-  reg.textContent = "Avviata…";
+// ------------------------------------------------------------------ importazione (lavoro 37)
+// Tutto nella scheda «Importazioni»: proposta, tabella di revisione modificabile qui (oltre che in Excel),
+// prova senza scrivere e importazione. I lavori sono processi indipendenti: la pagina ne segue l'avanzamento
+// e, se la chiudi, il lavoro continua (i file restano sul computer: basta il percorso).
+const COLONNE_AVANZATE = ["cartella_serie", "sigla", "stato_numero", "volume", "luogo", "editore",
+                          "prima_pagina", "da_pagina", "formato", "percorso"];
+
+async function avviaImporta(azione, percorso, prova) {
+  if ((azione === "proponi" || azione === "applica") && !percorso) {
+    avviso("Indica prima " + (azione === "proponi" ? "la cartella dei documenti." : "la tabella di revisione."), true);
+    return;
+  }
   try {
-    const r = await api("/api/importa", { azione, percorso, prova });
+    const r = await api("/api/importa", { azione, percorso, serie: $("imp-serie").value.trim(),
+                                          prova: !!prova, sovrascrivi: $("imp-sovrascrivi").checked });
+    stato.importaId = r.id;
+    stato.tabella = null;
+    mostraTabella(null);
+    $("imp-stato").textContent = "Lavoro avviato: lo seguo io, non serve che aspetti.";
     seguiImporta(r.id);
   } catch (e) {
-    reg.textContent = e.message;
+    avviso(e.message, true);
   }
+}
+
+function importaEsito(r) {
+  const e = r.esito || {};
+  if (!r.finita) return "";
+  if (e.codice === 0) return "Finito.";
+  if (e.codice === 2) return "La tabella ha errori da correggere: salva le correzioni e riprova.";
+  return `Il lavoro è finito con codice ${e.codice}${e.errore ? ": " + e.errore : ""}.`;
 }
 
 function seguiImporta(id) {
   clearTimeout(stato.attesaImporta);
   stato.attesaImporta = setTimeout(async () => {
+    let r;
     try {
-      const r = await api("/api/importa?id=" + encodeURIComponent(id));
-      $("imp-registro").textContent = r.registro || r.errore || "…";
-      if (r.tabella) $("imp-tabella").value = r.tabella;
-      if (!r.finita) seguiImporta(id);
-      else { caricaTutto(); }
+      r = await api("/api/importa?id=" + encodeURIComponent(id));
     } catch (e) {
-      $("imp-registro").textContent = e.message;
+      $("imp-stato").textContent = e.message;
+      return;
     }
+    if (id !== stato.importaId) return;               // un lavoro più recente ha preso il suo posto
+    const a = r.avanzamento;
+    $("imp-avanzamento").hidden = !a || !!r.finita;
+    if (a) $("imp-barra").style.width = `${Math.min(100, (a.fatto / Math.max(1, a.totale)) * 100)}%`;
+    $("imp-stato").textContent = [r.finita ? "" : (a ? a.testo : "Lavoro in corso…"), importaEsito(r)]
+      .filter(Boolean).join(" ");
+    const esiti = (r.ultime || []).join("\n");
+    $("imp-esiti").textContent = esiti;
+    $("imp-esiti").hidden = !esiti;
+    if (r.pronta && r.tabella && (!stato.tabella || stato.tabella.tabella !== r.tabella)) caricaTabella(r.tabella);
+    if (!r.finita) { seguiImporta(id); return; }
+    if (r.finita) caricaTutto();                       // i documenti nuovi entrano fra le fonti
   }, 2000);
+}
+
+async function caricaTabella(percorso) {
+  let t;
+  try {
+    t = await api("/api/tabella?percorso=" + encodeURIComponent(percorso));
+  } catch (e) {
+    $("imp-stato").textContent = e.message;
+    return;
+  }
+  stato.tabella = t;
+  mostraTabella(t);
+}
+
+function mostraTabella(t) {
+  const box = $("imp-tabella");
+  box.replaceChildren();
+  if (!t) {
+    box.hidden = true;
+    $("imp-tabella-nome").textContent = "nessuna: il punto 1 non è ancora finito";
+    for (const id of ["imp-carica", "imp-salva", "imp-prova", "imp-applica"]) $(id).disabled = true;
+    return;
+  }
+  $("imp-tabella-nome").textContent = `${t.file} — ${t.righe.length} righe` +
+    (t.tipo === "revisione" ? ", documenti già importati" : "");
+  for (const id of ["imp-carica", "imp-salva", "imp-prova", "imp-applica"]) $(id).disabled = false;
+  const colonne = t.colonne.filter((c) => $("imp-avanzate").checked || !COLONNE_AVANZATE.includes(c));
+  const tab = el("table", null, "revisione");
+  const intestazione = el("tr");
+  for (const c of colonne) intestazione.append(el("th", c));
+  tab.append(intestazione);
+  t.righe.forEach((riga, n) => {
+    const tr = el("tr");
+    if ((riga.da_controllare || "").trim()) tr.className = "dubbio";
+    for (const c of colonne) {
+      const td = el("td");
+      const i = document.createElement("input");
+      i.type = "text";
+      i.value = riga[c] || "";
+      i.dataset.colonna = c;
+      i.dataset.riga = n;
+      if (["file", "file_dati", "percorso", "da_controllare"].includes(c)) i.readOnly = true;
+      td.append(i);
+      tr.append(td);
+    }
+    tab.append(tr);
+  });
+  const scroll = el("div", null, "scorrimento");
+  scroll.append(tab);
+  box.append(el("p", "Le righe con qualcosa da controllare sono in rosso; la colonna «importa» accetta sì o no.",
+    "nota"), scroll);
+  box.hidden = false;
+}
+
+async function salvaTabella() {
+  const t = stato.tabella;
+  if (!t) return;
+  const celle = [...$("imp-tabella").querySelectorAll("input")];
+  const righe = t.righe.map((riga, n) => {
+    const r = {};
+    for (const c of t.colonne) r[c] = riga[c] || "";       // le colonne nascoste restano come sono
+    for (const i of celle) if (+i.dataset.riga === n) r[i.dataset.colonna] = i.value.trim();
+    return r;
+  });
+  try {
+    const s = await api("/api/tabella", { percorso: t.tabella, righe });
+    $("imp-stato").textContent = `Tabella salvata (${s.righe} righe): «Controlla senza scrivere», poi «Importa».`;
+    await caricaTabella(t.tabella);
+  } catch (e) {
+    avviso(e.message, true);
+  }
 }
 
 // ------------------------------------------------------------------ avvio
@@ -581,9 +680,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("b-nuova").addEventListener("click", () => { avviso(""); nuova(); });
   $("b-storico").addEventListener("click", () => apriScheda("storico"));
   $("b-importa").addEventListener("click", () => apriScheda("importazioni"));
-  $("imp-proponi").addEventListener("click", () => importa("proponi", false));
-  $("imp-prova").addEventListener("click", () => importa("applica", true));
-  $("imp-applica").addEventListener("click", () => importa("applica", false));
+  $("imp-proponi").addEventListener("click", () => avviaImporta("proponi", $("imp-cartella").value.trim()));
+  $("imp-rivedi").addEventListener("click", () => avviaImporta("rivedi", ""));
+  $("imp-carica").addEventListener("click", () => stato.tabella && caricaTabella(stato.tabella.tabella));
+  $("imp-salva").addEventListener("click", salvaTabella);
+  $("imp-avanzate").addEventListener("change", () => stato.tabella && mostraTabella(stato.tabella));
+  $("imp-prova").addEventListener("click", () => stato.tabella && avviaImporta("applica", stato.tabella.tabella, true));
+  $("imp-applica").addEventListener("click", () => stato.tabella && avviaImporta("applica", stato.tabella.tabella));
   document.querySelectorAll(".schede button").forEach((b) => b.addEventListener("click", () => apriScheda(b.dataset.scheda)));
   caricaTutto();
 });

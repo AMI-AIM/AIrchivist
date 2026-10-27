@@ -46,6 +46,7 @@ sys.stdout = _USCITA
 import installa                 # noqa: E402
 import lavori                   # noqa: E402
 import profili                  # noqa: E402
+import revisione                # noqa: E402
 import schede                   # noqa: E402
 from progetto import VARIABILE, cartella_scelta, leggi_config, percorso   # noqa: E402
 
@@ -423,19 +424,128 @@ class App:
         M.FONTI_SCELTE = sorted({profili.gruppo(n) for n in profili.tutti()})
         return {"fonti": M.FONTI_SCELTE}
 
-    # ------------------------------------------------------------ importazione (la tabella si corregge in Excel)
-    def importa(self, azione, percorso_file="", prova=False, id=""):
-        if azione not in ("proponi", "applica", "stato"):
-            raise Errore("Azione d'importazione sconosciuta.")
-        r = M.t_importa(azione, percorso_file=percorso_file, prova=bool(prova), id=id)
-        if r.get("errore") and azione != "stato":
+    # ------------------------------------------------------------ importazione (lavoro 37)
+    # La scheda «Importazioni» fa tutto dall'interfaccia: proposta (lavoro 29), tabella di revisione modificabile
+    # qui oltre che in Excel, controllo senza scrivere (applica --prova), importazione vera, avanzamento dell'OCR.
+    # I processi restano quelli indipendenti del server MCP: la pagina chiude, il lavoro continua.
+    def importa(self, azione, percorso_file="", serie="", prova=False, sovrascrivi=False):
+        if azione not in ("proponi", "applica", "rivedi"):
+            raise Errore("Azione d'importazione sconosciuta: proponi, applica o rivedi.")
+        if azione == "applica":                      # prima un controllo qui: l'errore arriva subito alla pagina
+            self._tabella_safe(percorso_file)
+            percorso_file = str(self._tabella_safe(percorso_file))
+        elif azione == "proponi" and not (percorso_file or "").strip():
+            raise Errore("Indica la cartella o il file da importare.")
+        r = M.t_importa(azione, percorso_file=percorso_file, serie=serie,
+                        prova=int(bool(prova)) if azione == "applica" else bool(prova),
+                        sovrascrivi=bool(sovrascrivi))
+        if r.get("errore"):
             raise Errore(r["errore"])
-        tabella = re.findall(r"[A-Za-z]:\\[^\n\"]*?review_[\w-]+\.csv|/[^\n\"]*?review_[\w-]+\.csv",
-                             r.get("registro", ""))
-        if tabella:
-            r["tabella"] = tabella[-1]
         r.pop("nota", None)
         return r
+
+    @staticmethod
+    def _tabella_del_registro(testo):
+        """Il percorso della tabella scritta dal processo, dalla riga «Tabella: ...» del registro."""
+        m = re.findall(r"^Tabella:\s*(.+?)(?:\s*\(|$)", testo or "", re.MULTILINE)
+        return Path(m[-1].strip().strip('"')) if m else None
+
+    def _tabella_safe(self, percorso_file):
+        """Percorso di una tabella di revisione: deve esistere ed stare nelle cartelle del progetto (audit o
+        system/importazioni): la pagina può così solo leggere e correggere le tabelle che il sistema ha scritto."""
+        f = Path(os.path.expandvars(os.path.expanduser((percorso_file or "").strip().strip('"'))))
+        if not f.is_file():
+            raise Errore(f"Non trovo «{percorso_file}» su questo computer.")
+        c = self.cfg()
+        permessi = []
+        for chiave in ("registro_modifiche", "lavori_importazioni"):
+            try:
+                p = percorso(c, chiave).resolve()
+            except Exception:
+                continue
+            permessi.append(p.parent if chiave == "registro_modifiche" else p)
+        f = f.resolve()
+        if not any(p.is_dir() and (p in f.parents or p == f.parent) for p in permessi):
+            raise Errore("La tabella deve stare nelle cartelle del progetto (audit o system/importazioni).")
+        return f
+
+    def stato_importazione(self, id=""):
+        """Lo stato del lavoro (esito, avanzamento dell'OCR) e, se è pronta, la sua tabella. Il registro intero
+        resta nel file: alla pagina arrivano poche righe, e l'avanzamento ricavato dall'ultima."""
+        r = M.t_stato_importazione(id)
+        if r.get("errore"):
+            raise Errore(r["errore"])
+        registro = r.pop("registro", "")
+        righe = [x.strip() for x in registro.splitlines() if x.strip()]
+        r["ultime"] = [x[:200] for x in righe[-4:]]
+        d = M.cartella_importazioni() / r["id"]
+        comando = ""
+        if (d / "richiesta.json").is_file():
+            comando = json.dumps(json.loads((d / "richiesta.json").read_text(encoding="utf-8")).get("comando"))
+        m = self._tabella_del_registro(registro)
+        if m is None:                                  # il nome della tabella è deciso prima: lo dice il comando
+            a = re.search(r"--out\", \"([^\"]+)\"", comando)
+            if not a:
+                a = re.search(r'"applica", "([^"]+?\.(?:csv|xlsx))"', comando)
+            m = Path(a.group(1)) if a else None
+        if m is not None and m.is_file():
+            r["tabella"], r["pronta"] = str(m), True
+        esito = r.get("esito") or {}
+        if esito.get("codice") == 2 and esito.get("errore"):                  # tabella con errori: da correggere
+            r["avviso"] = esito["errore"]
+        for x in reversed(righe):                    # «pagina 3/12 ...» o «riga 2 di 5: ...»
+            a = re.search(r"(\d+)\s*/\s*(\d+)", x)
+            if a:
+                r["avanzamento"] = {"fatto": int(a.group(1)), "totale": int(a.group(2)), "testo": x[:120]}
+                break
+        return r
+
+    def tabella(self, id=""):
+        """La tabella di revisione letta dal motore, per la tabella modificabile della scheda «Importazioni».
+        Le colonne si dividono nella pagina: essenziali quelle che servono davvero, il resto sotto «avanzate».
+        Con serie=true le righe portano anche l'elenco delle serie del progetto (per i menu a tendina)."""
+        f = self._tabella_safe(id)
+        righe = revisione.leggi_tabella(f)
+        if not righe:
+            raise Errore("La tabella è vuota.")
+        colonne = list(righe[0].keys())
+        essenziali = ["importa", "file", "serie", "tipo_serie", "lingua", "tipo_documento", "data", "stato_data",
+                      "numero", "titolo", "autore", "anno", "pagine", "testo", "qualita_ocr", "da_controllare",
+                      "file_dati"]
+        out = {"tabella": str(f), "file": f.name,
+               "tipo": "revisione" if "file_dati" in colonne else "proposta",
+               "colonne": [c for c in essenziali if c in colonne] + [c for c in colonne if c not in essenziali],
+               "righe": [{k: str(v or "") for k, v in r.items()} for r in righe]}
+        if _bool(id and True) and "serie" in colonne:          # le serie del progetto, per scegliere senza scrivere
+            import importa
+            out["serie"] = importa.leggi_serie().sections()
+        return out
+
+    def salva_tabella(self, id, righe):
+        """Sovrascrive la tabella con le righe corrette dalla pagina (CSV ; BOM UTF-8, come proponi). Il file
+        delle proposte (.json accanto) non si tocca: applica lo confronta e segna «verificato» ciò che hai
+        cambiato tu."""
+        f = self._tabella_safe(id)
+        vecchie = revisione.leggi_tabella(f)
+        if not vecchie:
+            raise Errore("La tabella è vuota.")
+        colonne = list(vecchie[0].keys())
+        if len(righe or []) != len(vecchie):
+            raise Errore(f"La pagina ha {len(righe or [])} righe, la tabella {len(vecchie)}: ricaricala.")
+        nuove = []
+        chiavi = [v.get("percorso") or v.get("file_dati") for v in vecchie]
+        if len(set(chiavi)) != len(chiavi):
+            raise Errore("La tabella ha righe duplicate: correggila con Excel o LibreOffice.")
+        for i, (r, vecchia) in enumerate(zip(righe, vecchie), start=1):
+            if not isinstance(r, dict):
+                raise Errore(f"Riga {i}: dati non validi.")
+            chiave = r.get("percorso") or r.get("file_dati")
+            if chiave != chiavi[i - 1]:
+                raise Errore(f"Riga {i}: il file non coincide con quello della tabella sul computer: ricaricala.")
+            # una cella lasciata vuota nella pagina cancella il valore; una colonna non mandata resta com'è
+            nuove.append({c: str(r[c]).strip() if c in r else str(vecchia.get(c) or "") for c in colonne})
+        revisione.scrivi_tabella(f, colonne, nuove)
+        return {"salvata": True, "righe": len(nuove)}
 
     def stato(self):
         return {"progetto": self.progetto_in_uso(), "progetti": self.progetti(),
@@ -472,7 +582,8 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/ricerca": lambda a, q: a.stato_ricerca(),
        "/api/storico": lambda a, q: a.storico(),
        "/api/fonti": lambda a, q: a.fonti(),
-       "/api/importa": lambda a, q: a.importa("stato", id=q.get("id", ""))}
+       "/api/importa": lambda a, q: a.stato_importazione(q.get("id", "")),
+       "/api/tabella": lambda a, q: a.tabella(q.get("percorso", ""))}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
         "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", "")),
@@ -488,7 +599,9 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/ricerca/avvia": lambda a, d: a.avvia(d.get("entita", ""), d.get("domanda", ""), d.get("dal"),
                                                   d.get("al"), d.get("fonti"), bool(d.get("evoluzione"))),
         "/api/ricerca/ferma": lambda a, d: a.ferma(),
-        "/api/importa": lambda a, d: a.importa(d.get("azione", ""), d.get("percorso", ""), d.get("prova", False))}
+        "/api/importa": lambda a, d: a.importa(d.get("azione", ""), d.get("percorso", ""), d.get("serie", ""),
+                                               d.get("prova", False), d.get("sovrascrivi", False)),
+        "/api/tabella": lambda a, d: a.salva_tabella(d.get("percorso", ""), d.get("righe"))}
 
 
 def gestore(app):
