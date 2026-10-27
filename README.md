@@ -5,7 +5,8 @@ primary sources. It answers with the original passages, a translation and a prec
 (pattern extraction tolerant of OCR errors, indexing, citations, page layout of the answer) runs locally in Python.
 Language models do only one job: they read the passages to decide whether each one is relevant, translate it and
 summarise. The models can be free ones, reached through [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi),
-Ollama or any OpenAI-compatible service. You ask questions from a chat client connected to the engine's MCP server.
+Ollama or any OpenAI-compatible service. You ask questions from the engine's own browser interface (`python scripts/app.py`: project and model menus, guided
+search, import, history) or from a chat client connected to the engine's MCP server.
 
 AIrchivist was built for a PhD project on dissident communism between Beijing and Tirana, using Chinese sources first
 and Albanian and Italian sources after them. It is designed so that it can be adapted to other research projects.

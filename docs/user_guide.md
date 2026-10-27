@@ -39,6 +39,7 @@ AIrchivist/                 the repository (the engine: it can be published)
   tests/                    automated tests (python -m unittest discover -s tests); test_project/: sample project
   scripts/
     installa.py             guided setup, libraries, environment check, model profiles, chat clients
+    app.py, interfaccia/    the browser interface (local server and page)
     mcp_server.py           the server that connects the chat to the engine; istruzioni.py: the rules it sends
     ricerca.py              the engine: extraction -> reading -> answer (started by the server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
@@ -227,6 +228,35 @@ in and a model not in the list answers, the reading stops without saving anythin
 
 Every passage records the model that actually answered, in the `modello_smistamento` and `modello_analisi` columns
 of `classificati.csv`.
+
+## The browser interface
+
+```
+python app.py
+```
+
+Starts a server on your computer and opens the interface in your browser; the terminal shows the link, to copy if
+the browser does not open (it is valid while the window stays open; Ctrl+C to close). No chat client is needed: the
+interface calls the same functions as the MCP server. Its labels are in Italian.
+
+- **"Progetto" (project) menu**: the projects in the `projects` folder; the choice also applies to the chat and the
+  command line (it is written to `config.ini`, section `[progetto]`). "Nuovo progetto…" creates one. While a search
+  of the project is running, switching is blocked.
+- **"Modello" (model) menu**: the model profiles, marked "misurato" or "non misurato" (measured or not on these
+  sources), with a dot for the connection (green: key present and service reachable). The choice goes through the
+  connection test: if it fails, the previous model stays and the message says why. "Aggiungi modello…" (add model)
+  creates a profile like `installa.py modello` (the key goes into environment variables, never into files).
+- **Search path** (right column): 1. the name (and, if you like, the question, the period, the sources); 2. if the
+  card exists, the forms the search looks for; otherwise the forms of the name attested in the sources, with counts
+  and examples, to confirm with the tick boxes (the card is created with those only); 3. progress, which you find
+  again if you close and reopen the page; 4. the summary of the answer and the full document, which opens in the
+  left column.
+- **Importa** (import): the documents folder, "Proponi" (writes the review table, to be corrected in Excel or
+  LibreOffice), then "Controlla" (check) and "Importa" (see "Importing new sources").
+- **Storico** (history): the project's previous answers and searches.
+
+The server listens only on your computer (`127.0.0.1`) and accepts only the browser opened with the session link.
+Options: `--porta 8770` (fixed port), `--senza-browser` (do not open the browser).
 
 ## Connecting the chat
 

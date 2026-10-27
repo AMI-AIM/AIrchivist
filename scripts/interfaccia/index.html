@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIrchivist</title>
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="testata">
+  <span class="marchio">AIrchivist</span>
+  <label class="menu">Progetto
+    <select id="progetto" aria-label="Progetto"></select>
+  </label>
+  <label class="menu">Modello
+    <select id="modello" aria-label="Modello che legge i passaggi"></select>
+    <span id="pallino" class="pallino" title="Stato del collegamento"></span>
+  </label>
+  <span class="spazio"></span>
+  <button type="button" id="b-importa">Importa</button>
+  <button type="button" id="b-storico">Storico</button>
+  <button type="button" id="b-nuova" class="primario">Nuova</button>
+</header>
+
+<div id="avviso" class="avviso" hidden></div>
+
+<main class="corpo">
+  <section class="sinistra">
+    <nav class="schede" role="tablist">
+      <button type="button" role="tab" data-scheda="risposta" class="attiva">Risposta</button>
+      <button type="button" role="tab" data-scheda="storico">Storico</button>
+      <button type="button" role="tab" data-scheda="importazioni">Importazioni</button>
+      <button type="button" role="tab" data-scheda="fonte" disabled title="Prossimamente">Fonte</button>
+      <button type="button" role="tab" data-scheda="passaggi" disabled title="Prossimamente">Passaggi</button>
+      <button type="button" role="tab" data-scheda="glossario" disabled title="Prossimamente">Glossario</button>
+    </nav>
+
+    <div class="pannello" data-pannello="risposta">
+      <p id="risposta-vuota" class="nota">Qui compare il documento della risposta, quando una ricerca è finita, o
+        quello che scegli dallo storico.</p>
+      <iframe id="documento" title="Documento della risposta" hidden></iframe>
+    </div>
+
+    <div class="pannello" data-pannello="storico" hidden>
+      <h2>Risposte</h2>
+      <ul id="storico-risposte" class="elenco"></ul>
+      <h2>Ricerche</h2>
+      <ul id="storico-ricerche" class="elenco"></ul>
+    </div>
+
+    <div class="pannello" data-pannello="importazioni" hidden>
+      <h2>Importare documenti</h2>
+      <ol class="passi-importa">
+        <li>
+          <label>Cartella dei documenti (PDF, scansioni, .txt, esportazioni PAGE/ALTO)
+            <input id="imp-cartella" type="text" placeholder="percorso della cartella">
+          </label>
+          <button type="button" id="imp-proponi">Proponi</button>
+          <p class="nota">Il sistema legge i file senza importarli e scrive una tabella di revisione.</p>
+        </li>
+        <li>
+          <label>Tabella di revisione (aprila con Excel o LibreOffice, correggi le righe «da_controllare», salva)
+            <input id="imp-tabella" type="text" placeholder="percorso della tabella">
+          </label>
+          <button type="button" id="imp-prova">Controlla</button>
+          <button type="button" id="imp-applica">Importa</button>
+        </li>
+      </ol>
+      <pre id="imp-registro" class="registro" hidden></pre>
+    </div>
+  </section>
+
+  <section class="destra" aria-live="polite">
+    <div id="passo-domanda" class="passo">
+      <h2>1. Domanda</h2>
+      <label>Di chi o di che cosa cerchi le menzioni?
+        <input id="nome" type="text" placeholder="una persona, un partito, una testata, uno Stato">
+      </label>
+      <label>Domanda (facoltativa)
+        <input id="domanda" type="text" placeholder="Cosa dicono le fonti di…?">
+      </label>
+      <details>
+        <summary>Periodo e fonti</summary>
+        <div class="riga">
+          <label>Dal <input id="dal" type="text" inputmode="numeric" size="5" placeholder="anno"></label>
+          <label>Al <input id="al" type="text" inputmode="numeric" size="5" placeholder="anno"></label>
+        </div>
+        <fieldset id="fonti"><legend>Solo queste fonti (nessuna = tutte)</legend></fieldset>
+        <label class="casella"><input id="evoluzione" type="checkbox"> Evoluzione nel tempo, con le entità
+          collegate della scheda</label>
+      </details>
+      <button type="button" id="b-continua" class="primario">Continua</button>
+    </div>
+
+    <div id="passo-forme" class="passo" hidden>
+      <h2>2. Forme del nome</h2>
+      <div id="forme-scheda"></div>
+      <div id="forme-esplora" hidden>
+        <p class="nota">Non c'è ancora una scheda per questo nome. Cerco nelle fonti le forme attestate: indica, se
+          puoi, qualche indizio (paese, partito) e le forme da verificare (per esempio una trascrizione).</p>
+        <label>Indizi <input id="indizi" type="text" placeholder="separati da ;"></label>
+        <label>Altre forme da verificare <input id="candidate" type="text" placeholder="separate da ;"></label>
+        <button type="button" id="b-esplora">Cerca le forme nelle fonti</button>
+        <div id="forme-trovate"></div>
+      </div>
+    </div>
+
+    <div id="passo-ricerca" class="passo" hidden>
+      <h2>3. Ricerca</h2>
+      <p id="ricerca-titolo" class="titolo-ricerca"></p>
+      <div class="barra"><div id="ricerca-barra"></div></div>
+      <p id="ricerca-stato"></p>
+      <button type="button" id="b-ferma">Ferma</button>
+      <p class="nota">La ricerca continua anche se chiudi questa pagina: riaprendola la ritrovi.</p>
+    </div>
+
+    <div id="passo-risposta" class="passo" hidden>
+      <h2>4. Risposta</h2>
+      <p id="risposta-documenti" class="nota"></p>
+      <div id="risposta-testo" class="risposta-testo"></div>
+      <div id="risposta-limiti"></div>
+      <p><a id="risposta-apri" href="#" target="_blank" rel="noopener">Apri il documento completo</a></p>
+    </div>
+  </section>
+</main>
+
+<dialog id="d-progetto">
+  <form method="dialog">
+    <h2>Nuovo progetto</h2>
+    <label>Nome della ricerca <input id="np-nome" type="text" required></label>
+    <label>Descrizione (facoltativa) <input id="np-descrizione" type="text"></label>
+    <p class="nota" id="np-dove"></p>
+    <menu><button value="annulla">Annulla</button> <button id="np-crea" value="crea" class="primario">Crea</button></menu>
+  </form>
+</dialog>
+
+<dialog id="d-modello">
+  <form method="dialog">
+    <h2>Aggiungi modello</h2>
+    <label>Servizio <select id="am-servizio"></select></label>
+    <p class="nota" id="am-dove"></p>
+    <label id="am-url-l">Indirizzo <input id="am-url" type="text"></label>
+    <label id="am-env-l">Variabile d'ambiente della chiave <input id="am-env" type="text"></label>
+    <label id="am-chiave-l">Chiave <input id="am-chiave" type="password" autocomplete="off"
+      placeholder="lascia vuoto se la variabile è già impostata"></label>
+    <label id="am-salva-l" class="casella"><input id="am-salva" type="checkbox" checked> Conserva la chiave tra le
+      variabili d'ambiente del tuo utente</label>
+    <button type="button" id="am-elenca">Elenca i modelli del servizio</button>
+    <label>Modello <input id="am-modello" type="text" list="am-modelli"></label>
+    <datalist id="am-modelli"></datalist>
+    <label>Nome del profilo (facoltativo) <input id="am-nome" type="text"></label>
+    <p class="nota">La chiave non si scrive mai nei file: nel profilo resta solo il nome della variabile. Prima di
+      usare il modello, il sistema fa una prova di collegamento.</p>
+    <pre id="am-messaggi" class="registro" hidden></pre>
+    <menu><button value="annulla">Chiudi</button> <button id="am-aggiungi" value="aggiungi" class="primario">Aggiungi e prova</button></menu>
+  </form>
+</dialog>
+</body>
+</html>

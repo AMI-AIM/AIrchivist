@@ -1357,6 +1357,7 @@ def riepilogo(stampa, file_client_fn=None):
         stampa("- Manca ancora: " + ", ".join(v.strip() for v in controlli.mancanti) +
                " (dettagli: python installa.py controlla)")
         return 1
+    stampa("- Interfaccia nel browser (menu Progetto e Modello, ricerca guidata, importazione): python app.py")
     stampa("- Prossimo passo: importa le fonti con la tabella di revisione: python importa.py proponi <cartella dei "
            "documenti>, controlla la tabella in Excel o LibreOffice, poi python importa.py applica <tabella> (o dalla "
            "chat: strumento importa, azioni proponi e applica); vedi docs/quickstart.it.md (in inglese docs/quickstart.md) e «Importare "

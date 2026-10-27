@@ -57,7 +57,9 @@ python installa.py client jan --scrivi
 3. L'assistente propone le forme del nome attestate nelle fonti; dopo la tua conferma avvia la ricerca e, alla
    fine, indica il documento della risposta (HTML, da aprire nel browser e stampare).
 
-Senza chat: scheda dell'entità in `glossary/entities.ini` del progetto e `python ricerca.py "Nome" --apri`.
+Gli stessi passi, senza client di chat, nell'interfaccia nel browser: `python app.py` (menu «Progetto» e
+«Modello», ricerca guidata, importazione, storico). Da riga di comando: scheda dell'entità in
+`glossary/entities.ini` del progetto e `python ricerca.py "Nome" --apri`.
 
 ## Dove sono le cose
 

@@ -34,6 +34,7 @@ AIrchivist/                 il repository (il motore: si può pubblicare)
   tests/                    test automatici (python -m unittest discover -s tests); test_project/: progetto di prova
   scripts/
     installa.py             avvio guidato, librerie, controllo dell'ambiente, profili dei modelli, client di chat
+    app.py, interfaccia/    l'interfaccia nel browser (server locale e pagina)
     mcp_server.py           il server che collega la chat al motore; istruzioni.py: le regole che consegna
     ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
@@ -218,6 +219,35 @@ un modello che non è nell'elenco, la lettura si ferma senza salvare nulla. Anch
 
 Ogni passaggio registra il modello che ha davvero risposto, nelle colonne `modello_smistamento` e
 `modello_analisi` di `classificati.csv`.
+
+## L'interfaccia nel browser
+
+```
+python app.py
+```
+
+Avvia un server sul tuo computer e apre l'interfaccia nel browser; il terminale mostra il collegamento, da
+copiare se il browser non si apre (vale finché la finestra resta aperta; Ctrl+C per chiudere). Non serve un
+client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
+
+- **Menu «Progetto»**: i progetti della cartella `projects`; la scelta vale anche per la chat e la riga di comando
+  (si scrive in `config.ini`, sezione `[progetto]`). «Nuovo progetto…» ne crea uno. Mentre una ricerca del progetto
+  è in corso il cambio è bloccato.
+- **Menu «Modello»**: i profili di modello, con «misurato» o «non misurato» su queste fonti e un pallino per il
+  collegamento (verde: chiave presente e servizio raggiungibile). La scelta passa per la prova di collegamento: se
+  fallisce, resta il modello di prima e il messaggio spiega perché. «Aggiungi modello…» crea un profilo come
+  `installa.py modello` (la chiave va nelle variabili d'ambiente, mai nei file).
+- **Percorso della ricerca** (colonna destra): 1. il nome (e, se vuoi, la domanda, il periodo, le fonti); 2. se la
+  scheda c'è, le forme che la ricerca cerca; altrimenti le forme del nome attestate nelle fonti, con conteggi ed
+  esempi, da confermare con le caselle (la scheda si crea solo con quelle); 3. l'avanzamento, che si ritrova
+  anche chiudendo e riaprendo la pagina; 4. il riassunto della risposta e il documento completo, che si apre nella
+  colonna sinistra.
+- **Importa**: la cartella dei documenti, «Proponi» (scrive la tabella di revisione, da correggere in Excel o
+  LibreOffice), poi «Controlla» e «Importa» (vedi «Importare nuove fonti»).
+- **Storico**: le risposte e le ricerche precedenti del progetto.
+
+Il server ascolta solo sul tuo computer (`127.0.0.1`) e accetta solo il browser aperto con il collegamento della
+sessione. Opzioni: `--porta 8770` (porta fissa), `--senza-browser`.
 
 ## Collegare la chat
 

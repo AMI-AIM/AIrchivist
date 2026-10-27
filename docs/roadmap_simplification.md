@@ -238,6 +238,8 @@ Completo quando: almeno un utente esterno arriva alla prima risposta in meno di 
 
 Completo quando: dall'interfaccia si cambia progetto e modello (anche con un collegamento che fallisce: resta il precedente) e si completa una ricerca su un'entità già in archivio, con lo stesso risultato della riga di comando (test automatici sulle risposte del server; prova manuale annotata).
 
+**Stato (27/10/2026): fatto.** `scripts/app.py` e `scripts/interfaccia/`; test in `tests/test_app.py`; prova nel browser annotata in `stato_del_sistema.md`, «Interfaccia: struttura e menu». Scelte fatte: la scelta del progetto si scrive in `config.ini` (la seguono chat e riga di comando), con una copia di sicurezza al giorno; il pallino del modello controlla chiave e raggiungibilità senza richieste al modello (come `controlla`), la prova vera si fa solo alla scelta; le schede «Fonte», «Passaggi» e «Glossario» sono presenti ma disattivate fino ai lavori 36-37.
+
 
 
 ### 36. Interfaccia: visore della fonte e citazioni cliccabili

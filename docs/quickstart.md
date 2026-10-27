@@ -81,6 +81,18 @@ imports (with OCR where needed) and builds the source index.
 
 ## 5. Your first question
 
+### From the browser interface
+
+```
+python app.py
+```
+
+Your browser opens. In the right column type the name of the person or body and press "Continua" (continue): if
+there is no card yet, "Cerca le forme nelle fonti" (search the forms in the sources) shows the attested forms of
+the name, with counts and examples; tick the right ones and press "Crea la scheda e avvia la ricerca" (create the
+card and start the search). Follow the progress; at the end the answer document opens on the left. The menus at
+the top switch project ("Progetto") and model ("Modello"); "Importa" also does step 4 from here.
+
 ### From the chat
 
 Restart the client if it was open. Check that the "airchivist" server is switched on in the client's MCP settings

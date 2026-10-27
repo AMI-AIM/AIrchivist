@@ -76,6 +76,17 @@ prepara l'indice delle fonti.
 
 ## 5. La prima domanda
 
+### Dall'interfaccia nel browser
+
+```
+python app.py
+```
+
+Si apre il browser. Nella colonna destra scrivi il nome della persona o dell'ente e premi «Continua»: se non c'è
+ancora una scheda, «Cerca le forme nelle fonti» mostra le forme del nome attestate, con conteggi ed esempi; spunta
+quelle giuste e premi «Crea la scheda e avvia la ricerca». Segui l'avanzamento; alla fine il documento della
+risposta si apre a sinistra. I menu in alto cambiano progetto e modello; «Importa» fa anche il passo 4 da qui.
+
 ### Dalla chat
 
 Riavvia il client se era aperto. Controlla che il server «airchivist» risulti acceso nelle impostazioni MCP del
