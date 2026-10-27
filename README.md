@@ -9,7 +9,18 @@ Ollama or any OpenAI-compatible service. You ask questions from a chat client co
 
 AIrchivist was built for a PhD project on dissident communism between Beijing and Tirana, using Chinese sources first
 and Albanian and Italian sources after them. It is designed so that it can be adapted to other research projects.
-The full documentation is in Italian (`README.it.md`, `docs/user_guide.it.md`); this page summarises it.
+It runs on Windows, macOS and Linux.
+
+## Getting started
+
+- [`docs/quickstart.md`](docs/quickstart.md): from installation to your first answer in about 15 minutes.
+- [`docs/user_guide.md`](docs/user_guide.md): the full guide.
+- [`docs/troubleshooting.md`](docs/troubleshooting.md): common problems.
+
+The same pages in Italian: [`README.it.md`](README.it.md), [`docs/quickstart.it.md`](docs/quickstart.it.md),
+[`docs/user_guide.it.md`](docs/user_guide.it.md), [`docs/troubleshooting.it.md`](docs/troubleshooting.it.md). The
+system's commands, messages and configuration keys are in Italian; the English guide explains them. Translations
+and summaries of the passages are in Italian for now.
 
 ## How it works
 
@@ -134,8 +145,8 @@ Without PyMuPDF the PDF tests are skipped.
 
 The tool works on the author's corpus (7,858 files in Chinese and English). Before a general release it still needs
 a hand-verified reference set to measure precision and recall (`scripts/valutazione.py`), tests on period scans
-and on real Transkribus or eScriptorium exports, a copyright-free example corpus, and an English translation of
-the full manual. The repository contains only the engine. The author's research data (corpus, entity cards, series
+and on real Transkribus or eScriptorium exports, a copyright-free example corpus, trials on macOS and Linux, and
+trials with external users. The repository contains only the engine. The author's research data (corpus, entity cards, series
 profiles, chat rules) are not distributed. The tests use their own sample project in `tests/test_project/`.
 
 A fresh clone has no project yet. Create one with `python scripts/progetto.py nuovo projects/<name>`, then select

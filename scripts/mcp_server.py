@@ -159,7 +159,7 @@ def indice_pronto():
         return ind, None
     if ind.costruzione["errore"]:
         return None, {"errore": f"Costruzione dell'indice non riuscita: {ind.costruzione['errore']}. "
-                                "Dal Prompt dei comandi, nella cartella scripts: python indice.py costruisci"}
+                                "Dal terminale, nella cartella scripts: python indice.py costruisci"}
     ind.costruisci_in_background()
     k = ind.costruzione
     return None, {"errore": "Indice delle fonti in costruzione (serve una volta sola, 10-30 minuti): avvisa "

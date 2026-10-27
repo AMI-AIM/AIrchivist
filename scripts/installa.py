@@ -113,11 +113,11 @@ def lingue_progetto():
 
 
 def controlla_tesseract(esito, cfg):
-    from importa import cartella_modelli, cerca_tesseract, lingue_installate
+    from importa import cartella_modelli, cerca_tesseract, come_installare_tesseract, lingue_installate
     exe = cerca_tesseract(cfg)
     if not exe:
-        esito("facoltativo", "Tesseract", "non trovato; serve solo a importare scansioni. Windows: "
-                                          "https://github.com/UB-Mannheim/tesseract/wiki")
+        esito("facoltativo", "Tesseract", "non trovato; serve solo a importare scansioni: "
+                                          + come_installare_tesseract())
         return
     try:
         r = subprocess.run([exe, "--version"], capture_output=True,
@@ -159,7 +159,7 @@ def controlla_servizio(esito, voce, p):
     nome_env = p.get("chiave_env", "").strip() or ("ANTHROPIC_API_KEY" if servizio == "anthropic" else "")
     chiave = os.environ.get(nome_env, "") if nome_env else ""
     if nome_env and not chiave:
-        esito("manca", voce, f"variabile {nome_env} assente (setx {nome_env} \"...\", poi riapri il terminale)")
+        esito("manca", voce, f"variabile {nome_env} assente ({come_salvare_variabile(nome_env)})")
         return
     if servizio == "anthropic":
         esito("ok", voce, f"chiave {nome_env} presente")
@@ -254,7 +254,11 @@ def cmd_librerie(args, stampa=print):
         return 1
     cmd = [sys.executable, "-m", "pip", "install", "-r", str(REQUISITI)]
     stampa("Installo nel Python di sistema: " + " ".join(cmd))
-    return subprocess.run(cmd).returncode
+    esito = subprocess.run(cmd).returncode
+    if esito and sys.platform.startswith("linux"):
+        stampa("Se pip ha rifiutato con «externally-managed-environment», installa PyMuPDF dai pacchetti della "
+               "distribuzione (Debian e Ubuntu: sudo apt install python3-fitz).")
+    return esito
 
 
 # ---------------------------------------------------------------- client MCP (lavoro 27)
@@ -592,7 +596,7 @@ FILE_CONFIG = CARTELLA / "config.ini"
 NOME_PROFILO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # servizi con una sola chiave: nome, indirizzo, variabile della chiave, modello proposto, pausa, dove si prende la chiave
 SERVIZI_CHIAVE = [
-    ("Groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY", "llama-3.3-70b-versatile", "6",
+    ("Groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY", "qwen/qwen3.8-27b", "6",
      "https://console.groq.com/keys"),
     ("Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY",
      "gemini-3.8-flash", "5", "https://aistudio.google.com/apikey"),
@@ -996,6 +1000,15 @@ def modelli_ollama(url):
         return None
 
 
+def come_salvare_variabile(nome, piattaforma=None):
+    """Come salvare una variabile d'ambiente dell'utente sul sistema in uso."""
+    piattaforma = piattaforma or sys.platform
+    if piattaforma.startswith("win"):
+        return f"setx {nome} \"...\", poi riapri il terminale"
+    profilo_shell = "~/.zprofile" if piattaforma == "darwin" else "~/.profile"
+    return f"aggiungi export {nome}=\"...\" a {profilo_shell}, poi riapri il terminale"
+
+
 def salva_variabile(nome, valore, stampa):
     """Variabile d'ambiente dell'utente (solo dopo conferma). Su Windows con setx; altrove si spiega dove scriverla."""
     if os.name == "nt":
@@ -1010,6 +1023,56 @@ def salva_variabile(nome, valore, stampa):
     stampa(f"Per conservarla, aggiungi questa riga a {profilo_shell} (con la tua chiave al posto di ...):\n"
            f"  export {nome}=\"...\"")
     return False
+
+
+def _chiedi_chiave(env, dove_chiave, stampa, chiedi, segreto, salva):
+    """Chiede la chiave (nascosta), la mette nell'ambiente per la prova e, se l'utente vuole, la conserva.
+    Vero se una chiave è stata data."""
+    if dove_chiave:
+        stampa(f"La chiave si crea qui: {dove_chiave}")
+    chiave = segreto(f"Incolla la chiave per {env} (non si vede mentre scrivi; Invio per saltare): ").strip()
+    if not chiave:
+        return False
+    os.environ[env] = chiave            # vale subito, per la prova
+    if sn(chiedi, f"Salvo la chiave nella variabile d'ambiente {env} del tuo utente, perché resti per le "
+                  "prossime volte?", True):
+        salva(env, chiave, stampa)
+    return True
+
+
+# modelli che un servizio elenca ma che non servono a leggere testi (audio, filtri di sicurezza, immagini, vettori)
+NON_TESTUALI = re.compile(r"whisper|tts|guard|embed|playai|orpheus|distil|vision|image|audio|safeguard|moderation",
+                          re.I)
+
+
+def modelli_servizio(url, chiave, timeout=10):
+    """Modelli che un servizio compatibile OpenAI elenca (GET <url>/models); None se non risponde."""
+    richiesta = urllib.request.Request(url.rstrip("/") + "/models", headers={
+        "User-Agent": "ricerca-fonti/1.0", **({"Authorization": f"Bearer {chiave}"} if chiave else {})})
+    try:
+        with urllib.request.urlopen(richiesta, timeout=timeout) as r:
+            dati = json.load(r).get("data", [])
+    except Exception:
+        return None
+    nomi = (m.get("id", "") for m in dati if isinstance(m, dict))
+    return sorted(n.removeprefix("models/") for n in nomi if n and not NON_TESTUALI.search(n))
+
+
+def scegli_modello_servizio(url, chiave, proposto, stampa, chiedi, massimo=30):
+    """Il modello di un servizio noto: dall'elenco del servizio quando si può avere, altrimenti scritto a mano
+    (con la proposta solo se il servizio non l'ha smentita). Restituisce il nome, o "" se resta da scrivere."""
+    elenco = modelli_servizio(url, chiave) if chiave else None
+    if elenco and proposto not in elenco:
+        proposto = ""                   # la proposta del codice non c'è più: non la suggeriamo
+    if elenco and len(elenco) <= massimo:
+        elenco = ([proposto] if proposto else []) + [m for m in elenco if m != proposto]
+        stampa("Modelli del servizio" + (" (il primo è quello consigliato)" if proposto else "") + ":")
+        n = _scegli(chiedi, stampa, "Quale", elenco + ["un altro (da scrivere)"])
+        if n <= len(elenco):
+            return elenco[n - 1]
+    elif elenco:
+        stampa(f"Il servizio offre {len(elenco)} modelli: scegli il nome nella sua console.")
+    return _chiedi_valore(chiedi, "Nome esatto del modello (dalla console del servizio)", proposto)
 
 
 def modello_nuovo(args, stampa, chiedi=input, segreto=getpass.getpass, salva=salva_variabile, **_):
@@ -1045,11 +1108,16 @@ def modello_nuovo(args, stampa, chiedi=input, segreto=getpass.getpass, salva=sal
         n = _scegli(chiedi, stampa, "Scelta", [s[0] for s in SERVIZI_CHIAVE] + ["altro servizio compatibile OpenAI"])
         if n <= len(SERVIZI_CHIAVE):
             _, url, env, modello, pausa, dove_chiave = SERVIZI_CHIAVE[n - 1]
+            # la chiave prima del modello: con la chiave il servizio dice quali modelli ha davvero
+            if not os.environ.get(env):
+                _chiedi_chiave(env, dove_chiave, stampa, chiedi, segreto, salva)
+            dove_chiave = ""
+            modello = scegli_modello_servizio(url, os.environ.get(env, ""), modello, stampa, chiedi)
         else:
             url = _chiedi_valore(chiedi, "Indirizzo del servizio (finisce di solito in /v1)")
             env = _chiedi_valore(chiedi, "Nome della variabile d'ambiente per la chiave (vuoto se non serve)")
             modello, pausa = "", "0"
-        modello = _chiedi_valore(chiedi, "Nome esatto del modello (dalla console del servizio)", modello)
+        modello = modello or _chiedi_valore(chiedi, "Nome esatto del modello (dalla console del servizio)")
         p = {"servizio": "openai", "url": url, "modello": modello, "chiave_env": env, "pausa_secondi": pausa}
     elif tipo == 3:
         modello = _chiedi_valore(chiedi, "Modello", "claude-sonnet-5-5")
@@ -1075,18 +1143,9 @@ def modello_nuovo(args, stampa, chiedi=input, segreto=getpass.getpass, salva=sal
         else:
             break
     env = p.get("chiave_env", "")
-    if env and not os.environ.get(env):
-        if dove_chiave:
-            stampa(f"La chiave si crea qui: {dove_chiave}")
-        chiave = segreto(f"Incolla la chiave per {env} (non si vede mentre scrivi; Invio per saltare): ").strip()
-        if chiave:
-            os.environ[env] = chiave            # vale subito, per la prova
-            if sn(chiedi, f"Salvo la chiave nella variabile d'ambiente {env} del tuo utente, perché resti per le "
-                          "prossime volte?", True):
-                salva(env, chiave, stampa)
-        else:
-            stampa(f"Senza chiave la prova non riuscirà: imposta la variabile {env} e poi "
-                   f"python installa.py modello prova {nome}.")
+    if env and not os.environ.get(env) and not _chiedi_chiave(env, dove_chiave, stampa, chiedi, segreto, salva):
+        stampa(f"Senza chiave la prova non riuscirà: imposta la variabile {env} e poi "
+               f"python installa.py modello prova {nome}.")
     f = file_profili(cfg)
     aggiungi_profilo(f, nome, p)
     stampa(f"Profilo «{nome}» salvato in {f}.")
@@ -1163,7 +1222,8 @@ def guida_modello(stampa, chiedi=input):
         try:
             attivi = {r: profilo(cfg, r)[0] for r in ("smistamento", "analisi", "sintesi")}
         except ErroreModello as e:
-            stampa(str(e))
+            if profili:                         # senza profili (copia nuova) la procedura qui sotto basta
+                stampa(str(e))
             attivi = {}
         if attivi:
             stampa("Modello che legge i passaggi, già scelto: "
@@ -1207,6 +1267,9 @@ def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None, si=F
     base = Path(base) if base else cartella_progetti()
     proposto = _chiedi_valore(chiedi, "Nome del progetto nuovo (la ricerca sui tuoi documenti)", "La mia ricerca")
     cartella = _chiedi_valore(chiedi, "Cartella dove mettere i suoi file", str(base / re.sub(r"\s+", "_", proposto)))
+    if not Path(cartella).expanduser().is_absolute():     # un nome solo: dentro la cartella dei progetti
+        cartella = str(base / cartella)
+    cartella = str(Path(cartella).expanduser())
     if not si and not conferma_domanda(f"Creo il progetto «{proposto}» in {cartella}? [S/n] ", chiedi):
         stampa("Passo saltato: nessun progetto creato. Quando vuoi: python progetto.py nuovo <cartella> --nome \"...\"")
         return 1
@@ -1296,7 +1359,8 @@ def riepilogo(stampa, file_client_fn=None):
         return 1
     stampa("- Prossimo passo: importa le fonti con la tabella di revisione: python importa.py proponi <cartella dei "
            "documenti>, controlla la tabella in Excel o LibreOffice, poi python importa.py applica <tabella> (o dalla "
-           "chat: strumento importa, azioni proponi e applica); vedi «Importare nuove fonti» in docs/user_guide.it.md")
+           "chat: strumento importa, azioni proponi e applica); vedi docs/quickstart.it.md (in inglese docs/quickstart.md) e «Importare "
+           "nuove fonti» in docs/user_guide.it.md")
     return 0
 
 

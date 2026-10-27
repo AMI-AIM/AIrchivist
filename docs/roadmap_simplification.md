@@ -202,6 +202,12 @@ Completo quando: la risposta di una ricerca già fatta (per esempio Franz Strobl
 
 Completo quando: un lettore che segue solo il quickstart arriva alla prima risposta (verificato nel lavoro 34).
 
+**Stato (27/10/2026): fatto, salvo la verifica con utenti esterni (lavoro 34) e la prova su macOS e Linux.** Quickstart in
+inglese e in italiano, guida completa in inglese (`docs/user_guide.md`), pagina dei problemi frequenti in due lingue
+(`docs/troubleshooting.md`, `troubleshooting.it.md`), guida italiana senza percorsi del PC dell'autore e con le istruzioni
+per i tre sistemi. Il corpus d'esempio non c'è ancora (lavoro 33): il quickstart usa i documenti del lettore. Prova e
+correzioni in `stato_del_sistema.md`, «Documentazione per utenti esterni».
+
 
 
 ### 33. Corpus d'esempio e confezione

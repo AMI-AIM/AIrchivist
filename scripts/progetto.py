@@ -194,9 +194,9 @@ def cmd_nuovo(args, stampa=print):
         f"[progetto]\nnome = {args.nome or radice.name}\ndescrizione = {args.descrizione or ''}\n"
         f"creato_il = {dt.date.today().isoformat()}\n", encoding="utf-8")
     stampa(f"Progetto creato in {radice}.\nPer usarlo: in config.ini, sezione [progetto], cartella = {radice}\n"
-           f"oppure, solo per una finestra del Prompt dei comandi: set {VARIABILE}={radice}\n"
-           f"Poi: aggiungi le serie in glossary/series.ini, importa le fonti (importa.py) e costruisci l'indice "
-           f"(python indice.py costruisci).")
+           f"oppure, solo per il terminale aperto: "
+           f"{f'set {VARIABILE}={radice}' if os.name == 'nt' else f'export {VARIABILE}={radice}'}\n"
+           f"Poi importa le fonti: python importa.py proponi <cartella dei documenti> (docs/quickstart.it.md).")
     return 0
 
 

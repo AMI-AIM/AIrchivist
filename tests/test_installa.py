@@ -55,6 +55,16 @@ class Controlli(unittest.TestCase):
         self.assertEqual(self.esito.mancanti, ["modelli: ollama"])
         self.assertIn("avvia Ollama", self.righe[0])
 
+    def test_istruzioni_per_sistema(self):
+        from importa import come_installare_tesseract
+        self.assertIn("winget", come_installare_tesseract("win32"))
+        self.assertIn("brew", come_installare_tesseract("darwin"))
+        self.assertIn("apt", come_installare_tesseract("linux"))
+        self.assertIn("setx X", I.come_salvare_variabile("X", "win32"))
+        self.assertIn("export X=", I.come_salvare_variabile("X", "darwin"))
+        self.assertIn("~/.zprofile", I.come_salvare_variabile("X", "darwin"))
+        self.assertIn("~/.profile", I.come_salvare_variabile("X", "linux"))
+
 
 class Client(unittest.TestCase):
     def setUp(self):
@@ -357,6 +367,12 @@ class AvvioGuidato(unittest.TestCase):
         self.assertIn("AIrchivist è nella configurazione di Claude Desktop", testo)
         self.assertIn("python importa.py proponi", testo)                  # comando che esiste (lavoro 29)
         self.assertTrue(testo.rstrip().endswith("Tutto pronto."))
+
+    def test_cartella_del_progetto_come_nome(self):
+        # un nome solo al posto del percorso: il progetto va nella cartella dei progetti, non in quella corrente
+        codice, testo = self.inizia(["La mia tesi", "tesi", ""], passi="3")
+        self.assertEqual(codice, 0, testo)
+        self.assertTrue((self.tmp / "projects" / "tesi" / "project.ini").is_file())
 
     def test_conferma_della_chat(self):
         domande = []

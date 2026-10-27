@@ -219,6 +219,31 @@ class Nuovo(Base):
         self.assertNotIn(CHIAVE, self.profili.read_text(encoding="utf-8"))
         self.assertEqual(L.profili_attivi(self.cfg())["analisi"], "locale-finto-3")
 
+    def test_servizio_noto_chiave_prima_e_modelli_dal_servizio(self):
+        # il modello proposto dal codice non c'è più nel servizio: si sceglie da quelli che il servizio elenca
+        noto = [("Finto", f"{self.url}/v1", "AIRCHIVIST_NOTO", "sparito", "0", "https://esempio/chiavi")]
+        os.environ.pop("AIRCHIVIST_NOTO", None)
+        salvate = {}
+        with mock.patch.object(I, "SERVIZI_CHIAVE", noto):
+            codice = self.esegui("nuovo", chiedi=["2", "1", "s", "1", "", "s"], segreto=lambda d: CHIAVE,
+                                 salva=lambda n, v, s: salvate.update({n: v}))
+        self.assertEqual(codice, 0, self.uscita())
+        self.assertEqual(salvate, {"AIRCHIVIST_NOTO": CHIAVE})
+        self.assertNotIn("sparito", self.uscita())
+        self.assertIn("finto-1", self.uscita())
+        nome = L.profili_attivi(self.cfg())["analisi"]
+        self.assertEqual(L.leggi_profili(self.cfg())[nome]["modello"], "finto-1")
+
+    def test_modello_senza_chiave_si_scrive(self):
+        risposte = iter([""])
+        self.assertEqual(I.scegli_modello_servizio(f"{self.url}/v1", "", "proposto", self.righe.append,
+                                                   lambda d: next(risposte)), "proposto")
+
+    def test_modelli_non_testuali_esclusi(self):
+        self.assertTrue(I.NON_TESTUALI.search("whisper-large-v3"))
+        self.assertTrue(I.NON_TESTUALI.search("meta-llama/llama-guard-4-12b"))
+        self.assertFalse(I.NON_TESTUALI.search("qwen/qwen3.8-27b"))
+
     def test_procedura_con_collegamento_fallito(self):
         risposte = ["2", "4", f"{self.url}/rotto/v1", "AIRCHIVIST_PROVA", "assente", "prova-rotta"]
         self.assertEqual(self.esegui("nuovo", chiedi=risposte), 1)

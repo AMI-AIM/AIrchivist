@@ -176,6 +176,17 @@ def cerca_tesseract(cfg):
     return None
 
 
+def come_installare_tesseract(piattaforma=None):
+    """Il comando per installare Tesseract sul sistema in uso (Windows, macOS, Linux con apt)."""
+    piattaforma = piattaforma or sys.platform
+    if piattaforma.startswith("win"):
+        return "winget install -e --id UB-Mannheim.TesseractOCR (poi riapri il terminale)"
+    if piattaforma == "darwin":
+        return "brew install tesseract tesseract-lang"
+    return ("sudo apt install tesseract-ocr tesseract-ocr-<lingua> (es. tesseract-ocr-sqi; "
+            "su Fedora: sudo dnf install tesseract tesseract-langpack-<lingua>)")
+
+
 def cartella_modelli(cfg):
     """Cartella dei modelli delle lingue indicata in config.ini ([ocr] modelli); None = quella di Tesseract
     (installazione di sistema, o la variabile TESSDATA_PREFIX)."""
@@ -212,8 +223,7 @@ class Ocr:
     def __init__(self, cfg, lingue, dpi=300):
         self.exe = cerca_tesseract(cfg)
         if not self.exe:
-            raise SystemExit("Tesseract non trovato. Installalo (gratuito): winget install -e --id "
-                             "UB-Mannheim.TesseractOCR  — poi riapri il Prompt dei comandi. "
+            raise SystemExit(f"Tesseract non trovato. Installalo (gratuito): {come_installare_tesseract()}. "
                              "Oppure indica il percorso in config.ini, sezione [ocr], voce tesseract.")
         self.lingue, self.dpi = lingue, dpi
         self.modelli = cartella_modelli(cfg)
@@ -1072,10 +1082,9 @@ def cmd_importa(args, stampa=print):
     if scritti and not args.senza_indice:
         from indice import Indice, percorso_indice
         ind = Indice(percorso_indice(cfg), dati)
-        if ind.pronto():
-            ind.aggiorna(stampa=stampa)
-        else:
-            stampa("Indice assente: python indice.py costruisci")
+        if not ind.db.exists():
+            stampa("Costruisco l'indice delle fonti (la prima volta in questo progetto).")
+        ind.aggiorna(stampa=stampa)                 # senza indice lo costruisce da capo
     return 4 if problemi and not scritti else 0
 
 
@@ -1209,7 +1218,7 @@ def cmd_prepara(args, stampa=print):
         stampa(f"Tesseract: {exe} ({v})")
     else:
         ok = False
-        stampa("Tesseract manca: winget install -e --id UB-Mannheim.TesseractOCR (poi riapri il Prompt dei comandi)")
+        stampa(f"Tesseract manca: {come_installare_tesseract()}")
     lingue = set()
     for s in leggi_serie().sections():
         if leggi_serie()[s].get("ocr", "").strip().lower() == "no":      # serie già nel corpus, senza OCR

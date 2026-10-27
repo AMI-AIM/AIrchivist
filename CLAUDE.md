@@ -46,7 +46,7 @@ Motore (repository, pubblicabile):
 | `tests/` | test (`python -m unittest discover -s tests`); progetto di prova in `tests/test_project/` |
 | `skills/source-search/` | skill source-search, fonte unica senza nomi di provider (`SKILL.md`, `config.ini`); `skills/readme/`: README delle confezioni |
 | `skills/package.py` | confezioni della skill in `skills/build/` (fuori da git): `source-search-claude.zip` per claude.ai, `claude-code/` marketplace con il plugin per Claude Code, `source-search-chatgpt.zip` per ChatGPT |
-| `docs/` | documentazione di progetto; `docs/user_guide.it.md`: guida d'uso |
+| `docs/` | documentazione di progetto; per gli utenti, in italiano e in inglese: `quickstart(.it).md` (primi passi), `user_guide(.it).md` (guida d'uso), `troubleshooting(.it).md` (problemi frequenti) |
 | `letteratura/` | letteratura secondaria sul metodo (PDF, fuori da git; da spostare fuori dal repository) |
 
 Progetti di ricerca, in `projects/` (fuori da git). Quello in uso si sceglie in `scripts/config.ini`, `[progetto] cartella` (oggi `../projects/dissident_communism`), o con `AIRCHIVIST_PROGETTO`; `python scripts/progetto.py stato` mostra dove stanno i suoi file. Dentro `projects/dissident_communism/`:

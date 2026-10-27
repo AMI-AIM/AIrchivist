@@ -704,10 +704,9 @@ def cmd_applica(args, stampa=print):
         from indice import Indice, percorso_indice
         from llm import percorso
         ind = Indice(percorso_indice(cfg), percorso(cfg, "dati").resolve())
-        if ind.pronto():
-            ind.aggiorna(stampa=stampa)
-        else:
-            stampa("Indice assente: python indice.py costruisci")
+        if not ind.db.exists():
+            stampa("Costruisco l'indice delle fonti (la prima volta in questo progetto).")
+        ind.aggiorna(stampa=stampa)                 # senza indice lo costruisce da capo
     stampa(f"\nImportati {importati} documenti su {len(attive)}"
            + (f"; valori corretti rispetto alla proposta: {len(modifiche)} (audit/changes.csv)" if modifiche else "")
            + ". Registro: audit/imports.csv")
