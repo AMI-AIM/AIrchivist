@@ -51,23 +51,39 @@
 
     <div class="pannello" data-pannello="importazioni" hidden>
       <h2>Importare documenti</h2>
+      <p class="nota">Il sistema legge i file senza importarli, propone serie e metadati in una tabella: qui la
+        controlli e correggi (o aprila con Excel), poi la provi e infine importi. L'OCR va da sé, con l'avanzamento
+        sotto; il lavoro continua anche se chiudi la pagina.</p>
       <ol class="passi-importa">
         <li>
-          <label>Cartella dei documenti (PDF, scansioni, .txt, esportazioni PAGE/ALTO)
+          <label>Cartella o file da importare (PDF, scansioni, .txt, esportazioni PAGE/ALTO)
             <input id="imp-cartella" type="text" placeholder="percorso della cartella">
           </label>
-          <button type="button" id="imp-proponi">Proponi</button>
-          <p class="nota">Il sistema legge i file senza importarli e scrive una tabella di revisione.</p>
+          <label>Serie per tutti i file (facoltativo: di solito la propone il sistema)
+            <input id="imp-serie" type="text" placeholder="nome di una serie">
+          </label>
+          <button type="button" id="imp-proponi">1. Proponi</button>
+          <button type="button" id="imp-rivedi" title="Tabella dei documenti già importati, con i valori dedotti o da verificare">Rivedi i già importati</button>
         </li>
         <li>
-          <label>Tabella di revisione (aprila con Excel o LibreOffice, correggi le righe «da_controllare», salva)
-            <input id="imp-tabella" type="text" placeholder="percorso della tabella">
-          </label>
-          <button type="button" id="imp-prova">Controlla</button>
-          <button type="button" id="imp-applica">Importa</button>
+          <p class="nota">Tabella di revisione (<span id="imp-tabella-nome">nessuna: il punto 1 non è ancora
+            finito</span>) — le celle si correggono qui; le colonne «avanzate» restano come sono se non le tocchi.</p>
+          <div class="riga">
+            <button type="button" id="imp-carica">2. Ricarica la tabella</button>
+            <button type="button" id="imp-salva">Salva le correzioni</button>
+            <label class="casella"><input id="imp-avanzate" type="checkbox"> Colonne avanzate</label>
+          </div>
+          <div id="imp-tabella" class="tabella-revisione" hidden></div>
+        </li>
+        <li>
+          <button type="button" id="imp-prova">3. Controlla senza scrivere</button>
+          <button type="button" id="imp-applica" class="primario">4. Importa</button>
+          <label class="casella"><input id="imp-sovrascrivi" type="checkbox"> Sostituisce i documenti già importati</label>
         </li>
       </ol>
-      <pre id="imp-registro" class="registro" hidden></pre>
+      <div id="imp-avanzamento" class="barra" hidden><div id="imp-barra"></div></div>
+      <p id="imp-stato" class="nota"></p>
+      <pre id="imp-esiti" class="registro" hidden></pre>
     </div>
   </section>
 
