@@ -201,6 +201,15 @@
     <details id="av-ambiente">
       <summary>Controllo dell'ambiente</summary>
       <div id="av-controlli"><p class="nota">Controllo in corso…</p></div>
+      <h3>Lingue OCR</h3>
+      <div id="av-lingue"><p class="nota">Controllo in corso…</p></div>
+      <div id="av-lingue-scarica" class="riga" hidden>
+        <label>Altra lingua <input id="av-lingua" type="text" list="av-lingue-proposte" size="12"
+          placeholder="codice, es. por"></label>
+        <datalist id="av-lingue-proposte"></datalist>
+        <button type="button" id="av-lingua-scarica">Scarica</button>
+      </div>
+      <p class="nota" id="av-lingue-stato"></p>
       <p class="nota" id="av-posizioni"></p>
     </details>
     <menu><button value="chiudi">Chiudi</button></menu>

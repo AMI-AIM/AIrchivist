@@ -231,7 +231,13 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
   modifiche», con una copia di sicurezza, lasciando intatte le altre voci, e non scrive se Jan è aperto; poi prova
   il server come lo avvierà il programma di chat. «Controllo dell'ambiente» rifà i controlli di
   `installa.py controlla` (Python, finestra propria, progetto, collegamento al modello, PyMuPDF, Tesseract e lingue
-  delle serie) e dice dove stanno configurazione, profili e progetti.
+  delle serie) e dice dove stanno configurazione, profili e progetti. Sotto, «Lingue OCR»: le lingue installate e
+  quelle che mancano alle serie del progetto, con «Scarica le mancanti» e un campo per qualsiasi altro codice di
+  Tesseract (per esempio `por`, `chi_tra`). I modelli arrivano da tessdata_best e vanno nella cartella di Tesseract:
+  si può solo con il Tesseract incluso nel programma installato; con un Tesseract installato nel sistema (in
+  Program Files) il pannello spiega come aggiungerle con il suo installatore. Da riga di comando:
+  `installa.py lingue` (stato) e `installa.py lingue sqi chi_sim` (scaricamento). Se alle scansioni di una tabella
+  di importazione manca la lingua, lo dice già «Controlla senza scrivere».
 - **Menu «Progetto»**: i progetti della cartella `projects`; la scelta vale anche per la chat e la riga di comando
   (si scrive in `config.ini`, sezione `[progetto]`). «Nuovo progetto…» ne crea uno. Mentre una ricerca del progetto
   è in corso il cambio è bloccato.

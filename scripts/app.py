@@ -398,6 +398,33 @@ class App:
         return {"gruppi": gruppi, "posizioni": posizioni.descrizione(),
                 "mancano": [v["voce"] for g in gruppi for v in g["voci"] if v["stato"] == "manca"]}
 
+    def lingue(self):
+        """Le lingue OCR: installate, richieste dalle serie, mancanti, e se si possono scaricare da qui."""
+        return installa.stato_lingue(self.cfg())
+
+    def scarica_lingua(self, codice):
+        """Scarica un modello di lingua di Tesseract nella sua cartella (solo se ci si può scrivere: il Tesseract
+        incluso nel programma installato). Può volerci qualche minuto per i modelli grandi (chi_sim, 44 MB)."""
+        import importa
+        s = installa.stato_lingue(self.cfg())
+        if not s["tesseract"]:
+            raise Errore("Tesseract non trovato: senza, le lingue non servono.")
+        if not s["scrivibile"]:
+            raise Errore(f"Non posso scrivere in {s['cartella']} (Tesseract installato nel sistema, serve "
+                         "l'amministratore). " + importa.AIUTO_LINGUE.format(codice))
+        codice = (codice or "").strip()
+        with self._blocco:                       # uno scaricamento alla volta
+            try:
+                f = importa.scarica_lingua(codice, s["cartella"], stampa=lambda t: None)
+            except ValueError as e:
+                raise Errore(str(e))
+            except OSError as e:
+                raise Errore(f"Scaricamento di «{codice}» non riuscito: {e}. Controlla la connessione e riprova.")
+        dopo = installa.stato_lingue(self.cfg())
+        if codice not in dopo["installate"]:
+            raise Errore(f"{f.name} è stato scaricato ma Tesseract non lo vede: controlla {dopo['cartella']}.")
+        return {"scaricata": codice, "dimensione_mb": round(f.stat().st_size / 1e6, 1), **dopo}
+
     def _client_noto(self, nome):
         if nome not in dict(installa.CLIENT_GUIDA):
             raise Errore(f"Programma di chat «{nome}» sconosciuto.")
@@ -978,7 +1005,8 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/glossario": lambda a, q: a.glossario(),
        "/api/avvio": lambda a, q: a.avvio(),
        "/api/ambiente": lambda a, q: a.ambiente(),
-       "/api/client": lambda a, q: a.client(q.get("nome", ""))}
+       "/api/client": lambda a, q: a.client(q.get("nome", "")),
+       "/api/lingue": lambda a, q: a.lingue()}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
         "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", "")),
@@ -999,7 +1027,8 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/tabella": lambda a, d: a.salva_tabella(d.get("percorso", ""), d.get("righe")),
         "/api/conversazione": lambda a, d: a.conversa(d.get("testo", "")),
         "/api/conversazione/nuova": lambda a, d: a.nuova_conversazione(),
-        "/api/client": lambda a, d: a.collega_client(d.get("nome", ""))}
+        "/api/client": lambda a, d: a.collega_client(d.get("nome", "")),
+        "/api/lingue": lambda a, d: a.scarica_lingua(d.get("codice", ""))}
 
 
 def gestore(app):

@@ -241,7 +241,13 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
   not write while Jan is open; then it tests the server as the chat program will start it. "Controllo
   dell'ambiente" (environment check) repeats the checks of `installa.py controlla` (Python, own window, project,
   model connection, PyMuPDF, Tesseract and the series' languages) and shows where configuration, profiles and
-  projects are.
+  projects are. Below it, "Lingue OCR" (OCR languages): the installed languages and those the project's series
+  lack, with "Scarica le mancanti" (download the missing ones) and a field for any other Tesseract code (e.g. `por`,
+  `chi_tra`). Models come from tessdata_best and go into Tesseract's folder: this works only with the Tesseract
+  bundled in the installed program; with a system-wide Tesseract (in Program Files) the panel explains how to add
+  them with its installer. From the command line: `installa.py lingue` (status) and `installa.py lingue sqi
+  chi_sim` (download). If the scans in an import table lack their language, "Controlla senza scrivere" (check
+  without writing) already says so.
 - **"Progetto" (project) menu**: the projects in the `projects` folder; the choice also applies to the chat and the
   command line (it is written to `config.ini`, section `[progetto]`). "Nuovo progetto…" creates one. While a search
   of the project is running, switching is blocked.

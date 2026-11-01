@@ -629,6 +629,28 @@ def controlla_righe(righe, esistenti):
     return attive, da_creare, errori, avvisi
 
 
+def lingue_mancanti(attive, esistenti, da_creare, cfg):
+    """Avvisi per le scansioni senza testo (serve l'OCR) la cui lingua non ha il modello di Tesseract: si vedono
+    già con la prova, prima di un'importazione che lascerebbe quei documenti senza testo."""
+    import importa
+    exe = importa.cerca_tesseract(cfg)
+    if not exe:
+        return []                       # lo dice già la proposta («serve l'OCR, ma Tesseract non c'è»)
+    presenti = importa.lingue_installate(exe, importa.cartella_modelli(cfg))
+    per_serie = {}
+    for n, r in attive:
+        testo = r.get("testo") or ""
+        serie = (r.get("serie") or "").strip()
+        if "scansione" not in testo or "strato" in testo or not serie:
+            continue
+        scheda = esistenti.get(serie) or {"lingua": (da_creare.get(serie) or {}).get("lingua", "")}
+        mancanti = [l for l in importa.lingue_ocr(dict(scheda)).split("+") if l and l not in presenti]
+        if mancanti:
+            per_serie.setdefault((serie, tuple(mancanti)), []).append(str(n))
+    return [("riga " if len(righe) == 1 else "righe ") + f"{', '.join(righe)} (serie «{serie}»): scansioni senza testo. "
+            + importa.aiuto_lingue(list(mancanti), cfg) for (serie, mancanti), righe in per_serie.items()]
+
+
 def cmd_applica(args, stampa=print):
     import importa
     import profili
@@ -642,6 +664,8 @@ def cmd_applica(args, stampa=print):
     cfg = importa.leggi_config()
     esistenti = profili.tutti(ricarica=True)
     attive, da_creare, errori, avvisi = controlla_righe(righe, esistenti)
+    if not errori:
+        avvisi += lingue_mancanti(attive, esistenti, da_creare, cfg)
     for a in avvisi:
         stampa("Avviso: " + a)
     if errori:

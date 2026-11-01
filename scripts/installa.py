@@ -24,6 +24,9 @@ Uso (nella cartella scripts):
       prova <profilo>               prova di collegamento con una richiesta minima
       togli <profilo> [--si]        toglie un profilo non in uso
       converti [--si]               trasforma in profili la configurazione precedente di config.ini
+  python installa.py lingue [codici]    lingue OCR: installate, richieste dalle serie, mancanti; con i codici
+                                    (es. sqi chi_sim) le scarica da tessdata_best nella cartella dei modelli
+                                    di Tesseract, se si può scrivere (Tesseract incluso nel programma)
   python installa.py inizia [--passi N,...] [--saltati N,...] [--si] [--rapido]
                                     avvio guidato per chi installa per la prima volta (lavoro 28):
                                     1 ambiente, 2 modello, 3 primo progetto, 4 chat, 5 riepilogo.
@@ -158,6 +161,59 @@ def controlla_tesseract(esito, cfg):
               "da https://github.com/tesseract-ocr/tessdata_best nella cartella tessdata")
     elif servono:
         esito("ok", "lingue OCR delle serie", ", ".join(sorted(set(servono.values()))))
+
+
+def stato_lingue(cfg):
+    """Le lingue OCR per la riga di comando e per l'interfaccia: Tesseract in uso, cartella dei modelli e se ci si
+    può scrivere, lingue installate, richieste dalle serie del progetto (più osd, l'orientamento della pagina),
+    mancanti, e i codici da proporre per lo scaricamento."""
+    import importa
+    from progetto import NessunProgetto
+    exe = importa.cerca_tesseract(cfg)
+    out = {"tesseract": exe, "cartella": None, "scrivibile": False, "installate": [], "richieste": [],
+           "mancanti": [], "proposte": []}
+    if not exe:
+        return out
+    cartella = importa.cartella_lingue(cfg, exe)
+    installate = importa.lingue_installate(exe, importa.cartella_modelli(cfg))
+    try:
+        richieste = importa.lingue_delle_serie() | {"osd"}
+    except (NessunProgetto, configparser.Error):
+        richieste = {"osd"}
+    proposte = sorted((set(importa.LINGUE_OCR.values()) | set(importa.ALTRE_LINGUE)) - installate)
+    out.update(cartella=str(cartella) if cartella else None, scrivibile=importa.scrivibile(cartella),
+               installate=sorted(installate), richieste=sorted(richieste),
+               mancanti=sorted(richieste - installate), proposte=proposte)
+    return out
+
+
+def cmd_lingue(args, stampa=print):
+    import importa
+    s = stato_lingue(leggi_cfg())
+    if not s["tesseract"]:
+        stampa(f"Tesseract non trovato: {importa.come_installare_tesseract()}")
+        return 1
+    stampa(f"Tesseract: {s['tesseract']}\nModelli delle lingue: {s['cartella']}"
+           + ("" if s["scrivibile"] else " (non scrivibile: serve l'amministratore)"))
+    stampa("Installate: " + (", ".join(s["installate"]) or "nessuna"))
+    stampa("Richieste dalle serie del progetto: " + ", ".join(s["richieste"]))
+    codici = list(dict.fromkeys(getattr(args, "codici", None) or []))
+    if not codici:
+        stampa("Mancano: " + ", ".join(s["mancanti"]) if s["mancanti"] else "Non manca nessuna lingua richiesta.")
+        if s["mancanti"] and s["scrivibile"]:
+            stampa(f"Per scaricarle: python installa.py lingue {' '.join(s['mancanti'])}")
+        return 1 if s["mancanti"] else 0
+    if not s["scrivibile"]:
+        stampa(importa.AIUTO_LINGUE.format(", ".join(codici)))
+        return 1
+    esito = 0
+    for c in codici:
+        try:
+            importa.scarica_lingua(c, s["cartella"], stampa=stampa)
+        except (ValueError, OSError) as e:
+            stampa(f"{c}: non scaricata ({e})")
+            esito = 1
+    return esito
 
 
 def controlla_paddle(esito, cfg):
@@ -1475,6 +1531,8 @@ def main(argv=None):
                    help="usa: solo per questo ruolo (ripetibile); senza, per tutti")
     m.add_argument("--progetto", action="store_true", help="usa: scelta nel project.ini del progetto in uso")
     m.add_argument("--si", action="store_true", help="togli, converti: niente domanda di conferma")
+    g = sub.add_parser("lingue", help="lingue OCR: stato; con i codici, le scarica (Tesseract incluso nel programma)")
+    g.add_argument("codici", nargs="*", help="codici Tesseract da scaricare, es. sqi chi_sim")
     i = sub.add_parser("inizia", help="avvio guidato: ambiente, modello, primo progetto, chat, riepilogo "
                                       "(lavoro 28)")
     i.add_argument("--passi", default="", help="solo questi passi, numeri da 1 a 5 separati da virgola (es. 3,4)")
@@ -1489,7 +1547,7 @@ def main(argv=None):
     if args.comando is None:
         args.comando, args.rapido = "controlla", False
     return {"controlla": cmd_controlla, "librerie": cmd_librerie, "client": cmd_client,
-            "modello": cmd_modello, "inizia": cmd_inizia}[args.comando](args)
+            "modello": cmd_modello, "inizia": cmd_inizia, "lingue": cmd_lingue}[args.comando](args)
 
 
 if __name__ == "__main__":

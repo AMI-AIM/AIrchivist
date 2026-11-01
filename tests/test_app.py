@@ -606,6 +606,43 @@ class Interfaccia(unittest.TestCase):
         self.assertIn("aperto", r["errore"])
         self.assertFalse(g.exists())
 
+    def test_lingue_ocr(self):
+        """Lo stato delle lingue; lo scaricamento solo se la cartella dei modelli è scrivibile, e la lingua deve
+        poi risultare installata. Né Tesseract né la rete veri: funzioni finte."""
+        import importa
+        cartella = self.p1.parent.parent / f"tessdata_{self._testMethodName}"
+        cartella.mkdir()
+        installate = {"eng", "osd"}
+
+        def stato(cfg):
+            return {"tesseract": "tesseract.exe", "cartella": str(cartella), "scrivibile": scrivibile[0],
+                    "installate": sorted(installate), "richieste": ["osd", "sqi"],
+                    "mancanti": sorted({"osd", "sqi"} - installate), "proposte": ["sqi"]}
+
+        def scarica(codice, dove, apri=None, stampa=print):
+            if codice == "xyz":
+                raise ValueError("tessdata_best non ha un modello «xyz»")
+            f = Path(dove) / f"{codice}.traineddata"
+            f.write_bytes(b"x" * 20000)
+            installate.add(codice)
+            return f
+        scrivibile = [False]
+        with mock.patch.object(A.installa, "stato_lingue", stato), mock.patch.object(importa, "scarica_lingua", scarica):
+            codice, s = self.get("/api/lingue")
+            self.assertEqual(codice, 200, s)
+            self.assertEqual(s["mancanti"], ["sqi"])
+            codice, r = self.post("/api/lingue", {"codice": "sqi"})
+            self.assertEqual(codice, 400)
+            self.assertIn("amministratore", r["errore"])
+            self.assertFalse((cartella / "sqi.traineddata").exists())
+            scrivibile[0] = True
+            codice, r = self.post("/api/lingue", {"codice": "sqi"})
+            self.assertEqual(codice, 200, r)
+            self.assertEqual((r["scaricata"], r["mancanti"]), ("sqi", []))
+            codice, r = self.post("/api/lingue", {"codice": "xyz"})
+            self.assertEqual(codice, 400)
+            self.assertIn("xyz", r["errore"])
+
 
 def sezione(testo, titolo):
     """Il testo di una sezione della risposta, dal suo titolo al successivo."""

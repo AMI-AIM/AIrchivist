@@ -218,6 +218,88 @@ AIUTO_LINGUE = ("Mancano i modelli OCR di: {}. Installali nel sistema: riesegui 
                 "(UB Mannheim) e in «Additional language data» spunta le lingue (Albanian per sqi); oppure copia "
                 "<lingua>.traineddata da https://github.com/tesseract-ocr/tessdata_best nella cartella tessdata "
                 "di Tesseract (es. C:\\Program Files\\Tesseract-OCR\\tessdata, serve l'amministratore).")
+AIUTO_LINGUE_INTERFACCIA = ("Mancano i modelli OCR di: {}. Scaricali dall'interfaccia: «Preparazione», «Controllo "
+                            "dell'ambiente», «Lingue OCR» (oppure: python installa.py lingue {}).")
+
+# modelli delle lingue (tessdata_best: i più precisi, gli stessi dell'installatore di UB Mannheim)
+URL_LINGUA = "https://github.com/tesseract-ocr/tessdata_best/raw/main/{}.traineddata"
+CODICE_LINGUA = re.compile(r"^[a-z]{3}(_[a-z]{3,6})*$")       # eng, chi_sim, chi_sim_vert, srp_latn
+# codici proposti nell'interfaccia oltre a quelli di LINGUE_OCR (scritture verticali, cinese tradizionale, lingue antiche)
+ALTRE_LINGUE = ("chi_tra", "chi_sim_vert", "chi_tra_vert", "jpn", "kor", "ara", "heb", "ukr", "bel", "hrv", "slv",
+                "slk", "lat", "grc", "ita_old", "frm", "deu_latf", "vie")
+
+
+def cartella_lingue(cfg, exe=None):
+    """Dove Tesseract cerca i modelli delle lingue: [ocr] modelli, TESSDATA_PREFIX, o la cartella tessdata accanto
+    all'eseguibile (installazione di UB Mannheim e Tesseract incluso nel programma). None senza Tesseract."""
+    m = cartella_modelli(cfg)
+    if m:
+        return m
+    prefisso = os.environ.get("TESSDATA_PREFIX", "").strip()
+    if prefisso:
+        p = Path(prefisso)
+        return p / "tessdata" if (p / "tessdata").is_dir() else p
+    exe = exe or cerca_tesseract(cfg)
+    return Path(exe).parent / "tessdata" if exe else None
+
+
+def scrivibile(cartella):
+    """Vero se si possono aggiungere file nella cartella (Tesseract del programma installato, non quello in
+    Program Files, che chiede l'amministratore)."""
+    if cartella is None or not Path(cartella).is_dir():
+        return False
+    try:
+        with tempfile.NamedTemporaryFile(dir=cartella, prefix=".prova_", delete=True):
+            pass
+        return True
+    except OSError:
+        return False
+
+
+def aiuto_lingue(mancanti, cfg):
+    """Il messaggio per le lingue mancanti: l'interfaccia, se può scaricarle; altrimenti l'installazione di sistema."""
+    if scrivibile(cartella_lingue(cfg)):
+        return AIUTO_LINGUE_INTERFACCIA.format(", ".join(mancanti), " ".join(mancanti))
+    return AIUTO_LINGUE.format(", ".join(mancanti))
+
+
+def scarica_lingua(codice, cartella, apri=None, stampa=print):
+    """Scarica <codice>.traineddata da tessdata_best nella cartella dei modelli; restituisce il file. Prima in un
+    file .parziale, rinominato solo a scaricamento finito: un'interruzione non lascia un modello rotto."""
+    import urllib.request
+    if not CODICE_LINGUA.match(codice or ""):
+        raise ValueError(f"«{codice}» non è un codice di lingua di Tesseract (es. sqi, chi_sim, srp_latn).")
+    cartella = Path(cartella)
+    dest = cartella / f"{codice}.traineddata"
+    parziale = dest.with_name(dest.name + ".parziale")
+    url = URL_LINGUA.format(codice)
+    stampa(f"Scarico {url}")
+    try:
+        with (apri or urllib.request.urlopen)(url, timeout=120) as r, open(parziale, "wb") as f:
+            shutil.copyfileobj(r, f, 1 << 20)
+    except Exception as e:
+        parziale.unlink(missing_ok=True)
+        if getattr(e, "code", None) == 404:
+            raise ValueError(f"tessdata_best non ha un modello «{codice}»: controlla il codice "
+                             "(elenco: https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html)")
+        raise
+    if parziale.stat().st_size < 10000:                 # un modello vero pesa almeno qualche centinaio di kB
+        parziale.unlink()
+        raise ValueError(f"Il file scaricato per «{codice}» è troppo piccolo: non è un modello di Tesseract.")
+    parziale.replace(dest)
+    stampa(f"{dest.name}: {dest.stat().st_size / 1e6:.1f} MB in {cartella}")
+    return dest
+
+
+def lingue_delle_serie():
+    """Codici Tesseract che le serie del progetto chiedono all'OCR (escluse quelle con ocr = no)."""
+    lingue = set()
+    for s in leggi_serie().sections():
+        if leggi_serie()[s].get("ocr", "").strip().lower() == "no":      # serie già nel corpus, senza OCR
+            continue
+        lingue.update(lingue_ocr(dict(leggi_serie()[s])).split("+"))
+    lingue.discard("")
+    return lingue
 
 
 def lingue_ocr(scheda, override=None):
@@ -241,7 +323,7 @@ class Ocr:
         presenti = lingue_installate(self.exe, self.modelli)
         mancanti = [l for l in lingue.split("+") if l and l not in presenti]
         if mancanti:
-            raise SystemExit(AIUTO_LINGUE.format(", ".join(mancanti)))
+            raise SystemExit(aiuto_lingue(mancanti, cfg))
         # 1 = segmentazione automatica con orientamento della pagina (serve il modello osd), altrimenti 3
         self.psm = "1" if "osd" in presenti else "3"
         self.env = dict(os.environ, OMP_THREAD_LIMIT="1")
@@ -970,7 +1052,7 @@ def cmd_importa(args, stampa=print):
                 metadati[Path(r.get("file", "")).name] = {k.strip().lower(): (v or "") for k, v in r.items()}
     gruppi = raggruppa_file(file, args.unisci)
     lingue = lingue_ocr(scheda, args.lingue)
-    ocr = None
+    ocr, senza_ocr = None, ""
     if any(f.suffix.lower() in PDF | IMMAGINI for f in file):
         try:
             ocr = Ocr(cfg, lingue, args.dpi)
@@ -978,6 +1060,7 @@ def cmd_importa(args, stampa=print):
             # senza Tesseract si importano i PDF che hanno già il testo; immagini e OCR forzato no
             if args.ocr == "sempre" or any(f.suffix.lower() in IMMAGINI for f in file):
                 raise
+            senza_ocr = str(e)          # il motivo va anche nel problema di ogni documento rimasto senza testo
             stampa(f"Avviso: OCR non disponibile ({e}). Si importano solo le pagine dei PDF che hanno già "
                    "il testo; quelle senza restano vuote.")
     processi = args.processi or max(1, (os.cpu_count() or 2) // 2)
@@ -1031,9 +1114,10 @@ def cmd_importa(args, stampa=print):
             stampa("  nessuna pagina leggibile: non importato")
             continue
         if not testo.strip():
-            problemi.append(f"{origine}: nessun testo (" + (
-                "strato di testo illeggibile, font senza tabella dei caratteri" if rap["pagine_corrotte"] else
-                "scansione senza strato di testo") + ": serve l'OCR)")
+            causa = ("strato di testo illeggibile, font senza tabella dei caratteri" if rap["pagine_corrotte"] else
+                     "scansione senza strato di testo")
+            problemi.append(f"{origine}: nessun testo ({causa}). OCR non disponibile: {senza_ocr}" if senza_ocr else
+                            f"{origine}: nessun testo ({causa}: serve l'OCR)")
             stampa("  nessun testo: non importato (serve l'OCR)")
             continue
         v = valori_documento(args.serie, scheda, args, metadati.get(doc["nome"], {}), doc["nome"], testo)
@@ -1234,11 +1318,7 @@ def cmd_prepara(args, stampa=print):
     else:
         ok = False
         stampa(f"Tesseract manca: {come_installare_tesseract()}")
-    lingue = set()
-    for s in leggi_serie().sections():
-        if leggi_serie()[s].get("ocr", "").strip().lower() == "no":      # serie già nel corpus, senza OCR
-            continue
-        lingue.update(lingue_ocr(dict(leggi_serie()[s])).split("+"))
+    lingue = lingue_delle_serie()
     lingue.update((args.lingue or "").split("+"))
     lingue.discard("")
     if exe:
@@ -1247,7 +1327,7 @@ def cmd_prepara(args, stampa=print):
         mancanti = sorted(l for l in lingue | {"osd"} if l not in presenti)
         if mancanti:
             ok = False
-            stampa(AIUTO_LINGUE.format(", ".join(mancanti)))
+            stampa(aiuto_lingue(mancanti, cfg))
         else:
             stampa(f"Ci sono tutte le lingue richieste dalle serie: {', '.join(sorted(lingue))}.")
     return 0 if ok else 1

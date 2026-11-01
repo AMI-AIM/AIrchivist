@@ -558,6 +558,57 @@ async function caricaAmbiente() {
   $("av-posizioni").textContent = r.posizioni.join(" · ");
 }
 
+async function caricaLingue(dopo) {
+  const d = $("av-lingue");
+  let s;
+  try {
+    s = dopo || await api("/api/lingue");
+  } catch (e) {
+    d.replaceChildren(el("p", e.message, "nota attenzione-testo"));
+    return;
+  }
+  if (!s.tesseract) {
+    d.replaceChildren(el("p", "Tesseract non trovato: senza, le scansioni non si importano.", "nota"));
+    mostra("av-lingue-scarica", false);
+    return;
+  }
+  const parti = [el("p", "Installate: " + (s.installate.join(", ") || "nessuna"), "nota")];
+  const riga = el("div", null, "riga");
+  if (s.mancanti.length) {
+    riga.append(el("span", "Mancano per le serie del progetto: " + s.mancanti.join(", "), "attenzione-testo"));
+    if (s.scrivibile) riga.append(pulsante("Scarica le mancanti", () => scaricaLingue(s.mancanti), true));
+  } else {
+    riga.append(el("span", "Ci sono tutte le lingue richieste dalle serie (" + s.richieste.join(", ") + ").",
+      "segno ok"));
+  }
+  parti.push(riga);
+  if (!s.scrivibile) {
+    parti.push(el("p", `I modelli stanno in ${s.cartella}, dove servono i diritti di amministratore: per aggiungere ` +
+      "lingue riesegui l'installazione di Tesseract e spunta quelle che servono.", "nota"));
+  }
+  d.replaceChildren(...parti);
+  $("av-lingue-proposte").replaceChildren(...s.proposte.map((c) => new Option(c, c)));
+  mostra("av-lingue-scarica", s.scrivibile);
+}
+
+async function scaricaLingue(codici) {
+  const st = $("av-lingue-stato");
+  for (const b of document.querySelectorAll("#av-lingue button, #av-lingua-scarica")) b.disabled = true;
+  let ultimo = null;
+  try {
+    for (const c of codici) {
+      st.textContent = `Scarico ${c} (i modelli grandi, come chi_sim, pesano decine di MB: può volerci qualche minuto)…`;
+      ultimo = await api("/api/lingue", { codice: c });
+      st.textContent = `${c}: scaricata (${ultimo.dimensione_mb} MB).`;
+    }
+  } catch (e) {
+    st.textContent = e.message;
+  } finally {
+    for (const b of document.querySelectorAll("#av-lingue button, #av-lingua-scarica")) b.disabled = false;
+    await caricaLingue(ultimo);
+  }
+}
+
 let clientAperto = "";
 async function apriClient(nome) {
   clientAperto = nome;
@@ -1186,7 +1237,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("conv-nuova").addEventListener("click", nuovaConversazione);
   $("conv-riprova").addEventListener("click", () => caricaConversazione(true));
   $("b-preparazione").addEventListener("click", apriAvvio);
-  $("av-ambiente").addEventListener("toggle", () => { if ($("av-ambiente").open) caricaAmbiente(); });
+  $("av-ambiente").addEventListener("toggle", () => {
+    if ($("av-ambiente").open) { caricaAmbiente(); caricaLingue(); }
+  });
+  $("av-lingua-scarica").addEventListener("click", () => {
+    const c = $("av-lingua").value.trim();
+    if (c) scaricaLingue([c]);
+  });
   $("cl-scrivi").addEventListener("click", collegaClient);
   // al primo avvio (o se manca il progetto o il modello) la preparazione si apre da sé
   caricaTutto().then(() => api("/api/avvio")).then((r) => { if (!r.completo) apriAvvio(); }).catch(() => {});

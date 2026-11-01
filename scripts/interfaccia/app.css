@@ -209,7 +209,9 @@ dialog.largo { width: min(44rem, 94vw); }
 .voce-ambiente { display: grid; grid-template-columns: 1.4rem minmax(8rem, max-content) 1fr; gap: .1rem .5rem;
   font-size: .88rem; padding: .2rem 0; }
 .voce-ambiente .d { color: var(--tenue); overflow-wrap: anywhere; }
-#av-controlli h3 { font-size: .92rem; margin: .8rem 0 .2rem; }
+#av-controlli h3, #av-ambiente > h3 { font-size: .92rem; margin: .8rem 0 .2rem; }
+#av-lingue .riga { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; font-size: .88rem;
+  margin: .2rem 0; }
 @media (max-width: 800px) {
   .passi-avvio > li { grid-template-columns: 1.6rem 1fr; }
   .passi-avvio .azioni { grid-column: 2; grid-row: auto; flex-direction: row; }
