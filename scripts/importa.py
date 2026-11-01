@@ -161,10 +161,21 @@ def aggiungi_serie(nome, tipo, lingua, cartella="", citazione="", sigla="", nota
     return f"Serie «{nome}» aggiunta a series.ini."
 
 
+def tesseract_incluso():
+    """Il Tesseract che il programma installato porta con sé (cartella tesseract accanto a scripts), se c'è."""
+    for nome in ("tesseract.exe", "tesseract"):
+        p = CARTELLA.parent / "tesseract" / nome
+        if p.is_file():
+            return p
+    return None
+
+
 def cerca_tesseract(cfg):
     if cfg.has_option("ocr", "tesseract") and cfg.get("ocr", "tesseract").strip():
         p = Path(cfg.get("ocr", "tesseract").strip())
         return str(p) if p.exists() else None
+    if tesseract_incluso():
+        return str(tesseract_incluso())
     trovato = shutil.which("tesseract")
     if trovato:
         return trovato

@@ -42,13 +42,22 @@ from pathlib import Path
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
 
+import posizioni                # noqa: E402
+
+if sys.stdout is None or sys.stderr is None:
+    # pythonw.exe (il collegamento del programma installato) non ha console: i messaggi vanno in app.log nella
+    # cartella dei dati, utile se qualcosa non va, e il server MCP importato qui trova un stdout vero
+    _registro = posizioni.cartella_dati() / "app.log"
+    _registro.parent.mkdir(parents=True, exist_ok=True)
+    sys.stdout = sys.stderr = open(_registro, "a", encoding="utf-8", buffering=1)
+    print(f"--- {dt.datetime.now():%Y-%m-%d %H:%M:%S} avvio", flush=True)
+
 _USCITA = sys.stdout
 import mcp_server as M          # noqa: E402  (il server MCP sposta stdout su stderr: qui non serve)
 sys.stdout = _USCITA
 
 import installa                 # noqa: E402
 import lavori                   # noqa: E402
-import posizioni                # noqa: E402
 import profili                  # noqa: E402
 import revisione                # noqa: E402
 import schede                   # noqa: E402
@@ -1111,8 +1120,13 @@ def _avvia_finestra_propria(server, url, senza_browser):
         return False
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
-    webview.create_window("AIrchivist", url, width=1200, height=800, min_size=(900, 600))
-    webview.start()
+    try:
+        webview.create_window("AIrchivist", url, width=1200, height=800, min_size=(900, 600))
+        webview.start()
+    except Exception as e:          # per esempio WebView2 assente: si ripiega sul browser
+        print(f"Finestra propria non disponibile ({e}): apro il browser.", flush=True)
+        server.shutdown()
+        return False
     server.shutdown()
     return True
 

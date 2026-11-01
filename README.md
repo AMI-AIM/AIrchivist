@@ -55,6 +55,27 @@ Install requirements system-wide, never inside the project folder.
 
 ## Installation
 
+### Windows, without a terminal
+
+`AIrchivist-<version>-setup.exe` installs the program for the current user, without administrator rights, in
+`%LOCALAPPDATA%\Programs\AIrchivist`, with everything it needs (Python, PyMuPDF, its own window, Tesseract with the
+OCR languages). Open it from the Start menu, "AIrchivist": the "Preparazione" (setup) window guides you through
+project, model, first sources and the chat connection. Your choices are kept in `%APPDATA%\AIrchivist` and your
+projects in `Documents\AIrchivist`: updating or uninstalling the program does not touch them. Requires 64-bit
+Windows 10 or 11.
+
+To build the installer from this repository (Python of the same version as the one to bundle, Tesseract installed,
+Inno Setup 6):
+
+```bash
+python confezione/costruisci.py
+```
+
+The output is in `confezione/uscita` (outside git): the program folder, tested by the script with its own Python,
+and the installer.
+
+### From the repository
+
 ```bash
 git clone <repository URL> AIrchivist
 cd AIrchivist

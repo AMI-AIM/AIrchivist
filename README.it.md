@@ -22,6 +22,26 @@ In inglese: [`README.md`](README.md), [`docs/quickstart.md`](docs/quickstart.md)
 
 ## Installazione
 
+### Su Windows, senza terminale
+
+`AIrchivist-<versione>-setup.exe` installa il programma per il solo utente, senza diritti di amministratore, in
+`%LOCALAPPDATA%\Programs\AIrchivist`, con tutto ciò che serve (Python, PyMuPDF, la finestra propria, Tesseract
+con le lingue OCR). Si apre dal menu Start, «AIrchivist»: la finestra «Preparazione» guida progetto, modello, prime
+fonti e collegamento alla chat. Le scelte stanno in `%APPDATA%\AIrchivist`, i progetti in `Documenti\AIrchivist`:
+aggiornare o disinstallare il programma non li tocca. Serve Windows 10 o 11 a 64 bit.
+
+Per costruire l'installatore da questo repository (Python della stessa versione di quello da includere, Tesseract
+installato, Inno Setup 6):
+
+```
+python confezione/costruisci.py
+```
+
+Il risultato è in `confezione/uscita` (fuori da git): la cartella del programma, provata dallo script con il suo
+Python, e l'installatore.
+
+### Dal repository
+
 Serve Python 3.10 o successivo (quello di python.org, o su macOS di Homebrew). I requisiti si installano nel
 sistema, mai dentro la cartella. Dalla cartella `scripts` del repository (su macOS e Linux, `python3`):
 
