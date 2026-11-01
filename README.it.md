@@ -2,7 +2,7 @@
 
 Sistema per trovare **tutte** le occorrenze di una persona o di un ente (partito, Stato, testata) in un ampio
 corpus di fonti primarie e rispondere con i passaggi originali, la traduzione e il riferimento esatto, con
-citazioni Chicago autore-data fino alla pagina. La ricerca gira in Python sul tuo computer; i modelli linguistici
+citazioni Chicago note-bibliografia fino alla pagina. La ricerca gira in Python sul tuo computer; i modelli linguistici
 (gratuiti, locali o a pagamento, a tua scelta) leggono solo i passaggi. Le domande si fanno da un client di chat
 collegato al server MCP del motore (Jan, Claude Desktop, LM Studio) o da riga di comando. Funziona su Windows,
 macOS e Linux.

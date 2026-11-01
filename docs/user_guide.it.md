@@ -43,7 +43,7 @@ AIrchivist/                 il repository (il motore: si può pubblicare)
     pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py, tabelle.py
                             parti dell'importazione: XML, numeri di pagina, ordine delle colonne nei giornali,
                             motori OCR, confronto dei testi, lettura delle tabelle (.csv, .xlsx)
-    citazioni.py            citazioni Chicago autore-data dalle intestazioni e dai profili di serie
+    citazioni.py            citazioni Chicago note-bibliografia dalle intestazioni e dai profili di serie
     documento.py            la risposta come documento HTML autonomo, da aprire nel browser e stampare
     sessione.py             lettura dei passaggi in sessione (li legge l'assistente della chat)
     valuta.py               prova rapida dei modelli su una lettura di riferimento
@@ -400,8 +400,8 @@ legge lì, e il modello della chat non la riscrive. Le altre sezioni si chiedono
 Da riga di comando: `python ricerca.py "Nome" --apri` apre il documento a fine ricerca; `python documento.py
 <risposta.md o cartella>` scrive il documento delle risposte salvate prima (`--apri` per aprirlo).
 
-Le citazioni sono in stile Chicago, 17ª edizione, sistema autore-data: la voce della bibliografia, con la pagina
-citata in coda quando il file la indica («*Renmin ribao* 人民日报. 1965. 28 giugno 1965, p. 4.»). La voce nasce
+Le citazioni sono in stile Chicago, 17ª edizione, sistema note-bibliografia: la voce della bibliografia, con la
+pagina citata in coda quando il file la indica («*Renmin ribao* 人民日报, 28 giugno 1965, p. 4.»). La voce nasce
 dall'intestazione del file e dal profilo della serie in `series.ini` (tipo, nome della testata, campo `chicago`).
 Sotto ogni passaggio la riga «Lettura» dice chi ha deciso la pertinenza e chi ha tradotto: un modello (quale), una
 sessione assistita, una regola. La sezione 6 riporta i conteggi.
@@ -537,13 +537,14 @@ lingua = sq
 `tipo` è `periodico` (fascicoli, un file per numero), `articolo` (articoli di una rivista, un file per articolo
 con autore e titolo), `volume` (libro o raccolta) o `archivio` (documenti d'archivio datati). Il resto ha valori
 predefiniti: cartella dentro `data/` (`riviste/zeri_i_popullit`, `volumi/...`, `archivi/...`), sigla dei nomi dei
-file (le iniziali: `ZP`), e la citazione Chicago 17 autore-data (voce di bibliografia, con la pagina citata in
-coda), che si genera dal tipo:
-- periodico e articolo: «Putnam, Lara. 2016. “The Transnational and the Text-Searchable.” *The American
-  Historical Review* 121, no. 2 (aprile): 377–402, p. 380.»; senza autore la testata ne prende il posto:
-  «*Zëri i Popullit*. 1967. 12 gennaio 1967, p. 3.»;
-- volume: «Hoxha, Enver. 1969. *Vepra*. Vol. 2. Tirana: Naim Frashëri, p. 45.»;
-- archivio: «Central Intelligence Agency. 1971. “Chinese Support for Foreign Communist Parties.” 3 marzo 1971.
+file (le iniziali: `ZP`), e la citazione Chicago 17 note-bibliografia (voce di bibliografia, con la pagina citata
+in coda), che si genera dal tipo:
+- periodico e articolo: «Putnam, Lara. “The Transnational and the Text-Searchable.” *The American Historical
+  Review* 121, no. 2 (aprile 2016): 377–402, p. 380.»; senza autore la voce comincia dal titolo o, per il
+  fascicolo intero, dalla testata: «*Peking Review* 10, no. 11 (10 marzo 1967), p. 5.», «*Zëri i Popullit*,
+  12 gennaio 1967, p. 3.»;
+- volume: «Hoxha, Enver. *Vepra*. Vol. 2. Tirana: Naim Frashëri, 1969, p. 45.»;
+- archivio: «Central Intelligence Agency. “Chinese Support for Foreign Communist Parties.” 3 marzo 1971.
   CIA-RDP85T00875R001100010023-9, CIA FOIA Electronic Reading Room, p. 12.» (campi facoltativi del profilo
   `archivio`, `fondo`, `segnatura`).
 

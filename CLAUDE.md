@@ -27,11 +27,11 @@ Gli originali di `stato_del_sistema.md` e `progettazione_del_sistema.md` sono ne
 
 - Mai inventare dati. Se un'informazione manca, dillo esplicitamente.
 - Per ogni informazione indica la fonte, se è primaria o secondaria e se è attendibile o controversa.
-- Citazioni in stile Chicago, 17ª edizione, sistema autore-data, nella forma della voce di bibliografia (non la nota a piè di pagina). Esempi:
-  - libro: Cognome, Nome. Anno. *Titolo*. Luogo: Editore.
-  - articolo: Cognome, Nome. Anno. "Titolo dell'articolo." *Rivista* volume, no. numero (mese): pagine.
-  - quotidiano senza autore: *Testata*. Anno. Giorno mese anno.
-  - pagina web: Autore o ente. Anno. "Titolo." *Sito*. Data. URL.
+- Citazioni in stile Chicago, 17ª edizione, sistema note-bibliografia (non autore-data), nella forma della voce di bibliografia (non la nota a piè di pagina): la data va dopo il titolo, nei dati di pubblicazione. Esempi:
+  - libro: Cognome, Nome. *Titolo*. Luogo: Editore, anno.
+  - articolo: Cognome, Nome. "Titolo dell'articolo." *Rivista* volume, no. numero (mese anno): pagine.
+  - quotidiano senza autore: *Testata*, giorno mese anno.
+  - pagina web: Autore o ente. "Titolo." *Sito*. Data. URL.
 - Nelle citazioni delle fonti del corpus la pagina citata va in coda alla voce («…, p. 3.»), solo se disponibile, senza nome del file né numero di riga.
 - Le traduzioni si introducono con «Traduzione:», senza dire chi le ha fatte.
 - Non enunciare le regole che applichi.

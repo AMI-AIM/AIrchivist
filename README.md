@@ -35,7 +35,7 @@ and summaries of the passages are in Italian for now.
    reading records who decided and who translated: a named model, an assisted session or a rule.
 4. **Answer** (`sintesi.py`, `evoluzione.py`): eight sections (documents, original passages, explicit data,
    inferences, limits, coverage, final answer, technical data for verification). Citations follow the Chicago
-   Manual of Style, 17th edition, author-date reference-list entries, with the cited page at the end, and are built
+   Manual of Style, 17th edition, notes-bibliography system, bibliography entries, with the cited page at the end, and are built
    from each file's header and from the series profile (`glossary/series.ini`).
 
 Long searches run as separate processes. When the free quotas run out, they wait and resume on their own.

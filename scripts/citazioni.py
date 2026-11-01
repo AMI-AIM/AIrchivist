@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Citazioni delle fonti del corpus in stile Chicago, 17ª edizione, sistema autore-data: la voce della bibliografia
-(reference list entry), con la pagina citata in coda quando c'è («…, p. 3.»).
+Citazioni delle fonti del corpus in stile Chicago, 17ª edizione, sistema note-bibliografia: la voce della
+bibliografia (bibliography entry, non la nota), con la pagina citata in coda quando c'è («…, p. 3.»).
 
 La voce si compone dall'intestazione del file ([SERIES: ...], [AUTHOR: ...], [DATE: ...] ...) e dal profilo della
 serie in series.ini: tipo (periodico, articolo, volume, archivio, voce_autore_data), nome della testata come va
@@ -9,12 +9,13 @@ scritto (campo «nome_citazione», es. *Renmin ribao* 人民日报), valori fiss
 c'è, è un modello con segnaposto che sostituisce la voce del tipo (un tratto tra [ ] sparisce se manca uno dei
 suoi segnaposto). Nome del file e numero di riga non entrano mai nella citazione.
 
-Forme (Chicago 17, 15.9 e seguenti):
-  articolo di rivista  Putnam, Lara. 2016. “Titolo.” *The American Historical Review* 121, no. 2 (aprile): 377–402.
-  quotidiano           Autore. 1967. “Titolo.” *Zëri i Popullit*, 12 gennaio 1967.  /  senza autore la testata
-                       al posto dell'autore: *Zëri i Popullit*. 1967. 12 gennaio 1967.
-  libro                Hoxha, Enver. 1969. *Vepra*. Vol. 2. Tirana: Naim Frashëri.
-  archivio             Central Intelligence Agency. 1971. “Titolo.” 3 marzo 1971. Segnatura, fondo, archivio.
+Forme (Chicago 17, 14.68 e seguenti): la data sta dopo il titolo, non dopo l'autore.
+  articolo di rivista  Putnam, Lara. “Titolo.” *The American Historical Review* 121, no. 2 (aprile 2016): 377–402.
+  fascicolo            *Peking Review* 10, no. 11 (10 marzo 1967).  /  senza autore la voce comincia dal titolo:
+                       “Titolo.” *Peking Review* 10, no. 11 (10 marzo 1967): 5–7.
+  quotidiano           Autore. “Titolo.” *Zëri i Popullit*, 12 gennaio 1967.  /  *Zëri i Popullit*, 12 gennaio 1967.
+  libro                Hoxha, Enver. *Vepra*. Vol. 2. Tirana: Naim Frashëri, 1969.
+  archivio             Central Intelligence Agency. “Titolo.” 3 marzo 1971. Segnatura, fondo, archivio.
 
 La pagina è quella dell'ultimo marcatore [[p. N]] che precede il passaggio nel file; per le serie che segnano le
 pagine in altro modo il profilo indica un'espressione regolare ("pagina_regex", es. 第N版 del Renmin Ribao).
@@ -122,7 +123,7 @@ def valori_da_intestazione(meta, profilo=None):
         "serie": meta.get("SERIES", ""),
         "titolo": meta.get("TITLE", ""),
         "autore": meta.get("AUTHOR") or meta.get("AUTHOR_NORMALIZED", ""),
-        "volume": arabo(meta.get("VOLUME", "")),
+        "volume": re.sub(r",\s*\(", " (", arabo(meta.get("VOLUME", ""))),    # «2, (1967年8月…)» -> «2 (…)»
         "numero": (meta.get("ISSUE", "") or "").lstrip("0") or meta.get("ISSUE", ""),
         "luogo": meta.get("PUBLICATION_PLACE", ""),
         "editore": meta.get("PUBLISHER", ""),
@@ -163,8 +164,8 @@ def valori_da_intestazione(meta, profilo=None):
         v["anno"] = data[:4]
     v["data_o_anno"] = v["data"] or v["anno"]
     v["anno_o_sd"] = v["anno"] or SENZA_DATA
+    v["data_rapporto_o_anno"] = v["data_rapporto"] or v["anno_o_sd"]
     vol = v["volume"]
-    vol = re.sub(r",\s*\(", " (", vol)
     v["volume_lbl"] = f"vol. {vol}" if re.match(r"\d", vol) and "vol" not in vol.lower() else vol
     num = v["numero"]
     if re.fullmatch(r"\d+", num):
@@ -224,51 +225,38 @@ def maiuscola(s):
 
 
 def voce_del_tipo(tipo, v):
-    """Voce di bibliografia autore-data (senza punto finale e senza pagina citata) per il tipo della serie."""
+    """Voce di bibliografia note-bibliografia (senza punto finale e senza pagina citata) per il tipo della serie:
+    autore, titolo, poi dati di pubblicazione con la data in fondo."""
     autore, anno, titolo = v["autore_bib"], v["anno"] or SENZA_DATA, v["titolo_articolo"]
     testata = v["testata"]
     if tipo == "volume":
         libro = f"*{v['titolo']}*" if v["titolo"] else testata
-        s = f"{autore}. {anno}. {libro}." if autore else f"{libro}. {anno}."
+        s = f"{autore}. {libro}." if autore else f"{libro}."
+        if v["volume"]:
+            s += f" Vol. {v['volume']}."
         editoriale = (f"{v['luogo']}: {v['editore']}" if v["luogo"] and v["editore"] else
                       v["luogo"] or v["editore"])
-        for parte in (f"Vol. {v['volume']}" if v["volume"] else "", editoriale):
-            if parte:
-                s += f" {parte}."
-        return s.rstrip(".")
+        return s + (f" {editoriale}, {anno}" if editoriale else f" {anno}")
     if tipo == "archivio":
         capo = autore or testata
-        s = f"{capo}. {anno}." + (f" “{titolo}.”" if titolo else "")
-        if v["data"] and v["data"] != anno:
-            s += f" {v['data']}."
+        s = f"{capo}." + (f" “{titolo}.”" if titolo else "") + f" {v['data'] or anno}."
         archivio = "" if not autore and f"*{v['archivio']}*" == testata else v["archivio"]
         coda = ", ".join(x for x in (v["segnatura"], v["fondo"], archivio, v["luogo"]) if x)
         return (s + (f" {maiuscola(coda)}" if coda else "")).rstrip(".")
-    # periodico e articolo: rivista (con mese) o quotidiano (con giorno); la data completa è parte della voce
-    giorno = v["data"] if v["data"] and not v["mese"] else ""
-    numerazione = [f"{v['volume']}" if v["volume"] else "", v["numero_lbl"], v["contenitore"]]
-    if autore:
-        s = f"{autore}. {anno}." + (f" “{titolo}.”" if titolo else "") + f" {testata}"
+    # periodico e articolo: senza autore la voce comincia dal titolo o, senza titolo (il fascicolo intero), dalla
+    # testata (Chicago 17, 14.175, 14.207)
+    s = (f"{autore}. " if autore else "") + (f"“{titolo}.” " if titolo else "") + testata
+    if v["volume"] or v["numero_lbl"]:
+        # rivista: volume e numero, la data (o il mese, o l'anno) tra parentesi, le pagine dopo i due punti
         if v["volume"]:
             s += f" {v['volume']}"
-        s += "".join(f", {x}" for x in numerazione[1:] if x)
-        if giorno:
-            s += f", {giorno}"
-        elif v["mese"]:
-            s += f" ({v['mese']})"
-        if v["pagine"]:
-            s += (", " if giorno else ": ") + v["pagine"]
-        return s
-    # senza autore la testata ne prende il posto (Chicago 17, 15.49)
-    s = f"{testata}. {anno}." + (f" “{titolo}.”" if titolo else "")
-    elementi = [f"vol. {v['volume']}" if v["volume"] else "", v["numero_lbl"], v["contenitore"],
-                giorno or (v["data"] if v["mese"] else "")]
-    corpo = ", ".join(x for x in elementi if x)
-    if corpo:
-        s += " " + maiuscola(corpo)
-    if v["pagine"] and titolo:
-        s += f": {v['pagine']}"
-    return s
+        s += "".join(f", {x}" for x in (v["numero_lbl"], v["contenitore"]) if x)
+        if v["data"] or v["anno"]:
+            s += f" ({v['data'] or v['anno']})"
+        return s + (f": {v['pagine']}" if v["pagine"] else "")
+    # quotidiano: la data dopo la virgola
+    s += "".join(f", {x}" for x in (v["contenitore"], v["data"] or anno) if x)
+    return s + (f", {v['pagine']}" if v["pagine"] else "")
 
 
 def tipo_della_voce(profilo, meta):
@@ -279,7 +267,7 @@ def tipo_della_voce(profilo, meta):
 
 
 def voce(meta, profilo=None, pagina=""):
-    """Voce di bibliografia autore-data del documento, con la pagina citata in coda («…, p. 3.»). Il campo chicago
+    """Voce di bibliografia del documento, con la pagina citata in coda («…, p. 3.»). Il campo chicago
     del profilo, se c'è, è il modello da usare al posto della voce del tipo (la pagina va nel modello)."""
     profilo = profilo or {}
     v = valori_da_intestazione(meta, profilo)
@@ -318,7 +306,7 @@ def dopo_punto_interrogativo(s):
 
 
 def citazione(meta, file="", pagina=""):
-    """Voce Chicago autore-data per il file, con la pagina citata se data."""
+    """Voce di bibliografia Chicago per il file, con la pagina citata se data."""
     return voce(meta, profilo_di(meta, file), pagina)
 
 

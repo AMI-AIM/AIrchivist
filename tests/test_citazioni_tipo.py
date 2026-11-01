@@ -1,6 +1,6 @@
 """
 Test delle serie con meno campi e della citazione Chicago generata dal tipo (lavoro 30): un profilo di tre campi
-(nome, tipo, lingua) ha cartella e sigla predefinite e produce una voce Chicago 17 autore-data corretta per ogni
+(nome, tipo, lingua) ha cartella e sigla predefinite e produce una voce Chicago 17 note-bibliografia corretta per ogni
 tipo (periodico, quotidiano, articolo, volume, archivio), con la pagina citata in coda; autori nella forma della
 bibliografia; una serie minima creata e usata per importare un documento.
 """
@@ -31,13 +31,13 @@ class CitazioneDalTipo(unittest.TestCase):
     def test_quotidiano(self):
         self.assertEqual(nota({"tipo": "periodico", "lingua": "sq"},
                               {"SERIES": "Zëri i Popullit", "DATE": "1967-01-12"}),
-                         "*Zëri i Popullit*. 1967. 12 gennaio 1967, p. 3.")
+                         "*Zëri i Popullit*, 12 gennaio 1967, p. 3.")
 
     def test_articolo_di_rivista(self):
         meta = {"SERIES": "The American Historical Review", "VOLUME": "121", "ISSUE": "2", "DATE": "2016-04",
                 "TITLE": "The Transnational and the Text-Searchable", "AUTHOR": "Putnam, Lara", "PAGES": "377-402"}
-        attesa = ("Putnam, Lara. 2016. “The Transnational and the Text-Searchable.” *The American Historical Review* "
-                  "121, no. 2 (aprile): 377–402, p. 377.")
+        attesa = ("Putnam, Lara. “The Transnational and the Text-Searchable.” *The American Historical Review* "
+                  "121, no. 2 (aprile 2016): 377–402, p. 377.")
         self.assertEqual(nota({"tipo": "periodico", "lingua": "en"}, meta, "377"), attesa)
         self.assertEqual(nota({"tipo": "articolo", "lingua": "en"}, meta, "377"), attesa)
 
@@ -45,18 +45,18 @@ class CitazioneDalTipo(unittest.TestCase):
         meta = {"SERIES": "The World Today", "VOLUME": "34", "ISSUE": "2", "DATE": "1978-02",
                 "TITLE": "Whither Albania?", "AUTHOR": "Larrabee, F. Stephen"}
         self.assertEqual(nota({"tipo": "articolo", "lingua": "en"}, meta, "63"),
-                         "Larrabee, F. Stephen. 1978. “Whither Albania?” *The World Today* 34, no. 2 (febbraio), p. 63.")
+                         "Larrabee, F. Stephen. “Whither Albania?” *The World Today* 34, no. 2 (febbraio 1978), p. 63.")
 
     def test_fascicolo_con_numero(self):
         self.assertEqual(nota({"tipo": "periodico", "lingua": "en"},
                               {"SERIES": "Peking Review", "ISSUE": "11", "YEAR": "1967"}, ""),
-                         "*Peking Review*. 1967. No. 11.")
+                         "*Peking Review*, no. 11 (1967).")
 
     def test_volume(self):
         meta = {"SERIES": "Vepra", "TITLE": "Vepra", "AUTHOR": "Hoxha, Enver", "VOLUME": "II",
                 "PUBLICATION_PLACE": "Tirana", "PUBLISHER": "Naim Frashëri", "YEAR": "1969"}
         self.assertEqual(nota({"tipo": "volume", "lingua": "sq"}, meta, "45"),
-                         "Hoxha, Enver. 1969. *Vepra*. Vol. 2. Tirana: Naim Frashëri, p. 45.")
+                         "Hoxha, Enver. *Vepra*. Vol. 2. Tirana: Naim Frashëri, 1969, p. 45.")
 
     def test_archivio(self):
         meta = {"SERIES": "Central Intelligence Agency", "AUTHOR": "Central Intelligence Agency",
@@ -64,7 +64,7 @@ class CitazioneDalTipo(unittest.TestCase):
                 "CALL_NUMBER": "CIA-RDP85T00875R001100010023-9"}
         profilo = {"tipo": "archivio", "lingua": "en", "archivio": "CIA FOIA Electronic Reading Room"}
         self.assertEqual(nota(profilo, meta, "12"),
-                         "Central Intelligence Agency. 1971. “Chinese Support for Foreign Communist Parties.” 3 marzo "
+                         "Central Intelligence Agency. “Chinese Support for Foreign Communist Parties.” 3 marzo "
                          "1971. CIA-RDP85T00875R001100010023-9, CIA FOIA Electronic Reading Room, p. 12.")
         # senza archivio nel profilo: il nome della serie
         self.assertTrue(nota({"tipo": "archivio", "lingua": "en"}, meta, "").endswith(", Central Intelligence Agency."))
@@ -77,10 +77,10 @@ class CitazioneDalTipo(unittest.TestCase):
     def test_nome_della_testata(self):
         profilo = {"tipo": "periodico", "lingua": "zh", "nome_citazione": "*Renmin ribao* 人民日报"}
         self.assertEqual(nota(profilo, {"SERIES": "Renmin Ribao", "DATE": "1967-01-12"}),
-                         "*Renmin ribao* 人民日报. 1967. 12 gennaio 1967, p. 3.")
+                         "*Renmin ribao* 人民日报, 12 gennaio 1967, p. 3.")
         self.assertEqual(nota(profilo, {"SERIES": "Renmin Ribao", "DATE": "1967-01-12", "TITLE": "Titolo",
                                         "AUTHOR": "Wang, Li"}, ""),
-                         "Wang, Li. 1967. “Titolo.” *Renmin ribao* 人民日报, 12 gennaio 1967.")
+                         "Wang, Li. “Titolo.” *Renmin ribao* 人民日报, 12 gennaio 1967.")
 
     def test_anno_sconosciuto(self):
         self.assertEqual(nota({"tipo": "volume", "lingua": "zh"}, {"SERIES": "Raccolta", "TITLE": "Raccolta"}, ""),
@@ -139,7 +139,7 @@ class ProfiloMinimo(unittest.TestCase):
             self.assertEqual(scritto.name, "TWT1978-02-n2-whither_albania.txt")
             meta = leggi_intestazione(scritto.read_text(encoding="utf-8"))[0]
             self.assertEqual(meta["FULL_CITATION"],
-                             "Larrabee, F. Stephen. 1978. “Whither Albania?” *The World Today* 34, no. 2 (febbraio).")
+                             "Larrabee, F. Stephen. “Whither Albania?” *The World Today* 34, no. 2 (febbraio 1978).")
 
 
 if __name__ == "__main__":

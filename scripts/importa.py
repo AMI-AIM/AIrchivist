@@ -799,7 +799,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
 
 
 def citazione_documento(serie, scheda, v, pagine=""):
-    """FULL_CITATION: voce Chicago autore-data del documento (citazioni.voce), senza pagina citata; per gli
+    """FULL_CITATION: voce di bibliografia Chicago del documento (citazioni.voce), senza pagina citata; per gli
     articoli con l'intervallo delle pagine stampate, quando è noto."""
     from citazioni import voce
     data = v.get("data_iso", "")

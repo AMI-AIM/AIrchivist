@@ -291,7 +291,7 @@ Verifiche (26/10):
 
 Verifiche (26/10): test 288, tutti superati (`tests/test_citazioni_tipo.py`: una nota per tipo da un profilo di tre campi, titolo con «?», campo chicago che prevale, autori nella forma della nota, valori predefiniti, serie minima creata e usata per importare un articolo). Citazioni di 650 file del corpus (600 a caso, 50 di volumi e raccolte) con il codice di prima e con quello nuovo: nessuna differenza (le serie del progetto hanno tutte il campo chicago o non cambiano forma).
 
-### Citazioni Chicago autore-data (26/10/2026)
+### Citazioni Chicago autore-data (26/10/2026, sostituite il 1/11/2026: sezione seguente)
 
 Su indicazione di Ivan le citazioni non sono più note a piè di pagina ma voci di bibliografia Chicago, 17ª edizione, sistema autore-data, con la pagina citata in coda (`citazioni.voce`):
 - articolo di rivista «Putnam, Lara. 2016. “The Transnational and the Text-Searchable.” *The American Historical Review* 121, no. 2 (aprile): 377–402, p. 380.»; quotidiano o fascicolo senza autore, con la testata al posto dell'autore (17, 15.49) «*Renmin ribao* 人民日报. 1965. 28 giugno 1965, p. 4.», «*Peking Review*. 1967. Vol. 10, no. 11, 10 marzo 1967.», «*Hongqi* 红旗. 1963. Nos. 10–11.»; libro «Mao Zedong. 1965. *Selected Works of Mao Tsetung*. Vol. 4. Peking: Foreign Languages Press, p. 3.»; archivio «Autore. Anno. “Titolo.” Data. Segnatura, fondo, archivio.»; anno sconosciuto «s.d.».
@@ -300,6 +300,16 @@ Su indicazione di Ivan le citazioni non sono più note a piè di pagina ma voci 
 - FULL_CITATION delle importazioni nuove: la voce autore-data (con l'intervallo delle pagine per gli articoli). Le FULL_CITATION già scritte nel corpus restano come sono: le risposte compongono le citazioni dall'intestazione.
 - Verifiche: test 291, tutti superati (attese aggiornate); risposta di prova su Franz Strobl rigenerata senza modello con le serie convertite (sezioni 1 e 2 in forma autore-data).
 - Aperto: un autore scritto senza virgola nell'intestazione («K.H. Fan») resta com'è, perché non si sa quale parte sia il cognome; va corretto nell'intestazione («Fan, K. H.»).
+
+### Citazioni Chicago note-bibliografia (1/11/2026)
+
+Ivan aveva chiesto il sistema note-bibliografia, non autore-data: la scelta del 26/10 (sezione precedente) era un errore di interpretazione. Le voci restano voci di bibliografia (non note), con la pagina citata in coda, ma la data passa dopo il titolo, nei dati di pubblicazione (`citazioni.voce_del_tipo`, Chicago 17, 14.68 e seguenti):
+- articolo di rivista «Putnam, Lara. “The Transnational and the Text-Searchable.” *The American Historical Review* 121, no. 2 (aprile 2016): 377–402, p. 380.»; fascicolo intero «*Peking Review* 10, no. 11 (10 marzo 1967), p. 5.», «*Hongqi* 红旗, nos. 10–11 (1963).»; quotidiano «*Renmin ribao* 人民日报, 28 giugno 1965, p. 4.»; senza autore la voce comincia dal titolo, se c'è; libro «Mao Zedong. *Selected Works of Mao Tsetung*. Vol. 4. Peking: Foreign Languages Press, 1965, p. 3.»; archivio «Autore. “Titolo.” Data. Segnatura, fondo, archivio.»; anno sconosciuto «s.d.».
+- Red Flag: modello «Joint Publications Research Service. JPRS 70256, 1 dicembre 1977. Trad. ingl. di *Hongqi* 红旗, no. 10, 8 ottobre 1977.» con il segnaposto nuovo `{data_rapporto_o_anno}` (copia di `series.ini` in `system/backups/2026-11-01_citazioni_note_bibliografia/`); stesso cambio nel progetto di prova.
+- Corretto anche: la virgola prima della parentesi nel volume («Vol. 2, (1967年8月至1968年3月)» -> «Vol. 2 (…)»).
+- Verifica delle citazioni della conversazione (`conversazione.STACCO`): la pagina dopo la data tra parentesi («(10 marzo 1967), p. 6») resta parte della citazione; prima veniva staccata e la citazione con una pagina sbagliata risultava «esatta».
+- Le FULL_CITATION già scritte nel corpus e le risposte salvate restano nella forma di prima; le risposte nuove compongono le citazioni dall'intestazione.
+- Verifiche: test 329, tutti superati (attese aggiornate, un test nuovo sulla verifica); voci di prova generate da file di ogni serie del corpus.
 
 ### La risposta come documento (fase 7, lavoro 31, 26/10/2026)
 

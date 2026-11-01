@@ -146,6 +146,14 @@ class Verifica(unittest.TestCase):
         v = C.verifica_citazioni("Peking Review 7, no. 12 (1964): 5.", ["{}"], ["Peking Review"])
         self.assertEqual([x["stato"] for x in v], ["non trovata"])
 
+    def test_pagina_dopo_la_data_tra_parentesi(self):
+        """Voce note-bibliografia del fascicolo: la pagina citata dopo «(10 marzo 1967)» fa parte della citazione."""
+        rif = "*Peking Review* 10, no. 11 (10 marzo 1967), p. 5."
+        risultati = [json.dumps({"passaggi": [{"riferimento": rif}]}, ensure_ascii=False)]
+        v = C.verifica_citazioni("Lo scrive *Peking Review* 10, no. 11 (10 marzo 1967), p. 6.", risultati)
+        self.assertEqual([(x["stato"], x["testo"]) for x in v],
+                         [("non trovata", "*Peking Review* 10, no. 11 (10 marzo 1967), p. 6")])
+
     def test_voce_di_rivista_e_conteggi_fra_virgolette(self):
         """Prova nel browser (1/11/2026): la voce Chicago di una rivista («*Titolo* 121, no. 2: 377–402», anno prima
         del titolo) non si controllava; il riassunto «*Titolo* 2016 (forme: «X» 17, …)» risultava inventato."""

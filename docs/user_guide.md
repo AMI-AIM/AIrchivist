@@ -48,7 +48,7 @@ AIrchivist/                 the repository (the engine: it can be published)
     pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py, tabelle.py
                             parts of the import: XML, page numbers, column order in newspapers, OCR engines,
                             text comparison, reading tables (.csv, .xlsx)
-    citazioni.py            Chicago author-date citations from the file headers and series profiles
+    citazioni.py            Chicago notes-bibliography citations from the file headers and series profiles
     documento.py            the answer as a self-contained HTML document, to open in a browser and print
     sessione.py             reading passages in a session (the chat assistant reads them)
     valuta.py               quick test of the models against a reference reading
@@ -413,8 +413,8 @@ separately (`risposte` tool).
 From the command line: `python ricerca.py "Name" --apri` opens the document when the search ends; `python
 documento.py <answer.md or folder>` writes the document for answers saved earlier (`--apri` to open it).
 
-Citations follow the Chicago Manual of Style, 17th edition, author-date system: the reference-list entry, with the
-cited page at the end when the file gives it ("*Renmin ribao* 人民日报. 1965. 28 giugno 1965, p. 4."). The entry is
+Citations follow the Chicago Manual of Style, 17th edition, notes-bibliography system: the bibliography entry, with
+the cited page at the end when the file gives it ("*Renmin ribao* 人民日报, 28 giugno 1965, p. 4."). The entry is
 built from the file header and from the series profile in `series.ini` (type, title of the newspaper, `chicago`
 field). Under every passage the "Lettura" (reading) line says who decided the relevance and who translated: a model
 (which one), an assisted session, a rule. Section 6 gives the counts. Month names in citations are in Italian.
@@ -551,13 +551,14 @@ lingua = sq
 `tipo` (type) is `periodico` (periodical: issues, one file per issue), `articolo` (journal articles, one file per
 article with author and title), `volume` (book or collection) or `archivio` (dated archival documents). Everything
 else has defaults: folder inside `data/` (`riviste/zeri_i_popullit`, `volumi/...`, `archivi/...`), file-name prefix
-(the initials: `ZP`), and the Chicago 17 author-date citation (reference-list entry, with the cited page at the
-end), generated from the type:
-- periodical and article: "Putnam, Lara. 2016. “The Transnational and the Text-Searchable.” *The American
-  Historical Review* 121, no. 2 (aprile): 377–402, p. 380."; without an author the newspaper takes its place:
-  "*Zëri i Popullit*. 1967. 12 gennaio 1967, p. 3.";
-- volume: "Hoxha, Enver. 1969. *Vepra*. Vol. 2. Tirana: Naim Frashëri, p. 45.";
-- archive: "Central Intelligence Agency. 1971. “Chinese Support for Foreign Communist Parties.” 3 marzo 1971.
+(the initials: `ZP`), and the Chicago 17 notes-bibliography citation (bibliography entry, with the cited page at
+the end), generated from the type:
+- periodical and article: "Putnam, Lara. “The Transnational and the Text-Searchable.” *The American Historical
+  Review* 121, no. 2 (aprile 2016): 377–402, p. 380."; without an author the entry begins with the title or, for
+  a whole issue, with the periodical: "*Peking Review* 10, no. 11 (10 marzo 1967), p. 5.", "*Zëri i Popullit*,
+  12 gennaio 1967, p. 3.";
+- volume: "Hoxha, Enver. *Vepra*. Vol. 2. Tirana: Naim Frashëri, 1969, p. 45.";
+- archive: "Central Intelligence Agency. “Chinese Support for Foreign Communist Parties.” 3 marzo 1971.
   CIA-RDP85T00875R001100010023-9, CIA FOIA Electronic Reading Room, p. 12." (optional profile fields `archivio`,
   `fondo`, `segnatura`: archive, fonds, shelfmark).
 
