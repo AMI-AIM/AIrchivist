@@ -153,6 +153,7 @@ async function caricaModelli() {
   sel.dataset.attuale = sel.value;
   if (m.errore) avviso(m.errore, true);
   aggiornaPallino();
+  if ($("conversazione").open) caricaConversazione(false);     // progetto o modello cambiati: si ricomincia
 }
 
 async function aggiornaPallino() {
@@ -667,6 +668,143 @@ async function salvaTabella() {
   }
 }
 
+// ------------------------------------------------------------------ conversazione sulle fonti (lavoro 38)
+// Il modello scelto usa gli strumenti del motore; il server confronta ogni citazione della risposta con i risultati
+// degli strumenti e ne dà la posizione nel testo: qui diventa un segno verde (trovata) o rosso (non trovata), e un
+// clic sulle citazioni di passaggi già letti mostra originale e traduzione.
+const STATI_CITAZIONE = {
+  "esatta": "Compare così nei risultati degli strumenti",
+  "corrispondente": "Un riferimento restituito dagli strumenti ha lo stesso titolo, data e pagina",
+  "non trovata": "Nessuno strumento ha restituito questo riferimento: non usarlo senza verificarlo",
+};
+
+async function caricaConversazione(riprova) {
+  const s = $("conv-stato");
+  s.textContent = riprova ? "Verifico se il modello sa usare gli strumenti…" : "Un momento…";
+  let r;
+  try {
+    r = await api("/api/conversazione" + (riprova ? "?riprova=1" : ""));
+  } catch (e) {
+    s.textContent = e.message;
+    return;
+  }
+  mostraConversazione(r);
+}
+
+function mostraConversazione(r) {
+  const attiva = !!r.attiva;
+  $("conv-stato").textContent = attiva
+    ? `Modello: ${r.profilo}${r.modello && r.modello !== r.profilo ? " (" + r.modello + ")" : ""}.`
+    : (r.motivo || "Conversazione non disponibile.");
+  $("conv-stato").classList.toggle("attenzione-testo", !attiva && !r.occupata);
+  $("conv-testo").disabled = !attiva;
+  $("conv-invia").disabled = !attiva;
+  $("conv-riprova").hidden = !r.riprova;
+  const box = $("conv-messaggi");
+  box.replaceChildren();
+  for (const m of r.messaggi || []) box.append(messaggioConversazione(m));
+}
+
+function testoConCitazioni(testo, citazioni, voce) {
+  const div = el("div", null, "testo");
+  let pos = 0;
+  for (const c of citazioni || []) {
+    if (c.inizio < pos) continue;
+    div.append(document.createTextNode(testo.slice(pos, c.inizio)));
+    const span = el("span", testo.slice(c.inizio, c.fine), "citazione");
+    span.title = STATI_CITAZIONE[c.stato] || c.stato;
+    if (c.stato === "non trovata") span.classList.add("non-trovata");
+    if (c.passaggio) {
+      span.classList.add("con-passaggio");
+      span.tabIndex = 0;
+      span.title += " — clic per il passaggio";
+      const apri = () => mostraPassaggio(voce, c);
+      span.addEventListener("click", apri);
+      span.addEventListener("keydown", (e) => { if (e.key === "Enter") apri(); });
+    }
+    div.append(span);
+    pos = c.fine;
+  }
+  div.append(document.createTextNode(testo.slice(pos)));
+  return div;
+}
+
+function mostraPassaggio(voce, c) {
+  const vecchio = voce.querySelector(".conv-passaggio");
+  const stesso = vecchio && vecchio.dataset.inizio === String(c.inizio);
+  if (vecchio) vecchio.remove();
+  if (stesso) return;
+  const q = el("blockquote", null, "conv-passaggio");
+  q.dataset.inizio = String(c.inizio);
+  q.append(el("p", c.riferimento));
+  if (c.passaggio.originale) q.append(el("p", c.passaggio.originale));
+  if (c.passaggio.traduzione) q.append(el("p", "Traduzione: " + c.passaggio.traduzione));
+  if (c.passaggio.data_documento) q.append(el("p", "Data del documento: " + c.passaggio.data_documento, "nota"));
+  voce.append(q);
+}
+
+function messaggioConversazione(m) {
+  const voce = el("div", null, "conv-messaggio " + (m.ruolo === "utente" ? "utente" : "modello"));
+  if (m.ruolo === "utente") {
+    voce.append(el("div", m.testo, "testo"));
+    return voce;
+  }
+  voce.append(testoConCitazioni(m.testo || "", m.citazioni, voce));
+  if (m.avviso) voce.append(el("div", m.avviso, "dettagli attenzione-testo"));
+  const v = m.verifica || {};
+  const trovate = (v.esatte || 0) + (v.corrispondenti || 0);
+  const parti = [];
+  if (trovate || v.non_trovate) {
+    parti.push(`Citazioni: ${trovate} trovate nei risultati degli strumenti` +
+      (v.non_trovate ? `, ${v.non_trovate} non trovate (in rosso)` : ""));
+  } else {
+    parti.push("Nessuna citazione nella risposta.");
+  }
+  if ((m.strumenti || []).length) {
+    parti.push("Strumenti: " + m.strumenti.map((s) => s.nome + (s.azione ? ` (${s.azione})` : "")).join(" › "));
+  }
+  if (m.modello) parti.push("Modello: " + m.modello);
+  voce.append(el("div", parti.join(" · "), "dettagli" + (v.non_trovate ? " attenzione-testo" : "")));
+  return voce;
+}
+
+async function inviaConversazione() {
+  const testo = $("conv-testo").value.trim();
+  if (!testo) { $("conv-testo").focus(); return; }
+  const box = $("conv-messaggi");
+  box.append(messaggioConversazione({ ruolo: "utente", testo }));
+  const attesa = el("div", "Il modello sta consultando le fonti con gli strumenti…", "nota");
+  box.append(attesa);
+  $("conv-invia").disabled = true;
+  $("conv-testo").disabled = true;
+  try {
+    const voce = await api("/api/conversazione", { testo });
+    attesa.replaceWith(messaggioConversazione(voce));
+    $("conv-testo").value = "";
+    // una ricerca avviata dalla conversazione si segue nel riquadro della ricerca (se è già finita, lì compaiono
+    // il riassunto e il documento)
+    if ((voce.strumenti || []).some((s) => s.nome === "ricerca" && s.azione === "avvia")) {
+      mostraRicerca(await api("/api/ricerca"), false);
+    }
+  } catch (e) {
+    attesa.remove();
+    box.lastElementChild.remove();                // la domanda non è rimasta nella conversazione
+    avviso(e.message, true);
+  } finally {
+    $("conv-invia").disabled = false;
+    $("conv-testo").disabled = false;
+    $("conv-testo").focus();
+  }
+}
+
+async function nuovaConversazione() {
+  try {
+    mostraConversazione(await api("/api/conversazione/nuova", {}));
+  } catch (e) {
+    avviso(e.message, true);
+  }
+}
+
 // ------------------------------------------------------------------ avvio
 document.addEventListener("DOMContentLoaded", () => {
   $("progetto").addEventListener("change", cambiaProgetto);
@@ -690,5 +828,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("imp-prova").addEventListener("click", () => stato.tabella && avviaImporta("applica", stato.tabella.tabella, true));
   $("imp-applica").addEventListener("click", () => stato.tabella && avviaImporta("applica", stato.tabella.tabella));
   document.querySelectorAll(".schede button").forEach((b) => b.addEventListener("click", () => apriScheda(b.dataset.scheda)));
+  // la verifica del modello costa una richiesta al servizio: si fa solo quando la conversazione si apre
+  $("conversazione").addEventListener("toggle", () => { if ($("conversazione").open) caricaConversazione(false); });
+  $("conv-invia").addEventListener("click", inviaConversazione);
+  $("conv-testo").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) inviaConversazione(); });
+  $("conv-nuova").addEventListener("click", nuovaConversazione);
+  $("conv-riprova").addEventListener("click", () => caricaConversazione(true));
   caricaTutto();
 });

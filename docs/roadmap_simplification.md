@@ -256,6 +256,8 @@ Scheda «Importazioni»: scelta di file o cartelle, proposta di serie e metadati
 
 Completo quando: il corpus di prova misto del lavoro 29 si importa interamente dall'interfaccia.
 
+**Stato (27/10/2026): in corso.** Scheda «Importazioni» fatta, con 5 test sulle risposte del server (`stato_del_sistema.md`, «Interfaccia: importazione e revisione»). Manca la prova reale nel browser.
+
 
 
 ### 38. Interfaccia: conversazione sulle fonti
@@ -263,3 +265,5 @@ Completo quando: il corpus di prova misto del lavoro 29 si importa interamente d
 Conversazione libera con il modello scelto, che usa gli strumenti del motore (gli stessi del server MCP) e mostra le citazioni come collegamenti. Regole e avvertenze come nel server MCP; se il modello scelto non sa usare gli strumenti, la conversazione si disattiva con una spiegazione e resta il percorso guidato.
 
 Completo quando: con almeno due modelli diversi la conversazione risponde citando solo passaggi esistenti (verifica automatica delle citazioni restituite).
+
+**Stato (28/10/2026): in corso.** `conversazione.py` e riquadro dell'interfaccia; il criterio è soddisfatto da riga di comando (`conversazione.py prova`: quattro modelli senza citazioni non trovate; `stato_del_sistema.md`, «Interfaccia: conversazione sulle fonti»). Manca la prova nel browser.

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Interfaccia di AIrchivist (lavoro 35): un server locale, con la sola libreria standard, che apre nel browser una
-pagina con i menu «Progetto» e «Modello» e il percorso guidato della ricerca (domanda, forme del nome attestate da
-confermare, avvio, avanzamento, risposta come documento). Le funzioni sono quelle del server MCP e del motore:
-interfaccia e chat fanno le stesse cose allo stesso modo.
+Interfaccia di AIrchivist (lavoro 35): un server locale, con la sola libreria standard, che apre una finestra
+propria (pywebview, opzionale) con i menu «Progetto» e «Modello» e il percorso guidato della ricerca (domanda,
+forme del nome attestate da confermare, avvio, avanzamento, risposta come documento). Senza pywebview apre nel
+browser. Le funzioni sono quelle del server MCP e del motore: interfaccia e chat fanno le stesse cose allo stesso
+modo.
 
-Sicurezza: il server ascolta solo su 127.0.0.1; all'avvio crea un token di sessione e apre il browser con il
+Sicurezza: il server ascolta solo su 127.0.0.1; all'avvio crea un token di sessione e apre la finestra con il
 collegamento che lo contiene; il token diventa un cookie (HttpOnly, SameSite=Strict) e senza di esso ogni richiesta
 è rifiutata. Si accettano solo richieste con Host 127.0.0.1 o localhost (contro il DNS rebinding); le azioni
 (POST) vogliono JSON e l'intestazione X-AIrchivist.
@@ -14,9 +15,11 @@ Progetto: la scelta vale per l'interfaccia (variabile AIRCHIVIST_PROGETTO del pr
 e si scrive in config.ini, sezione [progetto], perché la seguano anche chat e riga di comando (una copia di
 sicurezza al giorno). Il cambio è bloccato mentre una ricerca del progetto è in corso.
 Modello: la scelta passa per la prova di collegamento (installa.modello_usa): se fallisce resta il precedente.
+Conversazione sulle fonti (lavoro 38, conversazione.py): con il modello della sintesi e gli strumenti del server MCP;
+disattivata, con la spiegazione, se la prova dice che il modello non sa usare gli strumenti.
 
 Uso (nella cartella scripts):
-  python app.py                    avvia il server e apre il browser
+  python app.py                    avvia il server e apre una finestra propria (o il browser)
   python app.py --porta 8770       porta fissa (predefinita: una libera)
   python app.py --senza-browser    stampa solo il collegamento
 """
@@ -48,6 +51,8 @@ import lavori                   # noqa: E402
 import profili                  # noqa: E402
 import revisione                # noqa: E402
 import schede                   # noqa: E402
+from conversazione import Conversazione, ErroreConversazione   # noqa: E402
+from llm import ErroreModello   # noqa: E402
 from progetto import VARIABILE, cartella_scelta, leggi_config, percorso   # noqa: E402
 
 PAGINE = CARTELLA / "interfaccia"
@@ -73,6 +78,9 @@ class App:
         self.token = secrets.token_urlsafe(24)
         self._blocco = threading.Lock()
         self._collegamenti = {}            # profilo -> (istante, esito): la prova costa una richiesta di rete
+        self._conv, self._conv_chiave = None, None
+        self._conv_blocco = threading.Lock()   # una domanda alla volta
+        self._prove_strumenti = {}         # (profilo, servizio, modello, url) -> esito della prova degli strumenti
         radice = cartella_scelta(leggi_config(self.config))
         if radice is not None:
             os.environ[VARIABILE] = str(radice)
@@ -549,6 +557,81 @@ class App:
         revisione.scrivi_tabella(destinazione, colonne, nuove)
         return {"salvata": True, "righe": len(nuove), "tabella": str(destinazione)}
 
+    # ------------------------------------------------------------ conversazione sulle fonti (lavoro 38)
+    # Il modello della sintesi con gli strumenti del server MCP. La prova degli strumenti si fa una volta per profilo
+    # (finché l'interfaccia resta aperta); la conversazione ricomincia quando cambiano progetto o modello.
+    def _stato_conversazione(self, riprova=False):
+        if not self.progetto_in_uso():
+            return {"attiva": False, "motivo": "Scegli o crea un progetto.", "messaggi": []}
+        from llm import profilo
+        c = self.cfg()
+        try:
+            nome, voci = profilo(c, "sintesi")
+        except ErroreModello as e:
+            return {"attiva": False, "motivo": str(e), "messaggi": []}
+        prova = (nome, voci.get("servizio", ""), voci.get("modello", ""), voci.get("url", ""))
+        chiave = (str(cartella_scelta(c)),) + prova
+        if riprova:
+            self._prove_strumenti.pop(prova, None)
+        if self._conv is None or self._conv_chiave != chiave:
+            self._conv = None
+            try:
+                self._conv = Conversazione(c, M, nome)
+            except ErroreModello as e:
+                return {"attiva": False, "profilo": nome, "riprova": True, "messaggi": [],
+                        "motivo": f"Il modello «{nome}» non si può usare: {e}"}
+            self._conv_chiave = chiave
+        esito = self._prove_strumenti.get(prova)
+        if esito is None:
+            try:
+                esito = self._conv.prova_strumenti()
+            except ErroreConversazione as e:
+                return {"attiva": False, "profilo": nome, "riprova": True, "messaggi": self._conv.storia,
+                        "motivo": f"Non riesco a provare il modello «{nome}»: {e}"}
+            self._prove_strumenti[prova] = esito
+        out = {"attiva": esito["sa_usare_strumenti"], "profilo": nome, "modello": esito.get("modello", ""),
+               "messaggi": self._conv.storia}
+        if not esito["sa_usare_strumenti"]:
+            out["riprova"] = True
+            out["motivo"] = (f"Conversazione disattivata: {esito['motivo']}. Resta il percorso guidato, che non ne "
+                             "ha bisogno; per conversare scegli nel menu «Modello» un modello che sa usare gli "
+                             "strumenti.")
+        return out
+
+    def conversazione(self, riprova=False):
+        if not self._conv_blocco.acquire(blocking=False):
+            return {"attiva": False, "occupata": True, "messaggi": self._conv.storia if self._conv else [],
+                    "motivo": "Il modello sta rispondendo alla domanda precedente."}
+        try:
+            return self._stato_conversazione(riprova)
+        finally:
+            self._conv_blocco.release()
+
+    def conversa(self, testo):
+        if not (testo or "").strip():
+            raise Errore("Scrivi una domanda.")
+        if not self._conv_blocco.acquire(blocking=False):
+            raise Errore("Il modello sta ancora rispondendo alla domanda precedente.")
+        try:
+            s_ = self._stato_conversazione()
+            if not s_["attiva"]:
+                raise Errore(s_.get("motivo") or "Conversazione non disponibile.")
+            try:
+                return self._conv.invia(testo)
+            except ErroreConversazione as e:
+                raise Errore(f"{e} La domanda non è rimasta nella conversazione: puoi rifarla.")
+        finally:
+            self._conv_blocco.release()
+
+    def nuova_conversazione(self):
+        if not self._conv_blocco.acquire(blocking=False):
+            raise Errore("Il modello sta ancora rispondendo: aspetta la risposta.")
+        try:
+            self._conv = None
+            return self._stato_conversazione()
+        finally:
+            self._conv_blocco.release()
+
     def stato(self):
         return {"progetto": self.progetto_in_uso(), "progetti": self.progetti(),
                 "cartella_progetti": str(self.cartella_progetti), "ricerca": self.stato_ricerca()}
@@ -585,7 +668,8 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/storico": lambda a, q: a.storico(),
        "/api/fonti": lambda a, q: a.fonti(),
        "/api/importa": lambda a, q: a.stato_importazione(q.get("id", "")),
-       "/api/tabella": lambda a, q: a.tabella(q.get("percorso", ""))}
+       "/api/tabella": lambda a, q: a.tabella(q.get("percorso", "")),
+       "/api/conversazione": lambda a, q: a.conversazione(q.get("riprova") == "1")}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
         "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", "")),
@@ -603,7 +687,9 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/ricerca/ferma": lambda a, d: a.ferma(),
         "/api/importa": lambda a, d: a.importa(d.get("azione", ""), d.get("percorso", ""), d.get("serie", ""),
                                                d.get("prova", False), d.get("sovrascrivi", False)),
-        "/api/tabella": lambda a, d: a.salva_tabella(d.get("percorso", ""), d.get("righe"))}
+        "/api/tabella": lambda a, d: a.salva_tabella(d.get("percorso", ""), d.get("righe")),
+        "/api/conversazione": lambda a, d: a.conversa(d.get("testo", "")),
+        "/api/conversazione/nuova": lambda a, d: a.nuova_conversazione()}
 
 
 def gestore(app):
@@ -706,10 +792,29 @@ def avvia_server(app, porta=0):
     return server
 
 
+def _avvia_finestra_propria(server, url, senza_browser):
+    """Apre una finestra propria con pywebview, se disponibile. Il server gira in un thread separato mentre la
+    finestra è aperta; alla chiusura della finestra il server si ferma. Senza pywebview o con --senza-browser
+    restituisce False e si usa il browser."""
+    if senza_browser:
+        return False
+    try:
+        import webview
+    except ImportError:
+        return False
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    webview.create_window("AIrchivist", url, width=1200, height=800, min_size=(900, 600))
+    webview.start()
+    server.shutdown()
+    return True
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Interfaccia di AIrchivist nel browser (lavoro 35)")
+    ap = argparse.ArgumentParser(description="Interfaccia di AIrchivist (lavoro 35)")
     ap.add_argument("--porta", type=int, default=0, help="porta locale (predefinita: una libera)")
-    ap.add_argument("--senza-browser", action="store_true", help="non aprire il browser")
+    ap.add_argument("--senza-browser", action="store_true",
+                    help="non aprire né la finestra né il browser (stampa solo il collegamento)")
     ap.add_argument("--config", help="config.ini da usare (prove)")
     args = ap.parse_args(argv)
     app = App(args.config)
@@ -719,6 +824,10 @@ def main(argv=None):
         print(f"Non riesco ad aprire la porta {args.porta}: {e}. Prova con un'altra: python app.py --porta 8771")
         return 1
     url = f"http://127.0.0.1:{server.server_address[1]}/?t={app.token}"
+    if _avvia_finestra_propria(server, url, args.senza_browser):
+        print(f"AIrchivist è aperto in una finestra propria. Per chiudere: chiudi la finestra.", flush=True)
+        server.server_close()
+        return 0
     print(f"AIrchivist è aperto nel browser. Se non si apre, copia questo collegamento:\n  {url}\n"
           "Il collegamento vale finché questa finestra resta aperta. Per chiudere: Ctrl+C.", flush=True)
     if not args.senza_browser:

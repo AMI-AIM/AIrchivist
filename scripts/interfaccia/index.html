@@ -138,6 +138,21 @@
       <div id="risposta-limiti"></div>
       <p><a id="risposta-apri" href="#" target="_blank" rel="noopener">Apri il documento completo</a></p>
     </div>
+
+    <details id="conversazione" class="passo conversazione">
+      <summary>Conversazione sulle fonti</summary>
+      <p class="nota">Domande libere al modello scelto, che usa gli stessi strumenti del motore. È un'aggiunta al
+        percorso guidato, non la sua alternativa: i modelli deboli possono inventare riferimenti. Ogni citazione della
+        risposta è confrontata con ciò che gli strumenti hanno restituito: in verde se c'è, in rosso se no.</p>
+      <p id="conv-stato" class="nota"></p>
+      <div id="conv-messaggi" class="conv-messaggi"></div>
+      <label>Domanda <textarea id="conv-testo" rows="3" placeholder="Che cosa dicono le fonti di…?"></textarea></label>
+      <div class="riga">
+        <button type="button" id="conv-invia" class="primario">Invia</button>
+        <button type="button" id="conv-nuova">Nuova conversazione</button>
+        <button type="button" id="conv-riprova" hidden>Riprova la verifica del modello</button>
+      </div>
+    </details>
   </section>
 </main>
 

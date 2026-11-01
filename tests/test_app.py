@@ -8,7 +8,8 @@ dei modelli finto:
   risultato della riga di comando; documento della risposta servito solo dalle cartelle del progetto;
 - importazione (lavoro 37): tabella di revisione letta e corretta dalla pagina solo nelle cartelle del progetto,
   righe che non coincidono rifiutate, file Excel mai riscritto (le correzioni vanno nel CSV accanto), stato del
-  lavoro con avanzamento e tabella pronta.
+  lavoro con avanzamento e tabella pronta;
+- conversazione (lavoro 38): disattivata, con la spiegazione, se il modello non sa usare gli strumenti.
 """
 import http.client
 import json
@@ -289,6 +290,19 @@ class Interfaccia(unittest.TestCase):
         storico = self.get("/api/storico")[1]
         self.assertTrue(storico["risposte"])
         self.assertIn("enrico_berlinguer", [x["cartella"] for x in storico["ricerche"]])
+
+    # ------------------------------------------------------------ conversazione (lavoro 38)
+    def test_conversazione_disattivata_se_il_modello_non_usa_strumenti(self):
+        codice, r = self.get("/api/conversazione")
+        self.assertEqual(codice, 200, r)
+        self.assertFalse(r["attiva"])
+        self.assertIn("percorso guidato", r["motivo"])
+        self.assertTrue(r["riprova"])
+        codice, r = self.post("/api/conversazione", {"testo": "Chi è Berlinguer?"})
+        self.assertEqual(codice, 400)
+        self.assertIn("disattivata", r["errore"])
+        self.assertEqual(self.post("/api/conversazione", {"testo": " "})[0], 400)
+        self.assertFalse(self.post("/api/conversazione/nuova", {})[1]["attiva"])
 
     # ------------------------------------------------------------ importazione (lavoro 37)
     def audit(self):

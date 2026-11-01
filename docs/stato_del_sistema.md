@@ -353,6 +353,17 @@ Codice proposto da un contributore esterno (PR #5, `dec4646`) e corretto qui.
 
 Non provati: la pagina nel browser (JavaScript della tabella, pulsanti, barra) e un'importazione completa dall'interfaccia.
 
+### Interfaccia: conversazione sulle fonti (fase 7, lavoro 38, in corso, 28/10/2026)
+
+- **`conversazione.py`**: conversazione libera con il profilo della sintesi (servizi compatibili OpenAI, anche FreeLLMAPI; API di Anthropic; Ollama), con gli strumenti del server MCP e le sue istruzioni come messaggio di sistema. Esclusi `guida`, `modello`, `importa` e `serie`, che nell'interfaccia hanno menu e scheda propri; `ricerca attendi` aspetta pochi secondi (la ricerca si segue nel riquadro della ricerca). Prima della conversazione una prova con uno strumento finto dice se il modello sa usare gli strumenti; se no, la conversazione resta disattivata con la spiegazione. Richiesta troppo grande per il servizio: risultati degli strumenti accorciati e nuovo tentativo; errore del servizio: la domanda non resta nella storia.
+- **Verifica delle citazioni** (calcolata): ogni citazione della risposta (titolo di fonte seguito da anno, data o pagina; rimandi «p. N» isolati) è *esatta*, *corrispondente* (stesso titolo e stessi numeri di un riferimento restituito) o *non trovata*. Nella pagina: verde con originale e traduzione al clic, rosso se nessuno strumento l'ha data.
+- **`app.py`**: `GET /api/conversazione` (stato e prova degli strumenti, una per profilo finché l'interfaccia resta aperta; `?riprova=1` la rifà), `POST /api/conversazione` (domanda), `POST /api/conversazione/nuova`; una domanda alla volta; la conversazione ricomincia quando cambiano progetto o modello. Riquadro «Conversazione sulle fonti» sotto il percorso guidato.
+- **Finestra propria**: con `pywebview` installato (facoltativo, in `requirements.txt`) `app.py` apre l'interfaccia in una finestra propria invece che nel browser; senza, o con `--senza-browser`, tutto come prima.
+- **Test**: `tests/test_conversazione.py` (13, con un servizio finto: verifica delle citazioni, prova degli strumenti, sola lettura, risultati accorciati, errori, conversione per Anthropic e Ollama) e uno in `tests/test_app.py` (conversazione disattivata se il modello non usa gli strumenti).
+- **Prova reale** da riga di comando (`conversazione.py prova`, sola lettura, 28/10, `results/trials/conversazione/`), due domande (passaggi già letti su Enrico Berlinguer; risposte salvate). Nelle ultime prove 0 citazioni non trovate con gpt-oss-120b (8 su 8 e 7 su 7 esatte), gpt-oss-20b (16 su 16), qwen3.8-27b (11 su 11) su Groq e con la catena «router-chat» di FreeLLMAPI (11 su 11); llama-3.3-70b (Cloudflare) 2 citazioni non trovate su 2 alla prima domanda, segnate in rosso dalla verifica; allam-2-7b non sa usare gli strumenti. Con i piani gratuiti una domanda richiede da pochi secondi a oltre 5 minuti.
+
+Non provati: la conversazione usata dalla pagina nel browser.
+
 ### Ambiente (verificato il 22/10/2026)
 
 - Windows 11 Home; Python 3.14.6 (`C:\Python314\python.exe`).

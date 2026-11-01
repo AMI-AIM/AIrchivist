@@ -1,6 +1,8 @@
 # Il motore usa solo la libreria standard di Python (3.10 o successivo).
-# Librerie facoltative, per importare nuove fonti (scripts/importa.py). Si installano nel Python di sistema:
+# Librerie facoltative, per l'interfaccia in finestra propria e per importare nuove fonti (scripts/importa.py).
+# Si installano nel Python di sistema:
 #   python scripts/installa.py librerie
 PyMuPDF>=1.24
+pywebview>=5.0
 # PaddleOCR (motore OCR alternativo per il cinese) va in un Python a parte: vedi docs/user_guide.it.md,
 # «Prova dei motori OCR».

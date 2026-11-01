@@ -42,7 +42,7 @@ Motore (repository, pubblicabile):
 
 | Percorso | Contenuto |
 |---|---|
-| `scripts/` | motore: moduli Python, `config.ini` (modelli, parametri, progetto in uso), `series_template.ini` (modello per i progetti nuovi) |
+| `scripts/` | motore: moduli Python, `config.ini` (modelli, parametri, progetto in uso), `series_template.ini` (modello per i progetti nuovi); `app.py` e `interfaccia/` (interfaccia nel browser), `conversazione.py` (conversazione sulle fonti dell'interfaccia) |
 | `tests/` | test (`python -m unittest discover -s tests`); progetto di prova in `tests/test_project/` |
 | `docs/` | documentazione di progetto; per gli utenti, in italiano e in inglese: `quickstart(.it).md` (primi passi), `user_guide(.it).md` (guida d'uso), `troubleshooting(.it).md` (problemi frequenti) |
 | `letteratura/` | letteratura secondaria sul metodo (PDF, fuori da git; da spostare fuori dal repository) |

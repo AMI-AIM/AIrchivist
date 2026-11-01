@@ -29,6 +29,7 @@ AIrchivist/                 il repository (il motore: si può pubblicare)
   scripts/
     installa.py             avvio guidato, librerie, controllo dell'ambiente, profili dei modelli, client di chat
     app.py, interfaccia/    l'interfaccia nel browser (server locale e pagina)
+    conversazione.py        la conversazione sulle fonti dell'interfaccia e la verifica delle sue citazioni
     mcp_server.py           il server che collega la chat al motore; istruzioni.py: le regole che consegna
     ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
@@ -235,6 +236,15 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
   esempi, da confermare con le caselle (la scheda si crea solo con quelle); 3. l'avanzamento, che si ritrova
   anche chiudendo e riaprendo la pagina; 4. il riassunto della risposta e il documento completo, che si apre nella
   colonna sinistra.
+- **Conversazione sulle fonti** (sotto il percorso): domande libere al modello scelto (quello della sintesi, se le
+  scelte per ruolo sono diverse), che usa gli stessi strumenti del server MCP con le stesse regole. È un'aggiunta,
+  non la via principale: i modelli deboli possono inventare riferimenti. Per questo ogni citazione della risposta si
+  confronta con ciò che gli strumenti hanno restituito: sottolineata in verde se c'è (un clic mostra originale e
+  traduzione del passaggio), in rosso se nessuno strumento l'ha data. All'apertura una prova dice se il modello sa
+  usare gli strumenti; se no, la conversazione resta disattivata con la spiegazione e resta il percorso guidato.
+  Una ricerca avviata da qui si segue nel riquadro della ricerca. Con i piani gratuiti (per esempio Groq, 8000 token
+  al minuto) una domanda può richiedere qualche attesa; se la richiesta è troppo grande per il servizio, il sistema
+  accorcia i risultati degli strumenti e riprova.
 - **Importa**: la cartella dei documenti, «Proponi» (scrive la tabella di revisione, da correggere in Excel o
   LibreOffice), poi «Controlla» e «Importa» (vedi «Importare nuove fonti»).
 - **Storico**: le risposte e le ricerche precedenti del progetto.

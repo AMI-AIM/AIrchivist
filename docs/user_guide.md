@@ -34,6 +34,7 @@ AIrchivist/                 the repository (the engine: it can be published)
   scripts/
     installa.py             guided setup, libraries, environment check, model profiles, chat clients
     app.py, interfaccia/    the browser interface (local server and page)
+    conversazione.py        the interface's conversation about the sources and the check of its citations
     mcp_server.py           the server that connects the chat to the engine; istruzioni.py: the rules it sends
     ricerca.py              the engine: extraction -> reading -> answer (started by the server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
@@ -244,6 +245,15 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
   and examples, to confirm with the tick boxes (the card is created with those only); 3. progress, which you find
   again if you close and reopen the page; 4. the summary of the answer and the full document, which opens in the
   left column.
+- **Conversazione sulle fonti** (conversation about the sources, below the search path): free questions to the
+  chosen model (the synthesis one, if the choices differ by role), which uses the same tools as the MCP server with
+  the same rules. It is an addition, not the main route: weak models can invent references. So every citation in
+  the answer is compared with what the tools returned: underlined in green if it is there (a click shows the
+  passage's original and translation), in red if no tool gave it. On opening, a test tells whether the model can
+  use tools; if not, the conversation stays disabled with the explanation and the guided path remains. A search
+  started from here is followed in the search panel. With free plans (for example Groq, 8000 tokens per minute) a
+  question may require some waiting; if the request is too large for the service, the system shortens the tool
+  results and tries again.
 - **Importa** (import): the documents folder, "Proponi" (writes the review table, to be corrected in Excel or
   LibreOffice), then "Controlla" (check) and "Importa" (see "Importing new sources").
 - **Storico** (history): the project's previous answers and searches.
