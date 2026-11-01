@@ -289,13 +289,17 @@ async function caricaTutto() {
   mostraRicerca(s.ricerca, true);
 }
 
+function apriNuovoProgetto() {
+  $("np-nome").value = "";
+  $("np-descrizione").value = "";
+  $("d-progetto").showModal();
+}
+
 async function cambiaProgetto() {
   const sel = $("progetto");
   if (sel.value === NUOVO) {
     sel.value = sel.dataset.attuale;
-    $("np-nome").value = "";
-    $("np-descrizione").value = "";
-    $("d-progetto").showModal();
+    apriNuovoProgetto();
     return;
   }
   try {
@@ -320,6 +324,7 @@ async function creaProgetto(evento) {
     $("d-progetto").close();
     nuova();
     await caricaTutto();
+    aggiornaAvvio();
   } catch (e) {
     avviso(e.message, true);
     $("d-progetto").close();
@@ -456,10 +461,152 @@ async function aggiungiModello(evento) {
     $("am-chiave").value = "";
     await caricaModelli();
     if (r.cambiato) avviso(`Modello in uso: ${r.profilo}.`);
+    aggiornaAvvio();
   } catch (e) {
     m.textContent = e.message;
   } finally {
     $("am-aggiungi").disabled = false;
+  }
+}
+
+// ------------------------------------------------------------------ preparazione (lavoro 39)
+const SEGNI = { ok: "✓", manca: "✗", facoltativo: "–", info: "" };
+
+function pulsante(testo, azione, primario) {
+  const b = el("button", testo, primario ? "primario" : "");
+  b.type = "button";
+  b.addEventListener("click", azione);
+  return b;
+}
+
+async function apriAvvio() {
+  if (!$("d-avvio").open) $("d-avvio").showModal();
+  $("av-ambiente").open = false;
+  await caricaAvvio();
+}
+
+// dopo un passo fatto da un altro dialogo (progetto, modello, chat) la preparazione mostra lo stato nuovo
+function aggiornaAvvio() { if ($("d-avvio").open) caricaAvvio(); }
+
+async function caricaAvvio() {
+  let r;
+  try {
+    r = await api("/api/avvio");
+  } catch (e) {
+    $("av-intro").textContent = e.message;
+    return r;
+  }
+  $("av-intro").textContent = r.completo ?
+    "Tutto il necessario è pronto: puoi cercare. I passi facoltativi si fanno quando vuoi." :
+    "Prima di cercare servono un progetto e un modello. Ogni passo si fa da qui, senza terminale.";
+  const azioni = {
+    progetto: (p) => [pulsante("Nuovo progetto…", apriNuovoProgetto, !p.fatto)],
+    modello: (p) => [pulsante("Aggiungi modello…", apriAggiungiModello, !p.fatto)],
+    fonti: () => [pulsante("Importa…", () => { $("d-avvio").close(); apriScheda("importazioni"); })],
+    chat: () => [],
+  };
+  const progettoFatto = r.passi.find((p) => p.id === "progetto").fatto;
+  $("av-passi").replaceChildren(...r.passi.map((p) => {
+    const li = el("li");
+    const stato = p.fatto ? "ok" : p.facoltativo ? "facoltativo" : "manca";
+    li.append(el("span", p.fatto ? "✓" : p.facoltativo ? "○" : "●", "segno " + stato),
+      el("span", p.titolo + (p.facoltativo ? " (facoltativo)" : ""), "titolo"));
+    const a = el("div", null, "azioni");
+    // il modello e le fonti appartengono a un progetto: senza progetto si comincia da quello
+    if (progettoFatto || p.id === "progetto" || p.id === "chat") a.append(...azioni[p.id](p));
+    li.append(a, el("span", p.dettaglio, "dettaglio"));
+    if (p.id === "chat") {
+      for (const c of r.chat) {
+        const riga = el("div", null, "client");
+        riga.append(el("span", c.nome));
+        if (c.collegato) riga.append(el("span", "collegato ✓", "segno ok"));
+        else if (c.da_aggiornare) riga.append(el("span", "voce da aggiornare (un'altra copia o impostazioni)", "nota"));
+        else if (!c.presente) riga.append(el("span", "non trovato su questo computer", "nota"));
+        riga.append(pulsante(c.collegato ? "Controlla…" : "Collega…", () => apriClient(c.id)));
+        li.append(riga);
+      }
+    }
+    return li;
+  }));
+  return r;
+}
+
+async function caricaAmbiente() {
+  const d = $("av-controlli");
+  d.replaceChildren(el("p", "Controllo in corso (anche il collegamento al modello)…", "nota"));
+  let r;
+  try {
+    r = await api("/api/ambiente");
+  } catch (e) {
+    d.replaceChildren(el("p", e.message, "nota attenzione-testo"));
+    return;
+  }
+  const parti = [];
+  for (const g of r.gruppi) {
+    parti.push(el("h3", g.titolo));
+    for (const v of g.voci) {
+      const riga = el("div", null, "voce-ambiente");
+      riga.append(el("span", SEGNI[v.stato] || "", v.stato), el("span", v.voce), el("span", v.dettaglio, "d"));
+      if (v.azione === "progetto") riga.append(pulsante("Nuovo progetto…", apriNuovoProgetto));
+      if (v.azione === "modello") riga.append(pulsante("Aggiungi modello…", apriAggiungiModello));
+      parti.push(riga);
+    }
+  }
+  parti.unshift(el("p", r.mancano.length ? "Manca: " + r.mancano.join(", ") + "." :
+    "Niente di necessario manca. I segni «–» indicano parti facoltative.", "nota"));
+  d.replaceChildren(...parti);
+  $("av-posizioni").textContent = r.posizioni.join(" · ");
+}
+
+let clientAperto = "";
+async function apriClient(nome) {
+  clientAperto = nome;
+  const m = $("cl-messaggi");
+  m.hidden = true;
+  $("cl-modifiche").replaceChildren();
+  $("cl-scrivi").hidden = true;
+  $("d-client").showModal();
+  let c;
+  try {
+    c = await api("/api/client?nome=" + encodeURIComponent(nome));
+  } catch (e) {
+    m.textContent = e.message;
+    m.hidden = false;
+    return;
+  }
+  $("cl-titolo").textContent = `Collega ${c.nome}`;
+  $("cl-file").textContent = `File di configurazione: ${c.file}` + (c.esiste ? "" : " (non esiste ancora: lo creo)");
+  $("cl-modifiche").replaceChildren(...c.modifiche.map((x) => el("li", x)),
+    el("li", `Il programma di chat avvierà: ${c.avvia}`, "nota"));
+  if (c.errore) {
+    m.textContent = c.errore;
+    m.hidden = false;
+    return;
+  }
+  if (c.aperto && !c.gia) {
+    m.textContent = `${c.nome} è aperto: chiudilo (anche dall'icona accanto all'orologio), poi riapri questa finestra.`;
+    m.hidden = false;
+    return;
+  }
+  $("cl-scrivi").textContent = c.gia ? "Prova il collegamento" : "Scrivi le modifiche";
+  $("cl-scrivi").hidden = false;
+}
+
+async function collegaClient(evento) {
+  evento.preventDefault();
+  const m = $("cl-messaggi");
+  m.hidden = false;
+  m.textContent = "Scrivo la configurazione e provo il server come lo avvierà il programma di chat…";
+  $("cl-scrivi").disabled = true;
+  try {
+    const r = await api("/api/client", { nome: clientAperto });
+    m.textContent = r.messaggi.join("\n") + (r.prova ? "" : "\nLa prova del server non è riuscita: vedi sopra.");
+    $("cl-scrivi").hidden = true;
+    aggiornaAvvio();
+  } catch (e) {
+    m.textContent = e.message;
+  } finally {
+    $("cl-scrivi").disabled = false;
   }
 }
 
@@ -1038,5 +1185,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("conv-testo").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) inviaConversazione(); });
   $("conv-nuova").addEventListener("click", nuovaConversazione);
   $("conv-riprova").addEventListener("click", () => caricaConversazione(true));
-  caricaTutto();
+  $("b-preparazione").addEventListener("click", apriAvvio);
+  $("av-ambiente").addEventListener("toggle", () => { if ($("av-ambiente").open) caricaAmbiente(); });
+  $("cl-scrivi").addEventListener("click", collegaClient);
+  // al primo avvio (o se manca il progetto o il modello) la preparazione si apre da sé
+  caricaTutto().then(() => api("/api/avvio")).then((r) => { if (!r.completo) apriAvvio(); }).catch(() => {});
 });

@@ -224,6 +224,14 @@ Avvia un server sul tuo computer e apre l'interfaccia nel browser; il terminale 
 copiare se il browser non si apre (vale finché la finestra resta aperta; Ctrl+C per chiudere). Non serve un
 client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
 
+- **Preparazione** (pulsante nella testata; si apre da sé finché mancano progetto o modello): i passi per
+  cominciare senza terminale. Progetto e modello sono necessari, le prime fonti e la chat facoltative; ogni passo ha
+  il suo pulsante («Nuovo progetto…», «Aggiungi modello…», «Importa…», «Collega…» per Jan, Claude Desktop e LM
+  Studio). «Collega…» mostra prima il file del programma di chat e che cosa cambia; scrive solo con «Scrivi le
+  modifiche», con una copia di sicurezza, lasciando intatte le altre voci, e non scrive se Jan è aperto; poi prova
+  il server come lo avvierà il programma di chat. «Controllo dell'ambiente» rifà i controlli di
+  `installa.py controlla` (Python, finestra propria, progetto, collegamento al modello, PyMuPDF, Tesseract e lingue
+  delle serie) e dice dove stanno configurazione, profili e progetti.
 - **Menu «Progetto»**: i progetti della cartella `projects`; la scelta vale anche per la chat e la riga di comando
   (si scrive in `config.ini`, sezione `[progetto]`). «Nuovo progetto…» ne crea uno. Mentre una ricerca del progetto
   è in corso il cambio è bloccato.

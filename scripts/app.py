@@ -70,6 +70,18 @@ class Errore(Exception):
     """Errore da mostrare all'utente così com'è (risposta 400 con «errore»)."""
 
 
+class _Voci(installa.Esito):
+    """Esito dei controlli di installa.py che tiene anche le voci una per una, per la pagina «Preparazione»."""
+
+    def __init__(self):
+        super().__init__(lambda riga: None)
+        self.voci = []
+
+    def __call__(self, stato, voce, dettaglio=""):
+        super().__call__(stato, voce, dettaglio)
+        self.voci.append({"stato": stato, "voce": voce.strip(), "dettaglio": dettaglio})
+
+
 class App:
     """Lo stato dell'interfaccia e le sue azioni, indipendenti dal protocollo HTTP (così i test le chiamano)."""
 
@@ -293,6 +305,124 @@ class App:
         elif not riuscita:
             out["messaggi"].append("Il profilo resta salvato ma non è in uso: correggilo o provane un altro.")
         return out
+
+    # ------------------------------------------------------------ preparazione (lavoro 39, fase 2)
+    def _modello_scelto(self, c):
+        """Il profilo in uso, se tutti i ruoli ne hanno uno che esiste; None altrimenti."""
+        from llm import RUOLI, ErroreModello, leggi_profili, profilo, usa_profili
+        if not usa_profili(c):
+            return None
+        try:
+            nomi = {profilo(c, r)[0] for r in RUOLI}
+        except ErroreModello:
+            return None
+        esistenti = leggi_profili(c)
+        return ", ".join(sorted(nomi)) if all(n in esistenti for n in nomi) else None
+
+    def chat(self):
+        """I client di chat noti: se il programma c'è su questo computer, se AIrchivist è collegato così com'è
+        (la voce avvia proprio questo programma) o se c'è una voce da aggiornare (un'altra copia, impostazioni)."""
+        out = []
+        for codice, etichetta in installa.CLIENT_GUIDA:
+            f = installa.file_client(codice)
+            p = installa.prepara_client(codice, f)
+            collegato = p["valida"] and p["gia"]
+            out.append({"id": codice, "nome": etichetta, "file": str(f), "presente": f.parent.is_dir(),
+                        "collegato": collegato,
+                        "da_aggiornare": not collegato and installa.voce_presente(codice, f)})
+        return out
+
+    def avvio(self):
+        """I passi della preparazione, come «installa.py inizia»: progetto e modello necessari, chat e prime
+        fonti facoltative. «completo» quando si può cercare."""
+        c = self.cfg()
+        p = self.progetto_in_uso()
+        modello = self._modello_scelto(c) if p else None
+        chat = self.chat()
+        collegati = [x["nome"] for x in chat if x["collegato"]]
+        passi = [
+            {"id": "progetto", "titolo": "Progetto di ricerca", "fatto": bool(p), "facoltativo": False,
+             "dettaglio": f"«{p['nome']}» in {p['cartella']}" if p else
+             "Un progetto raccoglie le fonti, le schede dei nomi e le risposte di una ricerca."},
+            {"id": "modello", "titolo": "Modello che legge i passaggi", "fatto": bool(modello), "facoltativo": False,
+             "dettaglio": f"In uso: {modello}." if modello else
+             ("Scegli il servizio e, se serve, la chiave: il sistema prova il collegamento prima di usarlo."
+              if p else "Prima crea o scegli un progetto.")},
+            {"id": "fonti", "titolo": "Prime fonti", "fatto": bool(p and p["documenti"]), "facoltativo": True,
+             "dettaglio": f"{p['documenti']} documenti nel progetto." if p and p["documenti"] else
+             "Importa PDF, scansioni o testi: il sistema propone i metadati in una tabella da controllare."},
+            {"id": "chat", "titolo": "Chat (Jan, Claude Desktop, LM Studio)", "fatto": bool(collegati),
+             "facoltativo": True,
+             "dettaglio": "Collegato a " + ", ".join(collegati) + "." if collegati else
+             "Facoltativo: per fare domande sulle fonti anche da un programma di chat."},
+        ]
+        return {"passi": passi, "completo": bool(p and modello), "chat": chat}
+
+    def ambiente(self):
+        """I controlli di «installa.py controlla», uno per riga, con l'azione dell'interfaccia che rimedia."""
+        c = self.cfg()
+        gruppi = []
+
+        def gruppo(titolo, *controlli):
+            esito = _Voci()
+            for controllo in controlli:
+                try:
+                    controllo(esito)
+                except Exception as e:          # un controllo che si rompe non nasconde gli altri
+                    esito("manca", "controllo non riuscito", str(e))
+            gruppi.append({"titolo": titolo, "voci": esito.voci})
+
+        progetto = self.progetto_in_uso()
+        gruppo("Programma", installa.controlla_python, installa.controlla_sqlite,
+               installa.controlla_pywebview)
+        gruppo("Progetto e modello", lambda e: installa.controlla_progetto(e, c),
+               *([lambda e: installa.controlla_modelli(e, c)] if progetto else []))
+        gruppo("Importazione delle fonti", installa.controlla_pymupdf,
+               lambda e: installa.controlla_tesseract(e, c))
+        for g in gruppi:
+            # PYTHONUTF8 riguarda i client di chat, e la loro voce la contiene già
+            g["voci"] = [v for v in g["voci"] if v["voce"] != "PYTHONUTF8"]
+            for v in g["voci"]:
+                v["azione"] = ("progetto" if v["voce"] == "progetto" and v["stato"] == "manca" else
+                               "modello" if v["voce"].startswith("modelli") and v["stato"] == "manca" else "")
+        import posizioni
+        return {"gruppi": gruppi, "posizioni": posizioni.descrizione(),
+                "mancano": [v["voce"] for g in gruppi for v in g["voci"] if v["stato"] == "manca"]}
+
+    def _client_noto(self, nome):
+        if nome not in dict(installa.CLIENT_GUIDA):
+            raise Errore(f"Programma di chat «{nome}» sconosciuto.")
+
+    def client(self, nome):
+        """Anteprima del collegamento a un client: il file, che cosa cambia, se il programma è aperto."""
+        self._client_noto(nome)
+        p = installa.prepara_client(nome)
+        return {"id": nome, "nome": dict(installa.CLIENT_GUIDA)[nome], "file": str(p["file"]),
+                "esiste": p["esiste"], "modifiche": [m for m in p["modifiche"] if not m.startswith("- ")],
+                "gia": p["gia"], "errore": p["illeggibile"] or (None if p["valida"] else "; ".join(p["modifiche"])),
+                "avvia": " ".join([installa.voce_server()["command"], *installa.voce_server()["args"]]),
+                "aperto": installa.in_esecuzione(nome)}
+
+    def collega_client(self, nome):
+        """Scrive la voce di AIrchivist nel client (con copia di sicurezza) e prova il server come lo avvierà il
+        client. Lo chiede la pagina dopo aver mostrato l'anteprima: è la conferma di «--scrivi»."""
+        self._client_noto(nome)
+        etichetta = dict(installa.CLIENT_GUIDA)[nome]
+        p = installa.prepara_client(nome)
+        if p["illeggibile"] or not p["valida"]:
+            raise Errore(p["illeggibile"] or "; ".join(p["modifiche"]))
+        righe = []
+        if p["gia"]:
+            righe.append(f"{etichetta} è già collegato: nessuna modifica.")
+        else:
+            if installa.in_esecuzione(nome):
+                raise Errore(f"{etichetta} è aperto: quando si chiude riscrive i suoi file e la modifica andrebbe "
+                             "persa. Chiudilo (anche dall'icona accanto all'orologio) e riprova.")
+            righe += list(installa.scrivi_client(p))
+        prova = installa.client_verifica(argparse.Namespace(), righe.append) == 0
+        righe.append(f"Apri {etichetta}: il server AIrchivist è acceso." if nome == "jan" else
+                     f"Riavvia {etichetta} perché legga la nuova configurazione.")
+        return {"scritto": not p["gia"], "prova": prova, "messaggi": righe}
 
     # ------------------------------------------------------------ percorso della ricerca
     def entita(self, nome):
@@ -836,7 +966,10 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/conversazione": lambda a, q: a.conversazione(q.get("riprova") == "1"),
        "/api/fonte": lambda a, q: a.fonte(q.get("file", ""), q.get("riga", ""), q.get("pagina", "")),
        "/api/passaggi": lambda a, q: a.passaggi(q.get("risposta", ""), q.get("ricerca", "")),
-       "/api/glossario": lambda a, q: a.glossario()}
+       "/api/glossario": lambda a, q: a.glossario(),
+       "/api/avvio": lambda a, q: a.avvio(),
+       "/api/ambiente": lambda a, q: a.ambiente(),
+       "/api/client": lambda a, q: a.client(q.get("nome", ""))}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
         "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", "")),
@@ -856,7 +989,8 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
                                                d.get("prova", False), d.get("sovrascrivi", False)),
         "/api/tabella": lambda a, d: a.salva_tabella(d.get("percorso", ""), d.get("righe")),
         "/api/conversazione": lambda a, d: a.conversa(d.get("testo", "")),
-        "/api/conversazione/nuova": lambda a, d: a.nuova_conversazione()}
+        "/api/conversazione/nuova": lambda a, d: a.nuova_conversazione(),
+        "/api/client": lambda a, d: a.collega_client(d.get("nome", ""))}
 
 
 def gestore(app):

@@ -106,6 +106,20 @@ def controlla_pymupdf(esito):
         esito("facoltativo", "PyMuPDF", "non installato; serve solo a importare PDF: python installa.py librerie")
 
 
+def controlla_pywebview(esito):
+    try:
+        import webview  # noqa: F401
+        from importlib.metadata import PackageNotFoundError, version
+        try:
+            v = version("pywebview")
+        except PackageNotFoundError:
+            v = "?"
+        esito("ok", "pywebview", f"{v} (finestra propria dell'interfaccia)")
+    except ImportError:
+        esito("facoltativo", "pywebview", "non installato: l'interfaccia si apre nel browser invece che in una "
+                                          "finestra propria (python installa.py librerie)")
+
+
 def lingue_progetto():
     """Codici Tesseract delle lingue delle serie del progetto in uso (series.ini)."""
     import profili
@@ -238,6 +252,7 @@ def cmd_controlla(args, stampa=print):
     controlla_progetto(esito, cfg)
     stampa("\nPer importare nuove fonti (facoltativi)")
     controlla_pymupdf(esito)
+    controlla_pywebview(esito)
     controlla_tesseract(esito, cfg)
     if not args.rapido:
         controlla_paddle(esito, cfg)
@@ -265,7 +280,12 @@ def cmd_librerie(args, stampa=print):
 
 # ---------------------------------------------------------------- client MCP (lavoro 27)
 def voce_server():
-    return {"command": sys.executable, "args": [str(CARTELLA / "mcp_server.py")], "env": {"PYTHONUTF8": "1"}}
+    """Come il client avvia il server MCP. Da un'interfaccia aperta con pythonw.exe (senza finestra, come fa il
+    collegamento del programma installato) il client deve usare python.exe, che parla sullo stdio."""
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").is_file():
+        exe = exe.parent / "python.exe"
+    return {"command": str(exe), "args": [str(CARTELLA / "mcp_server.py")], "env": {"PYTHONUTF8": "1"}}
 
 
 def cartella_dati():
@@ -438,6 +458,46 @@ def scrivi_file_client(f, doc):
     yield f"scritto: {f}"
 
 
+def prepara_client(nome, file=None, file_impostazioni=None, voce=None, nome_server=None):
+    """La modifica che collega un client, senza scrivere nulla (riga di comando e interfaccia). Restituisce
+    {"file", "esiste", "illeggibile" (testo, se il file non è JSON valido), "valida" (falso se la forma del file
+    blocca la scrittura), "modifiche" (descrizioni), "gia" (niente da scrivere), "scritture" [(file, documento)]}."""
+    f = Path(file) if file else file_client(nome)
+    out = {"file": f, "esiste": f.exists(), "illeggibile": None, "valida": True, "modifiche": [], "gia": False,
+           "scritture": []}
+    esistente = None
+    if f.exists():
+        try:
+            esistente = json.loads(_leggi_testo(f)[0])
+        except ValueError:
+            out["illeggibile"] = f"Il file {f} non è JSON valido: non lo tocco. Sistema a mano o sposta il file."
+            out["valida"] = False
+            return out
+    doc, modifiche, gia = unisci_voci(nome, esistente, nome_server or NOME_SERVER, voce or voce_server())
+    out["modifiche"] = list(modifiche)
+    if doc is None:
+        out["valida"] = False
+        return out
+    out["scritture"].append((f, doc))       # più gli altri file da scrivere insieme a quello del client
+    if nome == "jan":
+        imp = impostazioni_jan(doc)
+        f_web = Path(file_impostazioni) if file_impostazioni else f.with_name("settings.json")
+        doc_web, mod_web = ricerca_web_jan(f_web)
+        if doc_web is not None:
+            out["scritture"].append((f_web, doc_web))
+            imp.append(mod_web)
+        out["modifiche"] += imp
+        gia = gia and not any(m.startswith("~") for m in imp)
+    out["gia"] = gia
+    return out
+
+
+def scrivi_client(preparata):
+    """Scrive i file di una modifica di prepara_client, con le copie di sicurezza; righe di quel che ha fatto."""
+    for file_, documento in preparata["scritture"]:
+        yield from scrivi_file_client(file_, documento)
+
+
 def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
     """`installa.py client <claude|lmstudio|jan> --scrivi`: trova il file, prepara la modifica, la mostra e
     scrive solo dopo conferma. Con `--verifica` in più fa anche la prova del collegamento."""
@@ -445,33 +505,17 @@ def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
     if nome == "json":
         stampa("«json» serve a stampare il blocco per client non riconosciuti: niente file da scrivere.")
         return 1
-    f = Path(args.file) if getattr(args, "file", None) else file_client(nome)
-    voce = getattr(args, "voce", None) or voce_server()
-    nome_server = nome_server or NOME_SERVER
-    esistente = None
-    if f.exists():
-        try:
-            esistente = json.loads(_leggi_testo(f)[0])
-        except ValueError:
-            stampa(f"Il file {f} non è JSON valido: non lo tocco. Sistema a mano o sposta il file.")
-            return 3
-    doc, modifiche, gia = unisci_voci(nome, esistente, nome_server, voce)
-    stampa(f"File di configurazione: {f} ({'esiste' if f.exists() else 'non esiste ancora'})")
-    for m in modifiche:
-        stampa("  " + m)
-    if doc is None:
+    p = prepara_client(nome, getattr(args, "file", None), getattr(args, "file_impostazioni", None),
+                       getattr(args, "voce", None), nome_server)
+    if p["illeggibile"]:
+        stampa(p["illeggibile"])
         return 3
-    altri_file = []                         # (file, documento) da scrivere insieme a quello del client
-    if nome == "jan":
-        imp = impostazioni_jan(doc)
-        f_web = Path(args.file_impostazioni) if getattr(args, "file_impostazioni", None) else f.with_name("settings.json")
-        doc_web, mod_web = ricerca_web_jan(f_web)
-        if doc_web is not None:
-            altri_file.append((f_web, doc_web))
-            imp.append(mod_web)
-        for m in imp:
-            stampa("  " + m)
-        gia = gia and not any(m.startswith("~") for m in imp)
+    stampa(f"File di configurazione: {p['file']} ({'esiste' if p['esiste'] else 'non esiste ancora'})")
+    for m in p["modifiche"]:
+        stampa("  " + m)
+    if not p["valida"]:
+        return 3
+    gia = p["gia"]
     if gia:
         stampa("Nessuna scrittura necessaria.")
         return client_verifica(args, stampa) if getattr(args, "verifica", False) else 0
@@ -485,9 +529,8 @@ def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
     if not args.si and not conferma_domanda("Scrivere queste modifiche? [S/n] ", chiedi):
         stampa("Annullato: il file non è cambiato.")
         return 0
-    for file_, documento in [(f, doc)] + altri_file:
-        for riga in scrivi_file_client(file_, documento):
-            stampa("  " + riga)
+    for riga in scrivi_client(p):
+        stampa("  " + riga)
     if nome == "jan":
         stampa("Apri Jan: il server AIrchivist è acceso. Le altre impostazioni dell'assistente sono nella guida "
                "(docs/user_guide.it.md, «Jan»).")

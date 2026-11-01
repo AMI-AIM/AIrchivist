@@ -499,6 +499,113 @@ class Interfaccia(unittest.TestCase):
         self.assertTrue(r["serie"])
         self.assertTrue(all({"nome", "campi"} <= set(s) for s in r["serie"]))
 
+    # ------------------------------------------------------------ preparazione (lavoro 39)
+    def client_finti(self):
+        """I file dei client di chat in una cartella temporanea, mai quelli veri di questo computer."""
+        base = self.p1.parent.parent / f"client_{self._testMethodName}"      # una cartella per test
+        return mock.patch.object(A.installa, "file_client",
+                                 lambda nome, dati=None: base / nome / "data" / "mcp_config.json")
+
+    def test_preparazione(self):
+        with self.client_finti():
+            codice, r = self.get("/api/avvio")
+        self.assertEqual(codice, 200, r)
+        self.assertTrue(r["completo"])
+        passi = {p["id"]: p for p in r["passi"]}
+        self.assertEqual(list(passi), ["progetto", "modello", "fonti", "chat"])
+        self.assertTrue(passi["progetto"]["fatto"] and passi["modello"]["fatto"] and passi["fonti"]["fatto"])
+        self.assertIn("a", passi["modello"]["dettaglio"])
+        self.assertFalse(passi["chat"]["fatto"])
+        self.assertEqual([c["id"] for c in r["chat"]], ["jan", "claude", "lmstudio"])
+        # senza progetto né modello: la preparazione non è completa e comincia dal progetto
+        vuoto = self.config.with_name("vuoto.ini")
+        vuoto.write_text("[estrazione]\nforme_sicure = no\n", encoding="utf-8")
+        os.environ.pop(VARIABILE, None)
+        with self.client_finti():
+            r = A.App(vuoto, self.progetti).avvio()
+        passi = {p["id"]: p for p in r["passi"]}
+        self.assertFalse(r["completo"])
+        self.assertFalse(passi["progetto"]["fatto"] or passi["modello"]["fatto"] or passi["fonti"]["fatto"])
+        self.assertIn("progetto", passi["modello"]["dettaglio"])
+        # primo avvio: senza progetto le serie sono vuote invece di un errore (prima l'interfaccia non partiva)
+        import progetto
+        vera = progetto.leggi_config
+        with mock.patch.object(progetto, "leggi_config", lambda path=None: vera(vuoto)):
+            self.assertEqual(A.profili.tutti(ricarica=True), {})
+        A.profili.tutti(ricarica=True)
+        # profilo scelto ma inesistente: il modello resta da fare
+        self.config.write_text(self.config.read_text(encoding="utf-8").replace("profilo = a", "profilo = nessuno"),
+                               encoding="utf-8")
+        os.environ[VARIABILE] = str(self.p1)
+        with self.client_finti():
+            r = self.get("/api/avvio")[1]
+        self.assertFalse(r["completo"])
+        self.assertFalse(next(p for p in r["passi"] if p["id"] == "modello")["fatto"])
+
+    def test_ambiente(self):
+        codice, r = self.get("/api/ambiente")
+        self.assertEqual(codice, 200, r)
+        self.assertEqual([g["titolo"] for g in r["gruppi"]],
+                         ["Programma", "Progetto e modello", "Importazione delle fonti"])
+        voci = {v["voce"]: v for g in r["gruppi"] for v in g["voci"]}
+        self.assertEqual(r["mancano"], [], r)
+        self.assertEqual(voci["modelli: a"]["stato"], "ok")       # il servizio finto risponde
+        self.assertNotIn("PYTHONUTF8", voci)
+        self.assertTrue(any(x.startswith("Configurazione: ") for x in r["posizioni"]))
+        # senza progetto: manca, con l'azione che lo crea; il modello non si controlla
+        vuoto = self.config.with_name("vuoto.ini")
+        vuoto.write_text("[estrazione]\nforme_sicure = no\n", encoding="utf-8")
+        os.environ.pop(VARIABILE, None)
+        r = A.App(vuoto, self.progetti).ambiente()
+        voci = {v["voce"]: v for g in r["gruppi"] for v in g["voci"]}
+        self.assertEqual(r["mancano"], ["progetto"])
+        self.assertEqual(voci["progetto"]["azione"], "progetto")
+        self.assertFalse(any(v.startswith("modelli") for v in voci))
+
+    def test_collega_la_chat(self):
+        f = self.p1.parent.parent / f"client_{self._testMethodName}" / "jan" / "data" / "mcp_config.json"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"mcpServers": {"altro": {"command": "x", "args": []}}}), encoding="utf-8")
+        prove = []
+
+        def verifica(args, stampa, avvia=None):
+            prove.append(1)
+            stampa("Handshake MCP riuscito")
+            return 0
+        with self.client_finti(), mock.patch.object(A.installa, "in_esecuzione", lambda nome: False), \
+                mock.patch.object(A.installa, "client_verifica", verifica):
+            codice, c = self.get("/api/client?nome=jan")
+            self.assertEqual(codice, 200, c)
+            self.assertFalse(c["gia"])
+            self.assertTrue(any("airchivist" in m for m in c["modifiche"]), c)
+            self.assertIn("mcp_server.py", c["avvia"])
+            self.assertEqual(json.loads(f.read_text(encoding="utf-8")),     # l'anteprima non scrive
+                             {"mcpServers": {"altro": {"command": "x", "args": []}}})
+            codice, r = self.post("/api/client", {"nome": "jan"})
+            self.assertEqual(codice, 200, r)
+            self.assertTrue(r["scritto"] and r["prova"])
+            doc = json.loads(f.read_text(encoding="utf-8"))
+            self.assertEqual(doc["mcpServers"]["altro"], {"command": "x", "args": []})
+            self.assertTrue(doc["mcpServers"]["airchivist"]["active"])
+            self.assertTrue(list(f.parent.glob("mcp_config.json.airchivist-*.bak")))
+            self.assertTrue(self.get("/api/client?nome=jan")[1]["gia"])
+            avvio = self.get("/api/avvio")[1]
+            self.assertTrue(next(p for p in avvio["passi"] if p["id"] == "chat")["fatto"])
+            # di nuovo: niente da scrivere, solo la prova
+            r = self.post("/api/client", {"nome": "jan"})[1]
+            self.assertFalse(r["scritto"])
+            self.assertEqual(len(prove), 2)
+            self.assertEqual(self.get("/api/client?nome=sconosciuto")[0], 400)
+        # Jan aperto: nessuna scrittura
+        g = f.with_name("altro.json")
+        with mock.patch.object(A.installa, "file_client", lambda nome, dati=None: g), \
+                mock.patch.object(A.installa, "in_esecuzione", lambda nome: True):
+            self.assertTrue(self.get("/api/client?nome=jan")[1]["aperto"])
+            codice, r = self.post("/api/client", {"nome": "jan"})
+        self.assertEqual(codice, 400)
+        self.assertIn("aperto", r["errore"])
+        self.assertFalse(g.exists())
+
 
 def sezione(testo, titolo):
     """Il testo di una sezione della risposta, dal suo titolo al successivo."""

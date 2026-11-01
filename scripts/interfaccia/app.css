@@ -191,6 +191,31 @@ a { color: var(--accento); }
 dialog { border: 1px solid var(--bordo); border-radius: 10px; background: var(--superficie); color: var(--testo);
   width: min(32rem, 92vw); }
 dialog::backdrop { background: rgba(0, 0, 0, .35); }
+dialog.largo { width: min(44rem, 94vw); }
+
+/* preparazione (lavoro 39) */
+.passi-avvio { list-style: none; padding: 0; margin: .4rem 0 1rem; }
+.passi-avvio > li { display: grid; grid-template-columns: 1.6rem 1fr auto; gap: .2rem .6rem; align-items: start;
+  border-bottom: 1px solid var(--bordo); padding: .6rem 0; }
+.passi-avvio .segno { font-weight: 700; text-align: center; }
+.passi-avvio .titolo { font-weight: 600; }
+.passi-avvio .dettaglio { grid-column: 2; color: var(--tenue); font-size: .9rem; overflow-wrap: anywhere; }
+.passi-avvio .azioni { grid-column: 3; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: .3rem; }
+.passi-avvio .client { grid-column: 2 / span 2; display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center;
+  font-size: .9rem; }
+.segno.ok, .voce-ambiente .ok { color: var(--ok); }
+.segno.manca, .voce-ambiente .manca { color: var(--male); }
+.segno.facoltativo, .voce-ambiente .facoltativo { color: var(--attesa); }
+.voce-ambiente { display: grid; grid-template-columns: 1.4rem minmax(8rem, max-content) 1fr; gap: .1rem .5rem;
+  font-size: .88rem; padding: .2rem 0; }
+.voce-ambiente .d { color: var(--tenue); overflow-wrap: anywhere; }
+#av-controlli h3 { font-size: .92rem; margin: .8rem 0 .2rem; }
+@media (max-width: 800px) {
+  .passi-avvio > li { grid-template-columns: 1.6rem 1fr; }
+  .passi-avvio .azioni { grid-column: 2; grid-row: auto; flex-direction: row; }
+  .voce-ambiente { grid-template-columns: 1.4rem 1fr; }
+  .voce-ambiente .d { grid-column: 2; }
+}
 dialog menu { display: flex; justify-content: flex-end; gap: .5rem; padding: 0; margin: 1rem 0 0; }
 
 @media (max-width: 800px) {

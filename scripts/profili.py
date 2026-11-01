@@ -77,14 +77,16 @@ def file_serie():
 
 
 def tutti(ricarica=False):
-    """{nome della serie: campi} dal series.ini del progetto."""
+    """{nome della serie: campi} dal series.ini del progetto; nessuna serie se non c'è ancora un progetto (primo
+    avvio dell'interfaccia o del server MCP: il progetto si crea dopo)."""
+    from progetto import NessunProgetto
     global _PROFILI
     if _PROFILI is None or ricarica:
         cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
         cp.optionxform = str
         try:
             cp.read(file_serie(), encoding="utf-8")
-        except configparser.Error:
+        except (configparser.Error, NessunProgetto):
             pass
         _PROFILI = {s: completa(s, {k: v.strip() for k, v in cp[s].items()}) for s in cp.sections()}
     return _PROFILI

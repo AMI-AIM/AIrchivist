@@ -233,6 +233,15 @@ Starts a server on your computer and opens the interface in your browser; the te
 the browser does not open (it is valid while the window stays open; Ctrl+C to close). No chat client is needed: the
 interface calls the same functions as the MCP server. Its labels are in Italian.
 
+- **"Preparazione" (setup)** (button in the header; it opens by itself while the project or the model is missing):
+  the steps to get started without a terminal. Project and model are required, first sources and chat optional;
+  each step has its own button ("Nuovo progetto…", "Aggiungi modello…", "Importa…", "Collega…" for Jan, Claude
+  Desktop and LM Studio). "Collega…" (connect) first shows the chat program's file and what changes; it writes only
+  on "Scrivi le modifiche" (write the changes), with a backup copy, leaving the other entries untouched, and does
+  not write while Jan is open; then it tests the server as the chat program will start it. "Controllo
+  dell'ambiente" (environment check) repeats the checks of `installa.py controlla` (Python, own window, project,
+  model connection, PyMuPDF, Tesseract and the series' languages) and shows where configuration, profiles and
+  projects are.
 - **"Progetto" (project) menu**: the projects in the `projects` folder; the choice also applies to the chat and the
   command line (it is written to `config.ini`, section `[progetto]`). "Nuovo progetto…" creates one. While a search
   of the project is running, switching is blocked.

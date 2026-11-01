@@ -18,6 +18,7 @@
     <span id="pallino" class="pallino" title="Stato del collegamento"></span>
   </label>
   <span class="spazio"></span>
+  <button type="button" id="b-preparazione" title="Progetto, modello, chat e controllo dell'ambiente">Preparazione</button>
   <button type="button" id="b-importa">Importa</button>
   <button type="button" id="b-storico">Storico</button>
   <button type="button" id="b-nuova" class="primario">Nuova</button>
@@ -191,6 +192,32 @@
     </details>
   </section>
 </main>
+
+<dialog id="d-avvio" class="largo">
+  <form method="dialog">
+    <h2>Preparazione</h2>
+    <p class="nota" id="av-intro"></p>
+    <ol id="av-passi" class="passi-avvio"></ol>
+    <details id="av-ambiente">
+      <summary>Controllo dell'ambiente</summary>
+      <div id="av-controlli"><p class="nota">Controllo in corso…</p></div>
+      <p class="nota" id="av-posizioni"></p>
+    </details>
+    <menu><button value="chiudi">Chiudi</button></menu>
+  </form>
+</dialog>
+
+<dialog id="d-client">
+  <form method="dialog">
+    <h2 id="cl-titolo">Collega la chat</h2>
+    <p class="nota" id="cl-file"></p>
+    <ul id="cl-modifiche" class="elenco"></ul>
+    <p class="nota" id="cl-nota">Prima di scrivere, il sistema fa una copia di sicurezza del file; le altre voci del
+      programma restano come sono.</p>
+    <pre id="cl-messaggi" class="registro" hidden></pre>
+    <menu><button value="annulla">Chiudi</button> <button id="cl-scrivi" value="scrivi" class="primario">Scrivi le modifiche</button></menu>
+  </form>
+</dialog>
 
 <dialog id="d-progetto">
   <form method="dialog">
