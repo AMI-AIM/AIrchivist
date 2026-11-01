@@ -163,6 +163,26 @@ class Revisione(unittest.TestCase):
         importazioni = csv.DictReader(io.StringIO((self.progetto / "audit/imports.csv").read_text(encoding="utf-8-sig")))
         self.assertEqual(Counter(r["serie"] for r in importazioni), {"Zëri I Popullit": 2, "The World Today": 1})
 
+    def test_cartella_dal_nome_scritto_nella_tabella(self):
+        """Serie da indicare: la proposta lascia vuota la cartella, che applica ricava dal nome scritto a mano
+        (prima restava «riviste/serie» per ogni serie senza nome)."""
+        self.comando("proponi", self.corpus)
+        f, righe = self.tabella()
+        for r in righe:
+            if r["file"] == "note.txt":
+                self.assertEqual(r["serie"], "")
+                self.assertEqual(r["cartella_serie"], "")
+                r.update(serie="Note di prova", lingua="fr")
+                tipo = r["tipo_serie"]
+            else:
+                r["importa"] = "no"
+        self.scrivi(f, righe)
+        codice, uscita = self.comando("applica", f, "--prova")
+        self.assertEqual(codice, 0, uscita)
+        cartella = profili.completa("Note di prova", {"tipo": tipo})["cartella"]
+        self.assertTrue(cartella.endswith("/note_di_prova"), cartella)
+        self.assertIn(f"Note di prova ({tipo}, fr, data/{cartella})", uscita)
+
     def test_errori_della_tabella(self):
         self.comando("proponi", self.corpus)
         f, righe = self.tabella()

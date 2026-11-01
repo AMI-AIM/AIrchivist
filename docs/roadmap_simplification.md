@@ -256,7 +256,7 @@ Scheda «Importazioni»: scelta di file o cartelle, proposta di serie e metadati
 
 Completo quando: il corpus di prova misto del lavoro 29 si importa interamente dall'interfaccia.
 
-**Stato (27/10/2026): in corso.** Scheda «Importazioni» fatta, con 5 test sulle risposte del server (`stato_del_sistema.md`, «Interfaccia: importazione e revisione»). Manca la prova reale nel browser.
+**Stato (1/11/2026): fatto.** Scheda «Importazioni» con 5 test sulle risposte del server; corpus misto importato per intero dall'interfaccia nel browser (`stato_del_sistema.md`, «Interfaccia: importazione e revisione»).
 
 
 

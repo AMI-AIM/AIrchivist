@@ -342,7 +342,7 @@ Fermando quella ricerca è emerso un secondo difetto: «Ferma» (strumento `rice
 
 Non provati: macOS e Linux; un'importazione completa dall'interfaccia (la proposta e il controllo sì, l'importazione è quella del lavoro 29). Aperti per i lavori successivi: visore della fonte, passaggi e glossario (36), tabella di revisione modificabile nell'interfaccia (37), conversazione sulle fonti (38).
 
-### Interfaccia: importazione e revisione (fase 7, lavoro 37, in corso, 27/10/2026)
+### Interfaccia: importazione e revisione (fase 7, lavoro 37, 27/10/2026 e 1/11/2026)
 
 Codice proposto da un contributore esterno (PR #5, `dec4646`) e corretto qui.
 
@@ -351,7 +351,12 @@ Codice proposto da un contributore esterno (PR #5, `dec4646`) e corretto qui.
 - **Correzioni alla PR**: `tabella` chiamava una funzione `_bool` inesistente, quindi la tabella non si caricava mai (errore 500); `salva_tabella` riscriveva come CSV anche una tabella salvata da Excel come `.xlsx`, rovinandola: ora il file Excel resta intatto e le correzioni vanno nel CSV con lo stesso nome accanto (il file delle proposte `.json` è lo stesso), che la pagina adotta come tabella.
 - **Test**: 317, tutti superati; in `tests/test_app.py` cinque nuovi (15 in tutto): tabella letta e corretta (BOM, punto e virgola, CRLF; righe mancanti o scambiate rifiutate senza scrivere), tabella fuori dal progetto rifiutata in lettura, scrittura e `applica`, file `.xlsx` non riscritto, stato del lavoro con avanzamento e tabella pronta, azioni sconosciute o senza percorso rifiutate. I due test sulla tabella falliscono con la versione della PR.
 
-Non provati: la pagina nel browser (JavaScript della tabella, pulsanti, barra) e un'importazione completa dall'interfaccia.
+**Prova nel browser (1/11/2026)**, progetto nuovo nello scratchpad, tutta dalla scheda «Importazioni»: corpus misto di due articoli nativi (uno senza rivista né data), un articolo di JSTOR in scansione con strato di testo, tre pagine di articolo rese come immagini a 300 dpi senza testo, una nota `.txt`. Proposta, correzioni nelle celle (serie, data, lingua, titolo), «Salva le correzioni» (CSV su disco con i valori nuovi), «Controlla senza scrivere», «Importa»: 4 documenti su 4, OCR delle scansioni (Tesseract, confidenza 95,6) e confronto strato/OCR sull'articolo di JSTOR, 7 valori corretti in `changes.csv`, indice creato; «Rivedi i già importati» mostra i quattro documenti. `importa.py controlla`: l'unico errore è la nota di due righe («testo quasi vuoto»), giusto. Corretti durante la prova:
+- una serie senza nome nella proposta riceveva la cartella `riviste/serie` o `volumi/serie`, che restava anche dopo aver scritto il nome nella tabella: tutte le serie nuove sarebbero finite nella stessa cartella. Ora la proposta lascia la cartella vuota e `applica` la ricava dal nome (`revisione.py`; test `test_cartella_dal_nome_scritto_nella_tabella`, che fallisce con il codice di prima);
+- il dubbio «lingua non riconosciuta (scansioni senza testo)» compariva anche per un `.txt` breve: ora «testo assente o troppo breve»;
+- la pagina troncava a 200 caratteri le ultime righe del lavoro, e il riepilogo di `applica` con l'elenco delle serie nuove restava tagliato: ora 1000 (`app.py`).
+
+Restano: la barra dell'avanzamento segue l'ultima riga «n/m» del registro, che durante l'importazione è quella del documento in corso («[1/1]»), e si riempie prima della fine; il messaggio di `applica --prova` dice «lo stesso comando senza --prova» anche nell'interfaccia.
 
 ### Interfaccia: conversazione sulle fonti (fase 7, lavoro 38, in corso, 28/10/2026)
 

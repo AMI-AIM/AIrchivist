@@ -485,7 +485,7 @@ class App:
             raise Errore(r["errore"])
         registro = r.pop("registro", "")
         righe = [x.strip() for x in registro.splitlines() if x.strip()]
-        r["ultime"] = [x[:200] for x in righe[-4:]]
+        r["ultime"] = [x[:1000] for x in righe[-4:]]      # il riepilogo di applica elenca tutte le serie nuove
         d = M.cartella_importazioni() / r["id"]
         comando = ""
         if (d / "richiesta.json").is_file():

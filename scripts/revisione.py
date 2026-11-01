@@ -398,14 +398,15 @@ def proponi_serie(chiave, docs, esistenti, serie_forzata=""):
             nome = prefisso.group(0) if prefisso else ""
             dubbi.append("nome della serie dal nome dei file: scrivi quello vero")
     if not lingua:
-        dubbi.append("lingua non riconosciuta (scansioni senza testo): indicala")
+        dubbi.append("lingua non riconosciuta (testo assente o troppo breve): indicala")
     tipo = "periodico" if periodico else "volume"
     sigla = ""
     if tipo == "periodico":
         prefissi = Counter((re.match(r"[A-Za-z]{1,6}(?=\d)", d["stem"]) or [""])[0].upper() for d in docs)
         sigla = prefissi.most_common(1)[0][0] if prefissi and prefissi.most_common(1)[0][0] else ""
         sigla = sigla or re.sub(r"[^A-Z]", "", (nome or "").title())[:4]
-    cartella = ("riviste/" if tipo == "periodico" else "volumi/") + slug(nome or sotto or "serie")
+    # senza nome la cartella resta vuota: applica la ricava dal nome che il ricercatore scrive nella tabella
+    cartella = ("riviste/" if tipo == "periodico" else "volumi/") + slug(nome or sotto) if (nome or sotto) else ""
     return {"serie": nome, "tipo_serie": tipo, "lingua": lingua, "cartella_serie": cartella, "sigla": sigla,
             "esiste": False, "dubbi": dubbi}
 
