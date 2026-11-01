@@ -769,11 +769,15 @@ def riscrivi_intestazione(f, nuovi):
     testo = dati.decode("utf-8-sig")
     nl = "\r\n" if "\r\n" in testo else "\n"
     righe = testo.split(nl)
-    from estrai_occorrenze import HDR
+    from estrai_occorrenze import HDR, campi_spezzati
+    spezzati = campi_spezzati(testo)
+    if spezzati:                   # l'intestazione finirebbe a metà: la riscrittura perderebbe campi
+        raise ValueError(f"{f.name}: valore di {', '.join(spezzati)} su più righe nell'intestazione; "
+                         "riportalo su una riga sola prima di correggere i campi")
     fine = 0
     while fine < len(righe) and HDR.match(righe[fine].strip()):
         fine += 1
-    resto = dict(nuovi)
+    resto = {k: " ".join(str(v).split()) if v else v for k, v in dict(nuovi).items()}   # un valore per riga
     testata = []
     for r in righe[:fine]:
         chiave = HDR.match(r.strip()).group(1).upper()
@@ -823,6 +827,12 @@ def applica_revisione(args, righe, stampa):
             errori.append(f"riga {n}: data «{cambi['data'][1]}» (scrivi AAAA-MM-GG, AAAA-MM o AAAA)")
         if not (dati / rel).is_file():
             errori.append(f"riga {n}: {rel} non esiste più in data")
+        else:
+            from estrai_occorrenze import campi_spezzati
+            spezzati = campi_spezzati((dati / rel).read_text(encoding="utf-8-sig", errors="replace")[:6000])
+            if spezzati:
+                errori.append(f"riga {n}: in {rel} il valore di {', '.join(spezzati)} va a capo nell'intestazione; "
+                              "riportalo su una riga sola prima di correggere i campi (importa.py controlla lo segnala)")
         piano.append((rel, cambi))
     if errori:
         stampa("La tabella ha errori da correggere:")

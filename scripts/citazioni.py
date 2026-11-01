@@ -29,7 +29,6 @@ import sys
 from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
-HDR = re.compile(r"^\[([A-Za-z_]+):\s*(.*?)\]\s*$")
 # Marcatore di pagina (sintassi fissata nel lavoro 8, fase 2): su una riga propria, prima del testo della pagina.
 #   [[p. 12]]             pagina numerata (N: cifre arabe o romane, maiuscolo e spaziatura liberi)
 #   [[pagina 12]]         forma estesa tollerata
@@ -65,16 +64,10 @@ def profilo_di(meta, file=""):
 
 # ---------------------------------------------------------------- intestazione
 def leggi_intestazione(testo):
-    """(metadati con chiavi maiuscole, posizione in cui inizia il testo)."""
-    meta, pos = {}, 0
-    for riga in testo.splitlines(keepends=True):
-        m = HDR.match(riga.strip())
-        if m:
-            meta[m.group(1).upper()] = m.group(2).strip()
-        elif not (riga.strip() == "" and meta):
-            break
-        pos += len(riga)
-    return meta, pos
+    """(metadati con chiavi maiuscole, posizione in cui inizia il testo): la stessa lettura dell'estrazione, anche
+    per i valori spezzati su più righe."""
+    from estrai_occorrenze import leggi_intestazione as leggi
+    return leggi(testo)
 
 
 def data_it(iso):

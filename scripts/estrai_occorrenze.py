@@ -26,6 +26,8 @@ from pathlib import Path
 
 # Intestazione di metadati in testa ai file: righe come [DATE: 1966-07-15]
 HDR = re.compile(r"^\[([A-Za-z_]+):\s*(.*?)\]\s*$")
+INIZIO_CAMPO = re.compile(r"^\[([A-Za-z_]+):")
+RIGHE_CAMPO = 6              # righe al massimo di un valore dell'intestazione spezzato da un a capo
 # Date estratte dal testo stesso (non dal frontespizio): nel corpus di Peking Review sono inattendibili
 FONTI_DATA_INATTENDIBILI = {"filename+local_header"}
 
@@ -131,18 +133,56 @@ def _car_ignorando_accenti(ch):
     return f"[{ACCENTI[k]}]" if k in ACCENTI else re.escape(ch)
 
 
+def _campo_spezzato(righe, i):
+    """Righe usate da un campo dell'intestazione il cui valore va a capo («[AUTHOR: A, B,» / «C]»: metadati di un
+    PDF con un a capo dentro), cercando la «]» finale nelle righe seguenti; 0 se non è un campo spezzato."""
+    if not INIZIO_CAMPO.match(righe[i].strip()) or HDR.match(righe[i].strip()):
+        return 0
+    for k in range(i + 1, min(i + RIGHE_CAMPO, len(righe))):
+        r = righe[k].strip()
+        if not r or INIZIO_CAMPO.match(r):
+            return 0
+        if r.endswith("]"):
+            return k + 1 - i
+    return 0
+
+
+def campi_spezzati(testo):
+    """Nomi dei campi dell'intestazione il cui valore è scritto su più righe (importa.py controlla li segnala)."""
+    righe, out, i = testo.splitlines()[:200], [], 0
+    while i < len(righe) and righe[i].strip():           # la riga vuota chiude l'intestazione
+        n = _campo_spezzato(righe, i)
+        if n:
+            out.append(INIZIO_CAMPO.match(righe[i].strip()).group(1).upper())
+            i += n
+        elif HDR.match(righe[i].strip()):
+            i += 1
+        else:
+            break
+    return out
+
+
 def leggi_intestazione(testo):
-    """Restituisce (metadati, posizione in cui inizia il testo vero e proprio)."""
+    """Restituisce (metadati, posizione in cui inizia il testo vero e proprio). Un valore spezzato su più righe si
+    legge unito: altrimenti l'intestazione finirebbe lì e il resto sarebbe preso per testo della fonte."""
     meta, pos = {}, 0
-    for riga in testo.splitlines(keepends=True):
+    righe = testo.splitlines(keepends=True)
+    i, vuota = 0, False
+    while i < len(righe):
+        riga, usate = righe[i], 1
         m = HDR.match(riga.strip())
+        if not m and not vuota:                 # dopo la riga vuota che chiude l'intestazione, solo campi interi
+            n = _campo_spezzato(righe, i)
+            if n:
+                m, usate = HDR.match(" ".join(r.strip() for r in righe[i:i + n])), n
         if m:
             meta[m.group(1).upper()] = m.group(2).strip()
         elif riga.strip() == "" and meta:
-            pass
+            vuota = True
         else:
             break
-        pos += len(riga)
+        pos += sum(len(r) for r in righe[i:i + usate])
+        i += usate
     return meta, pos
 
 

@@ -67,7 +67,7 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
-from estrai_occorrenze import (HDR, STATI_CAMPO, leggi_intestazione, stato_attivo,
+from estrai_occorrenze import (HDR, STATI_CAMPO, campi_spezzati, leggi_intestazione, stato_attivo,
                            stato_del_valore, nota_del_campo)   # noqa: E402
 
 PDF = {".pdf"}
@@ -744,6 +744,8 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
     # un campo senza _STATUS vale «verificato», quindi i campi dell'operatore non ricevono stati espliciti
     if valori.get("stato_numero"):
         righe += [("ISSUE_STATUS", valori["stato_numero"]), ("ISSUE_NOTE", valori.get("nota_numero", ""))]
+    # un valore per riga: i metadati dei PDF possono contenere a capo (autori e titoli lunghi)
+    righe = [(k, " ".join(str(v).split())) for k, v in righe]
     return "".join(f"[{k}: {v}]\n" for k, v in righe if v != "" or k in ("FULL_CITATION", "SERIES")) + "\n"
 
 
@@ -1111,6 +1113,8 @@ def cmd_controlla(args, stampa=print, cfg=None):
             continue
         if not meta.get("FULL_CITATION"):
             righe.append((rel, "errore", "manca [FULL_CITATION]"))
+        for campo in campi_spezzati(t):
+            righe.append((rel, "errore", f"[{campo}] va a capo nell'intestazione: va su una riga sola"))
         d = meta.get("DATE", "")
         # anche al mese (AAAA-MM: periodici mensili, date note solo al mese), come le scrive l'importazione
         if d and not ((re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) and valida(*d.split("-"))) or

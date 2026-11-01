@@ -230,6 +230,37 @@ class Revisione(unittest.TestCase):
         self.assertIn("ZP1967-01-12.txt,ISSUE,(assente),12,revisione in tabella", modifiche)
         self.assertIn("ZP1967-01-12.txt,DATE_STATUS,dedotto,(assente)", modifiche)
 
+    def test_valori_su_una_riga(self):
+        """Metadati del PDF con un a capo (autori e titoli lunghi): l'importazione li scrive su una riga; un file con
+        un valore già spezzato è segnalato da controlla e la revisione non lo riscrive."""
+        testa = I.intestazione("Boh", {"lingua": "en"},
+                               {"autore": "Bubula, Michał,\nŠkarić, Doris", "titolo": "How Scalable\nis It?",
+                                "citazione": "Bubula. «How Scalable\nis It?»"},
+                               {"metodo": "testo", "confidenza": None}, "origine", "documento.txt")
+        righe = testa.strip("\n").split("\n")
+        self.assertTrue(all(r.startswith("[") and r.endswith("]") for r in righe), righe)
+        self.assertIn("[AUTHOR: Bubula, Michał, Škarić, Doris]", righe)
+        self.assertIn("[TITLE: How Scalable is It?]", righe)
+        self.comando("proponi", self.corpus / "zeri_i_popullit")
+        f, righe = self.tabella()
+        self.assertEqual(self.comando("applica", f)[0], 0)
+        file_dati = self.progetto / "data/riviste/zeri_i_popullit/ZP1967-01-12.txt"
+        testo = file_dati.read_text(encoding="utf-8")
+        file_dati.write_text(testo.replace("[SERIES: Zëri I Popullit]", "[SERIES: Zëri I\nPopullit]"), encoding="utf-8")
+        codice, uscita = self.comando("controlla")
+        self.assertIn("ZP1967-01-12.txt: [SERIES] va a capo nell'intestazione", uscita)
+        self.comando("rivedi", "--serie", "Zëri I Popullit")
+        fr = next((self.progetto / "audit").glob("review_rivedi_*.csv"))
+        righe = R.leggi_tabella(fr)
+        r = next(x for x in righe if x["file_dati"].endswith("ZP1967-01-12.txt"))
+        r["numero"] = "12"
+        self.scrivi(fr, righe, R.COLONNE_RIVEDI)
+        prima = file_dati.read_bytes()
+        codice, uscita = self.comando("applica", fr)
+        self.assertEqual(codice, 2, uscita)
+        self.assertIn("SERIES va a capo", uscita)
+        self.assertEqual(file_dati.read_bytes(), prima)                          # niente scritto
+
 
 def xlsx(f, righe):
     """Cartella di lavoro Excel minima (celle in linea), come la salverebbe chi apre la tabella in Excel."""

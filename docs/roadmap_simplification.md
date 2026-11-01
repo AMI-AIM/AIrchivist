@@ -248,7 +248,7 @@ Scheda «Fonte» con la pagina dell'originale (PyMuPDF; ripiego sul testo di `da
 
 Completo quando: per una risposta con citazioni a pagina (per esempio la prova sui PDF del 25/10) ogni citazione apre la pagina giusta con il passaggio evidenziato.
 
-**Stato (1/11/2026): fatto.** Schede «Fonte», «Passaggi», «Glossario» e «Apri la fonte, p. N» nel documento della risposta; verificato su tutte le risposte salvate: 14 citazioni a pagina su 16 aprono la pagina citata con la riga evidenziata, le altre 2 citano una pagina sbagliata per un difetto del motore (`stato_del_sistema.md`, «Interfaccia: visore della fonte, passaggi, glossario»).
+**Stato (1/11/2026): fatto.** Schede «Fonte», «Passaggi», «Glossario» e «Apri la fonte, p. N» nel documento della risposta; verificato su tutte le risposte salvate: 14 citazioni a pagina su 16 aprono la pagina citata con la riga evidenziata, le altre 2 citano una pagina sbagliata per un difetto del motore, corretto lo stesso giorno (`stato_del_sistema.md`, «Interfaccia: visore della fonte, passaggi, glossario» e «Intestazioni con valori su più righe»).
 
 
 

@@ -127,6 +127,34 @@ class Intestazione(unittest.TestCase):
         p = corpus / "riviste" / "renmin_ribao" / "1971-07-09.txt"
         self.assertEqual(E.metadati(p, corpus, {"SERIES": "Renmin Ribao"})[3], "1971-07-09")
 
+    # un file di Literature_Review importato il 27/10: autori e titolo dai metadati del PDF, con un a capo dentro;
+    # l'intestazione finiva alla prima riga spezzata e l'estrazione citava l'OCR dei campi successivi
+    SPEZZATA = ("[DOC_ID: prova]\n[SERIES: Boh]\n[AUTHOR: Michał Bubula, Konstantin Baierer,\nDoris Škarić]\n"
+                "[TITLE: How Scalable is Quality Assessment of Text Recognition? A Combination\n"
+                "of Ground Truth and Confidence Scores]\n[TEXT_METHOD: OCR proprio]\n"
+                "[FULL_CITATION: Bubula. s.d.. “How Scalable.” *Boh*: 1285–1309.]\n\n"
+                "[[p. 1285 | pdf 1]]\nThe OCR quality is measured.\n")
+
+    def test_valore_spezzato_su_piu_righe(self):
+        meta, inizio = E.leggi_intestazione(self.SPEZZATA)
+        self.assertEqual(meta["AUTHOR"], "Michał Bubula, Konstantin Baierer, Doris Škarić")
+        self.assertEqual(meta["TITLE"], "How Scalable is Quality Assessment of Text Recognition? A Combination of "
+                                        "Ground Truth and Confidence Scores")
+        self.assertEqual(meta["TEXT_METHOD"], "OCR proprio")
+        self.assertTrue(self.SPEZZATA[inizio:].startswith("[[p. 1285"))
+        self.assertEqual([m.start() for m in rx("OCR").finditer(self.SPEZZATA, inizio)],
+                         [self.SPEZZATA.rindex("OCR")])                  # nessuna occorrenza nell'intestazione
+        self.assertEqual(E.campi_spezzati(self.SPEZZATA), ["AUTHOR", "TITLE"])
+
+    def test_intestazione_corretta_e_testo_tra_parentesi(self):
+        testo = "[SERIES: Boh]\n[FULL_CITATION: x]\n\n[Nota: la riga del testo\ncontinua qui]\n"
+        meta, inizio = E.leggi_intestazione(testo)
+        self.assertEqual(set(meta), {"SERIES", "FULL_CITATION"})     # dopo la riga vuota è testo della fonte
+        self.assertTrue(testo[inizio:].startswith("[Nota:"))
+        self.assertEqual(E.campi_spezzati(testo), [])
+        meta, inizio = E.leggi_intestazione("[SERIES: Boh]\n[AUTHOR: senza fine\n\nTesto.\n")
+        self.assertEqual((meta, inizio), ({"SERIES": "Boh"}, len("[SERIES: Boh]\n")))   # nessuna «]»: non è un campo
+
 
 class StatiDeiCampi(unittest.TestCase):
     """Vocabolario chiuso degli stati (lavoro 8): assenza di _STATUS = verificato, «verificato» esplicito
