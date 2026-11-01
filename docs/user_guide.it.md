@@ -25,12 +25,6 @@ AIrchivist/                 il repository (il motore: si può pubblicare)
   README.it.md, README.md   presentazione (in italiano e in inglese)
   LICENSE, requirements.txt licenza (AGPL-3.0) e librerie facoltative
   docs/                     documentazione: primi passi, questa guida, problemi frequenti, documenti di progetto
-  skills/
-    source-search/          skill source-search, fonte unica (SKILL.md, config.ini)
-    readme/                 README delle confezioni
-    package.py              confezioni della skill, in skills/build/ (fuori dal controllo di versione):
-                            source-search-claude.zip (claude.ai), claude-code/ (marketplace con il plugin),
-                            source-search-chatgpt.zip
   tests/                    test automatici (python -m unittest discover -s tests); test_project/: progetto di prova
   scripts/
     installa.py             avvio guidato, librerie, controllo dell'ambiente, profili dei modelli, client di chat
@@ -50,8 +44,7 @@ AIrchivist/                 il repository (il motore: si può pubblicare)
                             motori OCR, confronto dei testi, lettura delle tabelle (.csv, .xlsx)
     citazioni.py            citazioni Chicago autore-data dalle intestazioni e dai profili di serie
     documento.py            la risposta come documento HTML autonomo, da aprire nel browser e stampare
-    sessione.py             lettura dei passaggi in sessione (skill source-search)
-    chat.py                 comandi della skill source-search (chat.py ambiente: dove si trova)
+    sessione.py             lettura dei passaggi in sessione (li legge l'assistente della chat)
     valuta.py               prova rapida dei modelli su una lettura di riferimento
     valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
     prova_ocr.py, prova_chat.py   prove dei motori OCR e dei modelli della chat
@@ -81,7 +74,7 @@ AIrchivist/                 il repository (il motore: si può pubblicare)
         answers/            le risposte complete delle ricerche avviate dalla chat (una per domanda)
         references/         letture di riferimento per valuta.py
         past_sessions/      lavori delle sessioni assistite (letture, tabelle, rapporti)
-        trials/             prove dei modelli, dell'OCR, della chat e della skill (non entrano nell'archivio)
+        trials/             prove dei modelli, dell'OCR e della chat (non entrano nell'archivio)
         evaluation/         insiemi di riferimento verificati a mano e misure (valutazione.py)
       system/
         index/              indice di ricerca delle fonti (si aggiorna da solo quando aggiungi file)

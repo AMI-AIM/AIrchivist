@@ -30,12 +30,6 @@ AIrchivist/                 the repository (the engine: it can be published)
   README.it.md, README.md   overview (in Italian and English)
   LICENSE, requirements.txt licence (AGPL-3.0) and optional libraries
   docs/                     documentation: quickstart, this guide, troubleshooting, project documents (Italian)
-  skills/
-    source-search/          the source-search skill, single source (SKILL.md, config.ini)
-    readme/                 READMEs of the packages
-    package.py              builds the skill packages into skills/build/ (outside version control):
-                            source-search-claude.zip (claude.ai), claude-code/ (marketplace with the plugin),
-                            source-search-chatgpt.zip
   tests/                    automated tests (python -m unittest discover -s tests); test_project/: sample project
   scripts/
     installa.py             guided setup, libraries, environment check, model profiles, chat clients
@@ -55,8 +49,7 @@ AIrchivist/                 the repository (the engine: it can be published)
                             text comparison, reading tables (.csv, .xlsx)
     citazioni.py            Chicago author-date citations from the file headers and series profiles
     documento.py            the answer as a self-contained HTML document, to open in a browser and print
-    sessione.py             reading passages in a session (source-search skill)
-    chat.py                 commands of the source-search skill (chat.py ambiente: where it is running)
+    sessione.py             reading passages in a session (the chat assistant reads them)
     valuta.py               quick test of the models against a reference reading
     valutazione.py          hand-verified reference set; precision and recall measurements
     prova_ocr.py, prova_chat.py   tests of OCR engines and of chat models
@@ -86,7 +79,7 @@ AIrchivist/                 the repository (the engine: it can be published)
         answers/            the full answers of searches started from the chat (one per question)
         references/         reference readings for valuta.py
         past_sessions/      work from assisted sessions (readings, tables, reports)
-        trials/             tests of models, OCR, chat and skill (they do not enter the archive)
+        trials/             tests of models, OCR and chat (they do not enter the archive)
         evaluation/         hand-verified reference sets and measurements (valutazione.py)
       system/
         index/              search index of the sources (updates itself when you add files)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Ricerca con lettura in sessione: i passaggi li legge l'assistente della chat (per esempio Claude con la skill
-source-search), non un modello chiamato via API. Il motore fa il resto come in ricerca.py: estrazione
+Ricerca con lettura in sessione: i passaggi li legge l'assistente della chat (per esempio Claude in Claude
+Code), non un modello chiamato via API. Il motore fa il resto come in ricerca.py: estrazione
 esaustiva, archivio unico, citazioni testuali scelte da Python e verificate, sezioni deterministiche della
 risposta. Le letture dichiarano la provenienza «sessione assistita» con il nome dell'assistente (--da).
 

@@ -1,6 +1,8 @@
 # Riorganizzazione della cartella
 
-Istruzioni per Claude Code (26/10/2026). Decisioni di Ivan:
+Istruzioni per Claude Code (26/10/2026). La riorganizzazione è fatta; la skill e le sue confezioni (`skills/`, `package.py`, `skills/build/`) sono state eliminate il 1/11/2026: i riferimenti qui sotto restano come storia.
+
+Decisioni di Ivan:
 - nomi di cartelle e file in inglese;
 - progetti di ricerca dentro il repository, in `projects/`, esclusi da git;
 - per ora si rinominano **solo cartelle e file**. Codice, nomi dei moduli, funzioni, messaggi, campi delle schede e comandi restano in italiano: la traduzione è un lavoro successivo, prima della pubblicazione.

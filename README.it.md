@@ -69,7 +69,6 @@ Il repository contiene il motore:
 |---|---|
 | `scripts` | programmi, `config.ini` (profilo di modello in uso, parametri, progetto in uso), `models_template.ini` (esempi di profili di modello) e `series_template.ini` (modello per i progetti nuovi) |
 | `tests` | test automatici e progetto di prova (`tests/test_project`) |
-| `skills` | skill source-search, scritta una volta sola (`source-search`), i README delle confezioni (`readme`) e `package.py`, che produce le confezioni in `skills/build`: zip per claude.ai, plugin per Claude Code, zip per ChatGPT (ognuna con il suo `README.md`) |
 | `docs` | primi passi, guida d'uso, problemi frequenti (in italiano e in inglese); documenti di progetto: stato, progettazione, piano di lavoro, schede delle entità |
 | `projects` | i progetti di ricerca, fuori dal controllo di versione |
 
@@ -87,7 +86,7 @@ Ogni progetto di ricerca (`projects/<nome>`) ha la stessa struttura:
 | `results/answers` | tutte le risposte complete delle ricerche avviate dalla chat, una per domanda |
 | `results/references` | letture di riferimento per provare i modelli |
 | `results/past_sessions` | lavori delle sessioni assistite |
-| `results/trials` | prove dei modelli, dell'OCR, della chat e della skill |
+| `results/trials` | prove dei modelli, dell'OCR e della chat |
 | `results/evaluation` | insiemi di riferimento verificati a mano e misure di precisione e richiamo |
 | `system` | indice di ricerca delle fonti (`index`), stato e registro di ogni ricerca avviata dalla chat (`jobs`), copie dei file prima delle modifiche (`backups`) |
 

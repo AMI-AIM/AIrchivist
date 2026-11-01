@@ -44,8 +44,6 @@ Motore (repository, pubblicabile):
 |---|---|
 | `scripts/` | motore: moduli Python, `config.ini` (modelli, parametri, progetto in uso), `series_template.ini` (modello per i progetti nuovi) |
 | `tests/` | test (`python -m unittest discover -s tests`); progetto di prova in `tests/test_project/` |
-| `skills/source-search/` | skill source-search, fonte unica senza nomi di provider (`SKILL.md`, `config.ini`); `skills/readme/`: README delle confezioni |
-| `skills/package.py` | confezioni della skill in `skills/build/` (fuori da git): `source-search-claude.zip` per claude.ai, `claude-code/` marketplace con il plugin per Claude Code, `source-search-chatgpt.zip` per ChatGPT |
 | `docs/` | documentazione di progetto; per gli utenti, in italiano e in inglese: `quickstart(.it).md` (primi passi), `user_guide(.it).md` (guida d'uso), `troubleshooting(.it).md` (problemi frequenti) |
 | `letteratura/` | letteratura secondaria sul metodo (PDF, fuori da git; da spostare fuori dal repository) |
 
@@ -62,13 +60,13 @@ Progetti di ricerca, in `projects/` (fuori da git). Quello in uso si sceglie in 
 | `results/searches/` | una cartella per ricerca |
 | `results/answers/` | risposte complete, una per domanda |
 | `results/references/`, `results/past_sessions/` | letture di riferimento e lavori delle sessioni con Claude (entrano nell'archivio) |
-| `results/trials/`, `results/evaluation/` | prove dei modelli, dell'OCR, della chat e della skill; insiemi di valutazione |
+| `results/trials/`, `results/evaluation/` | prove dei modelli, dell'OCR e della chat; insiemi di valutazione |
 | `system/` | `index/sources.sqlite` (indice SQLite FTS5, circa 900 MB, si aggiorna da solo), `jobs/` (ricerche avviate dalla chat), `import_jobs/`, `cache/`, `backups/` (copie precedenti dei file fuori da git, una cartella per data e argomento) |
 
 Ambiente: Windows. Il tool si usa dalla chat di Jan tramite il server MCP `scripts/mcp_server.py`. I modelli arrivano da FreeLLMAPI (`http://127.0.0.1:31415/v1`, chiave in `FREELLMAPI_KEY`).
 
 ## Controllo di versione
 
-Git è attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false`). `.gitignore` esclude i progetti di ricerca (`projects/`: corpus, schede, serie, risultati, indice, copie di sicurezza), `letteratura/`, `skills/build/` e `__pycache__/`.
+Git è attivo dal 22/10/2026 (ramo `main`, `core.autocrlf = false`). `.gitignore` esclude i progetti di ricerca (`projects/`: corpus, schede, serie, risultati, indice, copie di sicurezza), `letteratura/` e `__pycache__/`.
 
 I progetti restano fuori dal controllo di versione per le dimensioni e per i diritti delle fonti. Le correzioni a `data/` restano documentate in `audit/` del progetto.

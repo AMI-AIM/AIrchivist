@@ -1,14 +1,10 @@
 """
-Test delle correzioni emerse dai confronti tra la skill source-search e Claude base nella chat (25-26/10/2026):
-allegati in /mnt/user-data/attachments, date note solo al mese, numeri di pagina dei documenti d'archivio dopo
+Test delle correzioni emerse dalle prove nella chat (25-26/10/2026): date note solo al mese, numeri di pagina dei documenti d'archivio dopo
 l'OCR (timbri sotto il numero, scarto che cambia per pagine mancanti), marcatori di pagina nelle citazioni,
 menzioni contate in esplora, sommario dei quotidiani cinesi, strato di testo illeggibile nei PDF.
 """
 import argparse
 import io
-import json
-import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -27,23 +23,6 @@ import numerazione as N  # noqa: E402
 INTESTAZIONE = "[SERIES: Renmin Ribao]\n[LANG: zh]\n[YEAR: 1980]\n[DATE: 1980-04-15]\n\n"
 PAROLE = "The Party continued the struggle against revisionism and for the construction of socialism. " * 6
 TIMBRO = "25X1\nSECRET\nSanitized Copy Approved for Release 2009/12/03 : CIA-RDP85T00875R001000010042-0"
-
-
-class AllegatiDellaChat(unittest.TestCase):
-    def test_prefisso_tolto(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            allegati = Path(tmp) / "attachments" / "cb0e9415-42a9-5462-948e-7fc2583f6821"
-            allegati.mkdir(parents=True)
-            (allegati / "0e86e18d-RMRB1980-04-15.txt").write_text(INTESTAZIONE + "贝林格同志抵京。\n", encoding="utf-8")
-            (allegati / "2e798566-1968_-_CIA_Mijal_e_Dinucci.pdf").write_bytes(b"%PDF-1.4\n")
-            env = dict(os.environ, AIRCHIVIST_PROGETTO=str(Path(tmp) / "progetto"), PYTHONIOENCODING="utf-8")
-            r = subprocess.run([sys.executable, str(MOTORE / "chat.py"), "apri", str(Path(tmp) / "attachments")],
-                               cwd=MOTORE, env=env, capture_output=True, text=True, encoding="utf-8")
-            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-            esito = json.loads(r.stdout)
-            self.assertEqual(esito["fonti_aggiunte"], 1)
-            self.assertTrue((Path(tmp) / "progetto" / "data" / "RMRB1980-04-15.txt").exists())
-            self.assertEqual(len(esito["da_importare"]), 1)
 
 
 class DateAlMese(unittest.TestCase):

@@ -9,9 +9,6 @@ scripts/models.ini
 # Letteratura secondaria sul metodo (va spostata fuori dal repository)
 letteratura/
 
-# Confezioni della skill generate da skills/package.py
-skills/build/
-
 # File temporanei
 __pycache__/
 *.pyc

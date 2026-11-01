@@ -1,5 +1,5 @@
 """
-Test della ricerca con lettura in sessione (sessione.py, skill source-search) e di sintesi.py --sintesi-da, su un
+Test della ricerca con lettura in sessione (sessione.py) e di sintesi.py --sintesi-da, su un
 progetto temporaneo con due numeri finti del Renmin Ribao: uno pertinente, uno con un omonimo. Senza modelli.
 """
 import json

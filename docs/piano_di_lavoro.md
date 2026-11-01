@@ -57,16 +57,9 @@ Struttura in inglese, progetti in `projects/` fuori da git, solo cartelle e file
 
 
 
-## Fase 5 — Sistemi minori: skill e plugin
+## Fase 5 — Sistemi minori: skill e plugin (eliminata)
 
-Istruzioni dettagliate in `roadmap_skill.md`. Accanto al sistema principale, una skill unica che porta il metodo nella chat di Claude e di ChatGPT, presentata come sistema minore e più limitato.
-
-18. **Verifiche sui provider** (aperto): documentazione ufficiale di skill e plugin per claude.ai, Claude Code e ChatGPT (formati, piani, ambienti di esecuzione, plugin di sole skill).
-19. **Skill unica** (aperto): fonte unica `skills/source-search/` con `SKILL.md` neutro rispetto al provider, riconoscimento dell'ambiente, vincoli degli ambienti (solo libreria standard, niente rete né OCR dati per scontati).
-20. **Confezioni** (aperto): `skills/package.py` produce lo zip per claude.ai, la cartella o il plugin per Claude Code, il plugin per ChatGPT.
-21. **Pulizia** (aperto): eliminare `.claude/skills/ricerca-fonti/`; aggiornare `CLAUDE.md`, `README.md`, `README.it.md`, `docs/user_guide.it.md`.
-22. **Prove** (aperto): una per ambiente sulla stessa domanda e sullo stesso corpus piccolo, con confronto senza skill; test delle confezioni; test dei PDF corretti per il caso «PyMuPDF assente» (oggi 9 test falliscono invece di essere saltati o di provare il ripiego su pypdf).
-23. **Presentazione** (aperto): tabella di confronto tra sistema principale e sistemi minori nel `README.md` e nelle confezioni.
+18-23. Eliminati il 1/11/2026 su decisione di Ivan: la skill `source-search` e le sue confezioni per claude.ai, Claude Code e ChatGPT non davano un'utilità reale e creavano confusione accanto al sistema principale. Restano il server MCP e l'interfaccia nel browser.
 
 
 
