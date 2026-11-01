@@ -50,6 +50,7 @@ from tabelle import leggi_xlsx  # noqa: F401  (anche per chi la importava da qui
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
+import posizioni  # noqa: E402
 try:
     sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
 except AttributeError:
@@ -723,7 +724,7 @@ def prepara_prova(args, cfg, validi, modello):
     with open(prova / "passaggi.jsonl", "w", encoding="utf-8", newline="\n") as f:
         for c in validi:
             f.write(json.dumps({k: v for k, v in c.items() if k != "riferimento"}, ensure_ascii=False) + "\n")
-    cfg_base = Path(args.config) if args.config else CARTELLA / "config.ini"
+    cfg_base = Path(args.config) if args.config else posizioni.file_config()
     cfg_file = prova / "config_prova.ini"
     cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
     cp.optionxform = str
@@ -909,7 +910,7 @@ def prova_rapida(args, cfg):
         prove.mkdir(parents=True, exist_ok=True)
         (prove / ".senza_archivio").write_text("Prove dei modelli: niente archivio unico.\n", encoding="utf-8")
         (prove / "scartati.json").write_bytes(json.dumps(scartati, ensure_ascii=False, indent=1).encode("utf-8"))
-    cfg_base = Path(args.config) if args.config else CARTELLA / "config.ini"
+    cfg_base = Path(args.config) if args.config else posizioni.file_config()
     blocco = threading.Lock()
 
     def stampa(t):

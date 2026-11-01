@@ -36,6 +36,7 @@ sys.stdout = sys.stderr
 
 import schede                                   # noqa: E402
 import lavori                                   # noqa: E402
+import posizioni                                # noqa: E402
 import varianti as mod_varianti                 # noqa: E402
 from archivio import Archivio, escluso          # noqa: E402
 from llm import leggi_config, percorso          # noqa: E402
@@ -813,7 +814,7 @@ def t_modello(azione="elenca", profilo="", ruoli=None, solo_progetto=False):
     """Profili dei modelli che leggono i passaggi (installa.py modello, lavoro 26): elenca, prova, usa. «usa» cambia
     la scelta solo se la prova di collegamento riesce, come da riga di comando."""
     import installa
-    installa.FILE_CONFIG = Path(CONFIG).resolve() if CONFIG else CARTELLA / "config.ini"
+    installa.FILE_CONFIG = Path(CONFIG).resolve() if CONFIG else posizioni.file_config()
     c = cfg()
     if azione == "elenca":
         return {**installa.stato_profili(c),

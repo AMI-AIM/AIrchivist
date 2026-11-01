@@ -38,6 +38,8 @@ import re
 import sys
 from pathlib import Path
 
+from posizioni import descrizione as posizioni, file_config, file_letti
+
 CARTELLA = Path(__file__).resolve().parent
 VARIABILE = "AIRCHIVIST_PROGETTO"
 # percorsi di progetto e loro posizione predefinita dentro la cartella del progetto
@@ -84,10 +86,11 @@ def cartella_scelta(cfg):
 
 
 def leggi_config(path=None):
-    """config.ini del motore, più project.ini del progetto scelto (le sue voci prevalgono; i suoi percorsi,
-    relativi alla cartella del progetto, diventano assoluti)."""
+    """config.ini del motore (da installato: i valori predefiniti e sopra il config.ini dell'utente, posizioni.py),
+    più project.ini del progetto scelto (le sue voci prevalgono; i suoi percorsi, relativi alla cartella del
+    progetto, diventano assoluti)."""
     cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
-    cp.read(path or CARTELLA / "config.ini", encoding="utf-8")
+    cp.read(file_letti(path), encoding="utf-8")
     radice = cartella_scelta(cp)
     if radice is None:
         return cp
@@ -193,7 +196,7 @@ def cmd_nuovo(args, stampa=print):
     (radice / "project.ini").write_text(
         f"[progetto]\nnome = {args.nome or radice.name}\ndescrizione = {args.descrizione or ''}\n"
         f"creato_il = {dt.date.today().isoformat()}\n", encoding="utf-8")
-    stampa(f"Progetto creato in {radice}.\nPer usarlo: in config.ini, sezione [progetto], cartella = {radice}\n"
+    stampa(f"Progetto creato in {radice}.\nPer usarlo: in {file_config()}, sezione [progetto], cartella = {radice}\n"
            f"oppure, solo per il terminale aperto: "
            f"{f'set {VARIABILE}={radice}' if os.name == 'nt' else f'export {VARIABILE}={radice}'}\n"
            f"Poi importa le fonti: python importa.py proponi <cartella dei documenti> (docs/quickstart.it.md).")
@@ -206,7 +209,8 @@ def cmd_stato(args):
     if radice is None:
         sys.exit(NESSUN_PROGETTO)
     origine = (f"variabile d'ambiente {VARIABILE}" if os.environ.get(VARIABILE, "").strip() else
-               "config.ini, [progetto] cartella")
+               f"{file_config()}, [progetto] cartella")
+    print("\n".join(posizioni()))
     print(f"Progetto: {nome(cfg)} ({radice}) — {origine}")
     for k in PERCORSI:
         p = percorso(cfg, k)

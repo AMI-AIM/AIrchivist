@@ -6,6 +6,9 @@ projects/
 # Profili dei modelli di chi usa il motore (il modello pubblico è scripts/models_template.ini)
 scripts/models.ini
 
+# Marcatore del programma installato (lo mette l'installatore: scripts/posizioni.py)
+scripts/installazione.ini
+
 # Letteratura secondaria sul metodo (va spostata fuori dal repository)
 letteratura/
 

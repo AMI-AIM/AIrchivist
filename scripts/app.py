@@ -48,6 +48,7 @@ sys.stdout = _USCITA
 
 import installa                 # noqa: E402
 import lavori                   # noqa: E402
+import posizioni                # noqa: E402
 import profili                  # noqa: E402
 import revisione                # noqa: E402
 import schede                   # noqa: E402
@@ -73,10 +74,10 @@ class App:
     """Lo stato dell'interfaccia e le sue azioni, indipendenti dal protocollo HTTP (così i test le chiamano)."""
 
     def __init__(self, config=None, cartella_progetti=None):
-        self.config = Path(config).resolve() if config else CARTELLA / "config.ini"
+        self.config = Path(config).resolve() if config else posizioni.file_config()
         M.CONFIG = str(self.config) if config else None
         installa.FILE_CONFIG = self.config
-        self.cartella_progetti = Path(cartella_progetti) if cartella_progetti else CARTELLA.parent / "projects"
+        self.cartella_progetti = Path(cartella_progetti) if cartella_progetti else posizioni.cartella_progetti()
         self.token = secrets.token_urlsafe(24)
         self._blocco = threading.Lock()
         self._collegamenti = {}            # profilo -> (istante, esito): la prova costa una richiesta di rete

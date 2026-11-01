@@ -52,6 +52,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import posizioni
+
 CARTELLA = Path(__file__).resolve().parent
 REQUISITI = CARTELLA.parent / "requirements.txt"
 PYTHON_MINIMO = (3, 10)
@@ -592,7 +594,7 @@ def cmd_client(args, stampa=print, chiedi=input):
 
 
 # ---------------------------------------------------------------- profili di modello (lavoro 26)
-FILE_CONFIG = CARTELLA / "config.ini"
+FILE_CONFIG = posizioni.file_config()
 NOME_PROFILO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # servizi con una sola chiave: nome, indirizzo, variabile della chiave, modello proposto, pausa, dove si prende la chiave
 SERVIZI_CHIAVE = [
@@ -633,6 +635,7 @@ def _leggi_testo(f):
 
 
 def _scrivi_testo(f, righe, bom, nl):
+    f.parent.mkdir(parents=True, exist_ok=True)      # la cartella dei dati dell'utente, al primo salvataggio
     f.write_bytes((("﻿" if bom else "") + nl.join(righe).rstrip() + nl).encode("utf-8"))
 
 
@@ -1248,7 +1251,7 @@ def progetto_esiste(radice):
 
 
 def cartella_progetti():
-    return CARTELLA.parent / "projects"
+    return posizioni.cartella_progetti()
 
 
 def guida_progetto(stampa, chiedi=input, config=None, crea=None, base=None, si=False):
@@ -1337,6 +1340,8 @@ def riepilogo(stampa, file_client_fn=None):
     controlla_progetto(controlli, cfg)
     stampa("\n=== Riepilogo ===")
     stampa(f"- Motore: {CARTELLA} (Python {sys.version_info.major}.{sys.version_info.minor})")
+    stampa(f"- Configurazione: {FILE_CONFIG}" + (" (sopra i valori predefiniti del programma)"
+                                                   if posizioni.installato() else ""))
     if usa_profili(cfg):
         try:
             stampa("- Modello che legge i passaggi: " + ", ".join(f"{r}: {profilo(cfg, r)[0]}" for r in RUOLI))

@@ -34,6 +34,7 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
+import posizioni  # noqa: E402
 try:
     sys.stdout.reconfigure(line_buffering=True)
 except AttributeError:
@@ -206,7 +207,7 @@ def automatico(nome, limite=None, config=None, modelli=None):
     if not modelli:
         st = prova(rif, risultati / "trials" / f"prova_{rif.name}_{ora}", config, limite)
         return
-    cfg_base = Path(config) if config else CARTELLA / "config.ini"
+    cfg_base = Path(config) if config else posizioni.file_config()
     try:
         disponibili = modelli_disponibili(cfg)
     except Exception as e:

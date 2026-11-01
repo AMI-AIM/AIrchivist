@@ -216,6 +216,7 @@ correzioni in `stato_del_sistema.md`, «Documentazione per utenti esterni».
 - **Installatore** per Windows con strumenti gratuiti: mette il motore in una cartella dell'utente, verifica o installa Python e Tesseract nel sistema, crea un collegamento a `installa.py inizia`. Il codice resta accessibile e aggiornabile.
 - **MCP Bundle (`.mcpb`) per Claude Desktop**: prima verificare nella specifica del manifest (https://github.com/modelcontextprotocol/mcpb, `MANIFEST.md`) se un server Python, o un eseguibile, è supportato senza Python installato. Se sì, bundle con le impostazioni per cartella del progetto e chiave del servizio; se no, annotarlo e fermarsi.
 - **Eseguibile unico** che contiene motore e interfaccia (lavori 35-38) e apre il browser: rimandato. Si riconsidera dopo i lavori 17 e 34.
+- Rivisto il 1/11/2026: installatore e applicazione con le dipendenze incluse sono il lavoro 39 di `piano_di_lavoro.md` (Python incorporato invece di un eseguibile unico; codice separato dai dati dell'utente, fatto il 1/11).
 
 Completo quando: l'installatore funziona su un Windows pulito (macchina virtuale o account nuovo) e il corpus d'esempio dà la risposta di prova.
 

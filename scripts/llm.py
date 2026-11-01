@@ -66,9 +66,11 @@ def _ini():
 
 
 def file_profili(cfg):
-    """models.ini accanto al codice, o il file indicato in [modello] file_profili (relativo alla cartella scripts)."""
+    """models.ini dell'utente (accanto al codice nel modo sviluppo, posizioni.py), o il file indicato in [modello]
+    file_profili (relativo alla stessa cartella)."""
+    from posizioni import cartella_dati
     v = Path(cfg.get("modello", "file_profili", fallback="").strip() or "models.ini")
-    return v if v.is_absolute() else CARTELLA / v
+    return v if v.is_absolute() else cartella_dati() / v
 
 
 def leggi_profili(cfg):
