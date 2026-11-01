@@ -387,6 +387,8 @@ def per_ollama(messaggi):
 PAGINA = re.compile(r"\bpp?\.\s*\d+(?:\s*[-–]\s*\d+)?", re.IGNORECASE)
 NUMERO = re.compile(r"\d+")
 ANNO = re.compile(r"(?<!\d)\d{4}(?!\d)")
+# voce di bibliografia di una rivista (Chicago): l'anno sta prima del titolo, dopo ci sono volume, numero e pagine
+RIVISTA = re.compile(r"\d+\s*,\s*no\.\s*\d+|:\s*\d+\s*[-–]\s*\d+", re.IGNORECASE)
 DISTANZA = 40                # caratteri massimi fra due numeri della stessa citazione
 
 
@@ -429,8 +431,9 @@ def _schema_titolo(t):
 
 
 # fra due numeri della stessa citazione non ci sono: a capo, punto e virgola, il separatore di una tabella, una
-# parentesi chiusa seguita da altro testo, la fine di una frase, l'inizio di un altro titolo in corsivo
-STACCO = re.compile(r"\n|;|\||\)\s*[.,:]?\s+\D|[.!?]\s+[A-ZÀ-Ý][a-zà-ÿ']*\s|\*\S")
+# parentesi chiusa seguita da altro testo, la fine di una frase, l'inizio di un altro titolo in corsivo, una
+# virgoletta (dopo il titolo della fonte un testo citato non fa parte del riferimento: «forme: «X» 17»)
+STACCO = re.compile(r"\n|;|\||\)\s*[.,:]?\s+\D|[.!?]\s+[A-ZÀ-Ý][a-zà-ÿ']*\s|\*\S|[«»“”\"]")
 CORSIVO = re.compile(r"(?<!\*)\*([^*\n]{3,80})\*(?!\*)")     # titoli in corsivo, non il grassetto (**...**)
 
 
@@ -465,7 +468,7 @@ def verifica_citazioni(testo, risultati, titoli_extra=()):
             if fine is None:
                 continue
             pezzo = testo[m.start():fine]
-            if not (ANNO.search(pezzo) or PAGINA.search(pezzo)):
+            if not (ANNO.search(pezzo) or PAGINA.search(pezzo) or RIVISTA.search(pezzo)):
                 continue
             candidati.append((m.start(), fine, t))
     for m in PAGINA.finditer(testo):                         # rimandi di pagina fuori da una citazione con titolo

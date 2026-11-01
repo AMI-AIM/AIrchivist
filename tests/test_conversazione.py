@@ -146,6 +146,21 @@ class Verifica(unittest.TestCase):
         v = C.verifica_citazioni("Peking Review 7, no. 12 (1964): 5.", ["{}"], ["Peking Review"])
         self.assertEqual([x["stato"] for x in v], ["non trovata"])
 
+    def test_voce_di_rivista_e_conteggi_fra_virgolette(self):
+        """Prova nel browser (1/11/2026): la voce Chicago di una rivista («*Titolo* 121, no. 2: 377–402», anno prima
+        del titolo) non si controllava; il riassunto «*Titolo* 2016 (forme: «X» 17, …)» risultava inventato."""
+        rif = ("Putnam, Lara. 2016. \"The Transnational and the Text-Searchable.\" *The American Historical Review* "
+               "121, no. 2 (aprile): 377-402, p. 377.")
+        risultati = [json.dumps({"esempi": [{"riferimento": rif, "originale": "Author(s): LARA PUTNAM"}]})]
+        testo = ("Tutte in *The American Historical Review* 2016 (forme: «Lara Putnam» 17, «LARA PUTNAM» 2).\n"
+                 "- Putnam, Lara. 2016. \"The Transnational.\" *The American Historical Review* 121, no. 2: 377–402.\n"
+                 "- Putnam, Lara. 2016. \"The Transnational.\" *The American Historical Review* 121, no. 2: 410–420.\n")
+        v = C.verifica_citazioni(testo, risultati, ["The American Historical Review"])
+        self.assertEqual([(x["stato"], x["testo"]) for x in v],
+                         [("corrispondente", "*The American Historical Review* 2016"),
+                          ("corrispondente", "*The American Historical Review* 121, no. 2: 377–402"),
+                          ("non trovata", "*The American Historical Review* 121, no. 2: 410–420")])
+
     def test_citazione_nel_testo_della_risposta_pronta(self):
         pronta = json.dumps({"risposta_pronta": {"risposta": f"Berlinguer arriva a Pechino.\n- {RIF}"}},
                             ensure_ascii=False)
