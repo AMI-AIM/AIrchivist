@@ -248,6 +248,13 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
 - **Importa**: la cartella dei documenti, «Proponi» (scrive la tabella di revisione, da correggere in Excel o
   LibreOffice), poi «Controlla» e «Importa» (vedi «Importare nuove fonti»).
 - **Storico**: le risposte e le ricerche precedenti del progetto.
+- **Fonte**: la pagina di un documento, con la riga del passaggio evidenziata; si sfoglia per pagina stampata
+  (marcatori `[[p. N]]`) o, nei file senza marcatori, a blocchi di righe. Se l'originale è un PDF in `sources/` e
+  PyMuPDF è installato, «Pagina dell'originale» mostra anche l'immagine della pagina. Si apre dal pulsante «Apri la
+  fonte» accanto a ogni passaggio del documento della risposta, o dalla scheda «Passaggi».
+- **Passaggi**: i passaggi del documento aperto; per una ricerca quelli letti, con data, pertinenza, modello che li
+  ha letti e traduzione, filtrabili; un clic apre la fonte.
+- **Glossario**: schede delle entità e profili delle serie del progetto, in sola lettura.
 
 Il server ascolta solo sul tuo computer (`127.0.0.1`) e accetta solo il browser aperto con il collegamento della
 sessione. Opzioni: `--porta 8770` (porta fissa), `--senza-browser`.

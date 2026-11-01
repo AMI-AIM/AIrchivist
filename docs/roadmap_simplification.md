@@ -248,6 +248,8 @@ Scheda «Fonte» con la pagina dell'originale (PyMuPDF; ripiego sul testo di `da
 
 Completo quando: per una risposta con citazioni a pagina (per esempio la prova sui PDF del 25/10) ogni citazione apre la pagina giusta con il passaggio evidenziato.
 
+**Stato (1/11/2026): fatto.** Schede «Fonte», «Passaggi», «Glossario» e «Apri la fonte, p. N» nel documento della risposta; verificato su tutte le risposte salvate: 14 citazioni a pagina su 16 aprono la pagina citata con la riga evidenziata, le altre 2 citano una pagina sbagliata per un difetto del motore (`stato_del_sistema.md`, «Interfaccia: visore della fonte, passaggi, glossario»).
+
 
 
 ### 37. Interfaccia: importazione e revisione
@@ -266,4 +268,4 @@ Conversazione libera con il modello scelto, che usa gli strumenti del motore (gl
 
 Completo quando: con almeno due modelli diversi la conversazione risponde citando solo passaggi esistenti (verifica automatica delle citazioni restituite).
 
-**Stato (28/10/2026): in corso.** `conversazione.py` e riquadro dell'interfaccia; il criterio è soddisfatto da riga di comando (`conversazione.py prova`: quattro modelli senza citazioni non trovate; `stato_del_sistema.md`, «Interfaccia: conversazione sulle fonti»). Manca la prova nel browser.
+**Stato (1/11/2026): fatto.** `conversazione.py` e riquadro dell'interfaccia; criterio soddisfatto da riga di comando il 28/10 (quattro modelli senza citazioni non trovate) e prova nel browser il 1/11, che ha portato a correggere la verifica delle citazioni (`stato_del_sistema.md`, «Interfaccia: conversazione sulle fonti»). Da ripetere le misure con la verifica corretta.

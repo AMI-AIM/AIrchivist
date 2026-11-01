@@ -51,7 +51,9 @@ import lavori                   # noqa: E402
 import profili                  # noqa: E402
 import revisione                # noqa: E402
 import schede                   # noqa: E402
+from citazioni import MARCATORE_PAGINA   # noqa: E402
 from conversazione import Conversazione, ErroreConversazione   # noqa: E402
+from estrai_occorrenze import leggi_intestazione   # noqa: E402
 from llm import ErroreModello   # noqa: E402
 from progetto import VARIABILE, cartella_scelta, leggi_config, percorso   # noqa: E402
 
@@ -416,7 +418,7 @@ class App:
                 from documento import scrivi_html
                 scrivi_html(md)
         elif ricerca:
-            if Path(ricerca).name != ricerca:
+            if Path(ricerca).name != ricerca or ricerca in (".", ".."):
                 raise Errore("Ricerca non valida.")
             f = percorso(c, "risultati") / "searches" / ricerca / "risposta.html"
         else:
@@ -431,6 +433,115 @@ class App:
         profili.tutti(ricarica=True)
         M.FONTI_SCELTE = sorted({profili.gruppo(n) for n in profili.tutti()})
         return {"fonti": M.FONTI_SCELTE}
+
+    # ------------------------------------------------------------ visore della fonte, passaggi, glossario (lavoro 36)
+    # La scheda «Fonte» mostra una pagina del documento: il testo di data/ con la riga del passaggio evidenziata e,
+    # se l'originale è un PDF in sources/ e c'è PyMuPDF, l'immagine della pagina. Le pagine sono quelle dei
+    # marcatori [[p. N | pdf K]]; un file senza marcatori si sfoglia a blocchi di righe (posizione nel file).
+    def _file_dati(self, file):
+        dati = percorso(self.cfg(), "dati").resolve()
+        f = (dati / (file or "").replace("\\", "/")).resolve()
+        if dati not in f.parents or not f.is_file() or f.suffix.lower() != ".txt":
+            raise Errore("File non trovato tra le fonti del progetto.")
+        return f
+
+    def _originale(self, meta):
+        """Il PDF originale del documento (SOURCE_FILE, dentro sources/), o None."""
+        rel = (meta.get("SOURCE_FILE") or "").replace("\\", "/")
+        if not rel.lower().endswith(".pdf"):
+            return None
+        originali = percorso(self.cfg(), "originali").resolve()
+        f = (originali / rel).resolve()
+        return f if originali in f.parents and f.is_file() else None
+
+    def fonte(self, file, riga="", pagina=""):
+        f = self._file_dati(file)
+        righe = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        meta, _ = leggi_intestazione("\n".join(righe[:80]))
+        pagine = _pagine(righe)
+        riga = int(riga) if str(riga or "").isdigit() else None
+        if str(pagina or "").isdigit() and 1 <= int(pagina) <= len(pagine):
+            n = int(pagina)
+        elif riga:
+            n = next((k for k, p in enumerate(pagine, 1) if p["da"] <= riga <= p["a"]), 1)
+        else:
+            n = 1
+        p = pagine[n - 1]
+        immagine = ""
+        if p.get("pdf") and self._originale(meta) is not None and _fitz() is not None:
+            immagine = "/fonte/pagina?" + urllib.parse.urlencode({"file": file, "pdf": p["pdf"]})
+        titolo = meta.get("TITLE") or " ".join(x for x in (meta.get("SERIES"), meta.get("DATE")) if x)
+        return {"file": file, "titolo": titolo or f.stem, "citazione": meta.get("FULL_CITATION", ""),
+                "pagine": [{"etichetta": x["etichetta"], "pdf": x.get("pdf")} for x in pagine], "pagina": n,
+                "righe": [{"n": k, "testo": righe[k - 1]} for k in range(p["da"], p["a"] + 1)],
+                "evidenzia": riga if riga and p["da"] <= riga <= p["a"] else None, "immagine": immagine}
+
+    def immagine_pagina(self, file, pdf):
+        """La pagina `pdf` (1 = la prima) del PDF originale, in PNG."""
+        f = self._file_dati(file)
+        meta, _ = leggi_intestazione(f.read_text(encoding="utf-8", errors="replace")[:20000])
+        originale, fitz = self._originale(meta), _fitz()
+        if originale is None or fitz is None:
+            raise Errore("Originale non disponibile.")
+        with fitz.open(originale) as doc:
+            k = int(pdf) if str(pdf or "").isdigit() else 0
+            if not 1 <= k <= len(doc):
+                raise Errore("Pagina inesistente.")
+            return doc[k - 1].get_pixmap(dpi=110).tobytes("png")
+
+    def passaggi(self, risposta="", ricerca=""):
+        """I passaggi del documento aperto: per una ricerca quelli letti (classificati.jsonl), con pertinenza, chi li
+        ha letti e traduzione; per una risposta salvata quelli citati. «rimandi»: [n] della risposta -> file e riga,
+        dalla sezione «Dati tecnici per la verifica» (la pagina li usa per aprire la fonte dal documento)."""
+        if ricerca:                     # anche le ricerche vecchie, senza il documento HTML
+            if Path(ricerca).name != ricerca or ricerca in (".", ".."):
+                raise Errore("Ricerca non valida.")
+            cartella = percorso(self.cfg(), "risultati") / "searches" / ricerca
+            if not cartella.is_dir():
+                raise Errore("Ricerca non trovata.")
+            md = cartella / "risposta.md"
+        else:
+            cartella, md = None, self.documento(risposta).with_suffix(".md")
+        testo = md.read_text(encoding="utf-8", errors="replace") if md.is_file() else ""
+        rimandi = _rimandi(testo)
+        out = []
+        if cartella is not None and (cartella / "classificati.jsonl").is_file():
+            estratti = set()
+            if (cartella / "passaggi.jsonl").is_file():
+                with open(cartella / "passaggi.jsonl", encoding="utf-8") as h:
+                    estratti = {m.group(1) for m in (re.search(r'"id":\s*"([^"]+)"', r) for r in h) if m}
+            with open(cartella / "classificati.jsonl", encoding="utf-8") as h:
+                for r in h:
+                    try:
+                        p = json.loads(r)
+                    except ValueError:
+                        continue
+                    if estratti and p.get("id") not in estratti:
+                        continue                         # letture di ricerche precedenti
+                    a = p.get("analisi") or {}
+                    lettura = (a.get("provenienza") or {}).get("lettura") or {}
+                    out.append({"data": p.get("data", ""), "fonte": p.get("citazione") or p.get("fonte", ""),
+                                "pagina": a.get("pagina", ""), "pertinente": a.get("pertinente", ""),
+                                "letto_da": lettura.get("da") or a.get("modello_analisi", ""),
+                                "traduzione": a.get("traduzione_it") or "", "file": p.get("file", ""),
+                                "riga": str(p.get("riga", ""))})
+            out.sort(key=lambda x: (x["data"], x["file"], int(x["riga"]) if x["riga"].isdigit() else 0))
+        else:
+            for n, v in rimandi.items():
+                out.append({"n": n, "fonte": v["riferimento"], "pertinente": "sì", "file": v["file"],
+                            "riga": str(v["riga"])})
+        return {"passaggi": out, "rimandi": rimandi}
+
+    def glossario(self):
+        """Schede delle entità e profili delle serie del progetto (in sola lettura)."""
+        if not self.progetto_in_uso():
+            return {"schede": [], "serie": []}
+        c = self.cfg()
+        cp = schede.leggi_schede(percorso(c, "entita"))
+        out = [{"nome": s, "campi": dict(cp[s])} for s in cp.sections()]
+        serie = [{"nome": n, "campi": dict(v)} for n, v in profili.tutti(ricarica=True).items()]
+        return {"schede": sorted(out, key=lambda x: x["nome"].lower()),
+                "serie": sorted(serie, key=lambda x: x["nome"].lower())}
 
     # ------------------------------------------------------------ importazione (lavoro 37)
     # La scheda «Importazioni» fa tutto dall'interfaccia: proposta (lavoro 29), tabella di revisione modificabile
@@ -658,6 +769,58 @@ def _data(f):
     return dt.datetime.fromtimestamp(f.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
 
 
+RIGHE_BLOCCO = 60            # pagine di un file senza marcatori: blocchi di righe
+PDF_MARCATORE = re.compile(r"\|\s*(?:pdf|img)\s+(\d+)", re.IGNORECASE)
+
+
+def _pagine(righe):
+    """[{etichetta, da, a, pdf}] (righe da 1): una pagina per marcatore [[p. N | pdf K]], con l'intestazione nella
+    prima; senza marcatori, blocchi di RIGHE_BLOCCO righe."""
+    inizi = []
+    for k, r in enumerate(righe, 1):
+        m = MARCATORE_PAGINA.match(r.strip())
+        if m:
+            pdf = PDF_MARCATORE.search(r)
+            inizi.append((k, "p. " + m.group(1).strip(), int(pdf.group(1)) if pdf else None))
+    if not inizi:
+        return [{"etichetta": f"righe {a}-{min(a + RIGHE_BLOCCO - 1, len(righe))}", "da": a,
+                 "a": min(a + RIGHE_BLOCCO - 1, len(righe)), "pdf": None}
+                for a in range(1, max(len(righe), 1) + 1, RIGHE_BLOCCO)]
+    out = []
+    for i, (k, etichetta, pdf) in enumerate(inizi):
+        fine = inizi[i + 1][0] - 1 if i + 1 < len(inizi) else len(righe)
+        out.append({"etichetta": etichetta, "da": 1 if i == 0 else k, "a": fine, "pdf": pdf})
+    return out
+
+
+def _rimandi(testo):
+    """{n: {file, riga, riferimento, pagina}} dalla sezione «Dati tecnici per la verifica» di una risposta e dai
+    passaggi «### [n] ...»; la pagina è quella della citazione sotto il passaggio («— ..., p. 13.»), se c'è."""
+    titoli, pagine = {}, {}
+    blocchi = re.split(r"^(?=###\s*\[\d+\])", testo, flags=re.MULTILINE)
+    for b in blocchi:
+        m = re.match(r"###\s*\[(\d+)\]\s*(.+)", b)
+        if not m:
+            continue
+        titoli[m.group(1)] = m.group(2).strip()
+        c = re.search(r"^—.*,\s*pp?\.\s*([0-9A-Za-z]+)\.?\s*$", b.split("\n## ")[0], re.MULTILINE)
+        if c:
+            pagine[m.group(1)] = c.group(1)
+    out = {}
+    for m in re.finditer(r"^-\s*\[(\d+)\]\s*`([^`]+)`,\s*rig(?:a|he)\s*(\d+)", testo, re.MULTILINE):
+        out[m.group(1)] = {"file": m.group(2), "riga": int(m.group(3)), "riferimento": titoli.get(m.group(1), ""),
+                           "pagina": pagine.get(m.group(1), "")}
+    return out
+
+
+def _fitz():
+    try:
+        import fitz
+        return fitz
+    except ImportError:
+        return None
+
+
 # ---------------------------------------------------------------- HTTP
 GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/progetti": lambda a, q: {"progetti": a.progetti()},
@@ -669,7 +832,10 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/fonti": lambda a, q: a.fonti(),
        "/api/importa": lambda a, q: a.stato_importazione(q.get("id", "")),
        "/api/tabella": lambda a, q: a.tabella(q.get("percorso", "")),
-       "/api/conversazione": lambda a, q: a.conversazione(q.get("riprova") == "1")}
+       "/api/conversazione": lambda a, q: a.conversazione(q.get("riprova") == "1"),
+       "/api/fonte": lambda a, q: a.fonte(q.get("file", ""), q.get("riga", ""), q.get("pagina", "")),
+       "/api/passaggi": lambda a, q: a.passaggi(q.get("risposta", ""), q.get("ricerca", "")),
+       "/api/glossario": lambda a, q: a.glossario()}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
         "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", "")),
@@ -751,6 +917,12 @@ def gestore(app):
                 return self._invia(200, f.read_bytes(), "text/html; charset=utf-8",
                                    {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
                                                                "img-src data:"})
+            if u.path == "/fonte/pagina":
+                try:
+                    png = app.immagine_pagina(q.get("file", ""), q.get("pdf", ""))
+                except Errore as e:
+                    return self._invia(404, {"errore": str(e)})
+                return self._invia(200, png, "image/png")
             nome = "index.html" if u.path == "/" else u.path.lstrip("/")
             f = (PAGINE / nome).resolve()
             if PAGINE.resolve() not in f.parents or not f.is_file() or f.suffix not in TIPI:

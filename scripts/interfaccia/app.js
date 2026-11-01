@@ -4,7 +4,8 @@
 
 const $ = (id) => document.getElementById(id);
 const NUOVO = "__nuovo__";
-const stato = { schede: [], nome: "", attesa: null, attesaImporta: null, ultimaRisposta: "" };
+const stato = { schede: [], nome: "", attesa: null, attesaImporta: null, ultimaRisposta: "",
+  doc: null, passaggi: null, glossario: null, fonte: null };
 
 async function api(percorso, dati) {
   const opzioni = { credentials: "same-origin" };
@@ -50,15 +51,211 @@ function apriScheda(nome) {
   document.querySelectorAll(".schede button").forEach((b) => b.classList.toggle("attiva", b.dataset.scheda === nome));
   document.querySelectorAll(".pannello").forEach((p) => { p.hidden = p.dataset.pannello !== nome; });
   if (nome === "storico") caricaStorico();
+  if (nome === "passaggi") caricaPassaggi();
+  if (nome === "glossario") caricaGlossario();
 }
 
 function apriDocumento(url) {
   if (!url) return;
   const f = $("documento");
+  // il documento aperto decide i passaggi della scheda «Passaggi» e i collegamenti alla fonte
+  const q = new URL(url, location.href).searchParams;
+  stato.doc = q.get("risposta") ? { risposta: q.get("risposta") } : q.get("ricerca") ? { ricerca: q.get("ricerca") } : null;
+  stato.passaggi = null;
+  f.onload = arricchisciDocumento;
   f.src = url;
   f.hidden = false;
   mostra("risposta-vuota", false);
   apriScheda("risposta");
+}
+
+// ------------------------------------------------------------------ fonte, passaggi, glossario (lavoro 36)
+async function datiPassaggi() {
+  if (!stato.doc) return null;
+  if (!stato.passaggi) stato.passaggi = await api("/api/passaggi?" + new URLSearchParams(stato.doc));
+  return stato.passaggi;
+}
+
+// nel documento della risposta (stessa origine): «Apri la fonte» accanto a ogni passaggio [n] e ai suoi dati tecnici
+async function arricchisciDocumento() {
+  const d = $("documento").contentDocument;
+  if (!d || !d.body) return;
+  let r;
+  try { r = await datiPassaggi(); } catch (e) { return; }
+  if (!r || !Object.keys(r.rimandi).length) return;
+  const stile = d.createElement("style");
+  stile.textContent = ".apri-fonte { font: .8rem system-ui, sans-serif; margin-left: .5rem; padding: .05rem .45rem; " +
+    "border: 1px solid currentColor; border-radius: 4px; background: none; color: inherit; cursor: pointer; " +
+    "vertical-align: middle; opacity: .75; } .apri-fonte:hover { opacity: 1; } @media print { .apri-fonte { display: none; } }";
+  d.head.append(stile);
+  const pulsante = (x, v) => {
+    if (x.querySelector(".apri-fonte")) return;
+    const b = d.createElement("button");
+    b.type = "button";
+    b.className = "apri-fonte";
+    b.textContent = v.pagina ? `Apri la fonte, p. ${v.pagina}` : "Apri la fonte";
+    b.title = `${v.file}, riga ${v.riga}`;
+    b.addEventListener("click", () => apriFonte(v.file, v.riga));
+    x.append(b);
+  };
+  d.querySelectorAll("h3, li").forEach((x) => {
+    const m = /^\[(\d+)\]/.exec(x.textContent.trim());
+    const v = m && r.rimandi[m[1]];
+    if (!v) return;
+    pulsante(x, v);
+    // la citazione sotto il passaggio («— ..., p. 13.»): anche lei apre la pagina
+    for (let s = x.nextElementSibling; x.tagName === "H3" && s && !/^H[1-3]$/.test(s.tagName); s = s.nextElementSibling) {
+      if (s.tagName === "P" && s.textContent.trim().startsWith("—")) pulsante(s, v);
+    }
+  });
+}
+
+async function apriFonte(file, riga, pagina) {
+  const q = { file };
+  if (riga) q.riga = riga;
+  if (pagina) q.pagina = pagina;
+  let r;
+  try {
+    r = await api("/api/fonte?" + new URLSearchParams(q));
+  } catch (e) {
+    avviso(e.message, true);
+    return;
+  }
+  stato.fonte = r;
+  mostra("fonte-vuota", false);
+  mostra("fonte", true);
+  $("fonte-titolo").textContent = r.titolo;
+  $("fonte-citazione").textContent = senzaMarkdown(r.citazione);
+  const sel = $("fonte-pagine");
+  sel.replaceChildren(...r.pagine.map((p, i) => new Option(`${p.etichetta} (${i + 1}/${r.pagine.length})`, i + 1)));
+  sel.value = String(r.pagina);
+  $("fonte-prima").disabled = r.pagina <= 1;
+  $("fonte-dopo").disabled = r.pagina >= r.pagine.length;
+  mostra("fonte-immagine-l", !!r.immagine);
+  mostraImmagine();
+  const box = $("fonte-testo");
+  box.replaceChildren();
+  let evidenziata = null;
+  for (const x of r.righe) {
+    const riga_ = el("div", null, "riga-fonte");
+    if (/^\s*\[\[.*\]\]\s*$/.test(x.testo)) riga_.classList.add("marcatore");
+    riga_.append(el("span", String(x.n), "n"), el("span", x.testo, "t"));
+    if (x.n === r.evidenzia) {
+      riga_.classList.add("evidenziata");
+      evidenziata = riga_;
+    }
+    box.append(riga_);
+  }
+  apriScheda("fonte");
+  (evidenziata || $("fonte")).scrollIntoView({ block: evidenziata ? "center" : "start" });
+}
+
+function mostraImmagine() {
+  const r = stato.fonte;
+  const si = !!(r && r.immagine && $("fonte-immagine").checked);
+  const img = $("fonte-img");
+  if (si && img.getAttribute("src") !== r.immagine) img.src = r.immagine;
+  img.hidden = !si;
+}
+
+function sfoglia(passo) {
+  const r = stato.fonte;
+  if (r) apriFonte(r.file, null, r.pagina + passo);
+}
+
+async function caricaPassaggi() {
+  const t = $("passaggi-tabella");
+  if (!stato.doc) {
+    t.replaceChildren();
+    mostra("passaggi-filtro", false);
+    $("passaggi-nota").textContent = "Apri una risposta o una ricerca (scheda «Storico»): qui compaiono i suoi " +
+      "passaggi, e un clic apre la pagina della fonte.";
+    return;
+  }
+  let r;
+  try { r = await datiPassaggi(); } catch (e) { $("passaggi-nota").textContent = e.message; return; }
+  const ricerca = !!stato.doc.ricerca;
+  $("passaggi-nota").textContent = ricerca
+    ? `${r.passaggi.length} passaggi letti in questa ricerca. Un clic apre la pagina della fonte.`
+    : `${r.passaggi.length} passaggi citati nella risposta. Un clic apre la pagina della fonte.`;
+  mostra("passaggi-filtro", r.passaggi.length > 0);
+  const colonne = ricerca
+    ? [["data", "Data"], ["fonte", "Fonte"], ["pagina", "p."], ["pertinente", "Pertinente"], ["letto_da", "Letto da"],
+       ["traduzione", "Traduzione"]]
+    : [["n", "n."], ["fonte", "Fonte"]];
+  const testa = el("tr");
+  for (const [, nome] of colonne) testa.append(el("th", nome));
+  const corpo = document.createElement("tbody");
+  for (const p of r.passaggi) {
+    const tr = el("tr");
+    for (const [k] of colonne) {
+      const td = el("td", k === "fonte" ? senzaMarkdown(p[k]) : k === "traduzione" ? null : p[k] || "");
+      if (k === "traduzione") {                     // quattro righe; il testo intero al passaggio del mouse
+        td.className = "traduzione";
+        td.append(el("div", p[k] || "", "taglia"));
+        td.title = p[k] || "";
+      }
+      tr.append(td);
+    }
+    if (p.pertinente === "no") tr.classList.add("no");
+    tr.dataset.cerca = Object.values(p).join(" ").toLowerCase();
+    tr.title = `${p.file}, riga ${p.riga}`;
+    tr.addEventListener("click", () => apriFonte(p.file, p.riga));
+    corpo.append(tr);
+  }
+  const intestazione = document.createElement("thead");
+  intestazione.append(testa);
+  t.replaceChildren(intestazione, corpo);
+  filtraPassaggi();
+}
+
+function filtraPassaggi() {
+  const f = $("passaggi-filtro").value.trim().toLowerCase();
+  $("passaggi-tabella").querySelectorAll("tbody tr").forEach((tr) => { tr.hidden = !!f && !tr.dataset.cerca.includes(f); });
+}
+
+async function caricaGlossario() {
+  if (stato.glossario) return;
+  let r;
+  try { r = await api("/api/glossario"); } catch (e) { avviso(e.message, true); return; }
+  stato.glossario = r;
+  const voci = (box, elenco) => {
+    box.replaceChildren();
+    for (const v of elenco) {
+      const d = el("details", null, "voce-glossario");
+      d.append(el("summary", v.nome));
+      const dl = el("dl");
+      for (const [k, val] of Object.entries(v.campi)) {
+        if (!String(val).trim()) continue;
+        dl.append(el("dt", k), el("dd", val));
+      }
+      d.append(dl);
+      d.dataset.cerca = (v.nome + " " + Object.values(v.campi).join(" ")).toLowerCase();
+      box.append(d);
+    }
+    if (!elenco.length) box.append(el("p", "Nessuna.", "nota"));
+  };
+  voci($("gl-schede"), r.schede);
+  voci($("gl-serie"), r.serie);
+  $("gl-n-schede").textContent = `(${r.schede.length})`;
+  $("gl-n-serie").textContent = `(${r.serie.length})`;
+  filtraGlossario();
+}
+
+function filtraGlossario() {
+  const f = $("gl-filtro").value.trim().toLowerCase();
+  document.querySelectorAll(".voce-glossario").forEach((d) => { d.hidden = !!f && !d.dataset.cerca.includes(f); });
+}
+
+// al cambio di progetto: documento, passaggi, fonte e glossario erano del progetto di prima
+function dimenticaProgetto() {
+  stato.doc = null;
+  stato.passaggi = null;
+  stato.glossario = null;
+  stato.fonte = null;
+  mostra("fonte", false);
+  mostra("fonte-vuota", true);
+  $("passaggi-tabella").replaceChildren();
 }
 
 // ------------------------------------------------------------------ progetto
@@ -104,6 +301,7 @@ async function cambiaProgetto() {
   try {
     await api("/api/progetto", { cartella: sel.value });
     nuova();
+    dimenticaProgetto();
     $("documento").hidden = true;
     mostra("risposta-vuota", true);
     await caricaTutto();
@@ -828,6 +1026,12 @@ document.addEventListener("DOMContentLoaded", () => {
   $("imp-prova").addEventListener("click", () => stato.tabella && avviaImporta("applica", stato.tabella.tabella, true));
   $("imp-applica").addEventListener("click", () => stato.tabella && avviaImporta("applica", stato.tabella.tabella));
   document.querySelectorAll(".schede button").forEach((b) => b.addEventListener("click", () => apriScheda(b.dataset.scheda)));
+  $("fonte-prima").addEventListener("click", () => sfoglia(-1));
+  $("fonte-dopo").addEventListener("click", () => sfoglia(1));
+  $("fonte-pagine").addEventListener("change", () => stato.fonte && apriFonte(stato.fonte.file, null, $("fonte-pagine").value));
+  $("fonte-immagine").addEventListener("change", mostraImmagine);
+  $("passaggi-filtro").addEventListener("input", filtraPassaggi);
+  $("gl-filtro").addEventListener("input", filtraGlossario);
   // la verifica del modello costa una richiesta al servizio: si fa solo quando la conversazione si apre
   $("conversazione").addEventListener("toggle", () => { if ($("conversazione").open) caricaConversazione(false); });
   $("conv-invia").addEventListener("click", inviaConversazione);

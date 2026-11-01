@@ -257,6 +257,13 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
 - **Importa** (import): the documents folder, "Proponi" (writes the review table, to be corrected in Excel or
   LibreOffice), then "Controlla" (check) and "Importa" (see "Importing new sources").
 - **Storico** (history): the project's previous answers and searches.
+- **Fonte** (source): a page of a document, with the passage's line highlighted; you browse by printed page
+  (`[[p. N]]` markers) or, in files without markers, by blocks of lines. If the original is a PDF in `sources/` and
+  PyMuPDF is installed, "Pagina dell'originale" also shows the page image. It opens from the "Apri la fonte"
+  button next to each passage of the answer document, or from the Passaggi tab.
+- **Passaggi** (passages): the passages of the open document; for a search, those read, with date, relevance, the
+  model that read them and the translation, with a filter; a click opens the source.
+- **Glossario** (glossary): the project's entity records and series profiles, read-only.
 
 The server listens only on your computer (`127.0.0.1`) and accepts only the browser opened with the session link.
 Options: `--porta 8770` (fixed port), `--senza-browser` (do not open the browser).

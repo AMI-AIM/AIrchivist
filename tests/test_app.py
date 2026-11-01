@@ -415,6 +415,89 @@ class Interfaccia(unittest.TestCase):
         codice, r = self.post("/api/importa", {"azione": "stato"})
         self.assertEqual(codice, 400)
         self.assertEqual(self.post("/api/importa", {"azione": "proponi", "percorso": " "})[0], 400)
+    # ------------------------------------------------------------ fonte, passaggi, glossario (lavoro 36)
+    def test_visore_della_fonte(self):
+        rel = "volumi/prova_visore/documento.txt"
+        f = self.p1 / "data" / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("[DOC_ID: documento]\n[SERIES: Prova visore]\n[TITLE: Documento di prova]\n"
+                     "[SOURCE_FILE: volumi/prova_visore/documento.pdf]\n\n[[p. 5 | pdf 1]]\nprima pagina\n"
+                     "[[p. 6 | pdf 2]]\nseconda pagina, riga cercata\nultima riga\n", encoding="utf-8")
+        cercata = 9                                       # «seconda pagina, riga cercata»
+        codice, r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}")
+        self.assertEqual(codice, 200, r)
+        self.assertEqual([p["etichetta"] for p in r["pagine"]], ["p. 5", "p. 6"])
+        self.assertEqual((r["pagina"], r["evidenzia"], r["titolo"]), (2, cercata, "Documento di prova"))
+        self.assertEqual([x["n"] for x in r["righe"]], [8, 9, 10])
+        self.assertEqual(r["immagine"], "")               # l'originale non c'è ancora
+        codice, r = self.get("/api/fonte?file=" + quote(rel) + "&pagina=1")
+        self.assertEqual((r["pagina"], r["evidenzia"], r["righe"][0]["n"]), (1, None, 1))   # con l'intestazione
+        codice, r = self.get("/api/fonte?file=" + quote("riviste/renmin_ribao/1980-04-15.txt"))
+        self.assertTrue(r["pagine"][0]["etichetta"].startswith("righe 1-"))        # senza marcatori: blocchi
+        for fuori in ("../project.ini", "../../config.ini", "riviste/renmin_ribao/assente.txt"):
+            self.assertEqual(self.get("/api/fonte?file=" + quote(fuori))[0], 400, fuori)
+        fitz = A._fitz()
+        if fitz is None:
+            return
+        pdf = self.p1 / "sources" / "volumi" / "prova_visore" / "documento.pdf"
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        doc = fitz.open()
+        for k in (5, 6):
+            doc.new_page(width=300, height=400).insert_text((40, 60), f"pagina {k}")
+        doc.save(pdf)
+        doc.close()
+        r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}")[1]
+        self.assertIn("pdf=2", r["immagine"])
+        risposta, png = self.richiesta("GET", r["immagine"])
+        self.assertEqual((risposta.status, risposta.getheader("Content-Type")), (200, "image/png"))
+        self.assertTrue(png.startswith(b"\x89PNG"))
+        self.assertEqual(self.richiesta("GET", "/fonte/pagina?file=" + quote(rel) + "&pdf=9")[0].status, 404)
+        self.assertEqual(self.richiesta("GET", "/fonte/pagina?file=" + quote("../project.ini") + "&pdf=1")[0].status,
+                         404)
+        self.assertEqual(self.richiesta("GET", "/fonte/pagina?file=" + quote(rel) + "&pdf=1",
+                                        cookie=False)[0].status, 403)
+
+    def test_passaggi_e_rimandi(self):
+        risposte = self.p1 / "results" / "answers"
+        risposte.mkdir(parents=True, exist_ok=True)
+        (risposte / "prova_rimandi.md").write_text(
+            "# Prova\n\n## 2. Passaggi rilevanti\n\n### [1] *Renmin Ribao*. 1980. 15 aprile 1980.\n\n> testo\n\n"
+            "— *Renmin Ribao*. 1980. 15 aprile 1980, p. 1.\n\n"
+            "### [2] *Renmin Ribao*. 1980. 16 aprile 1980.\n\n## 8. Dati tecnici per la verifica\n\n"
+            "- [1] `riviste/renmin_ribao/1980-04-15.txt`, riga 9\n"
+            "- [2] `riviste/renmin_ribao/1980-04-16.txt`, righe 9, 12\n", encoding="utf-8")
+        codice, r = self.get("/api/passaggi?risposta=prova_rimandi.md")
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["rimandi"]["1"], {"file": "riviste/renmin_ribao/1980-04-15.txt", "riga": 9,
+                                             "riferimento": "*Renmin Ribao*. 1980. 15 aprile 1980.", "pagina": "1"})
+        self.assertEqual((r["rimandi"]["2"]["riga"], r["rimandi"]["2"]["pagina"]), (9, ""))
+        self.assertEqual([(p["n"], p["riga"]) for p in r["passaggi"]], [("1", "9"), ("2", "9")])
+        cartella = self.p1 / "results" / "searches" / "prova_visore"
+        cartella.mkdir(parents=True, exist_ok=True)
+        (cartella / "passaggi.jsonl").write_text(json.dumps({"id": "a1"}) + "\n", encoding="utf-8")
+        analisi = {"pertinente": "sì", "traduzione_it": "Berlinguer a Pechino.", "pagina": "1",
+                   "provenienza": {"lettura": {"livello": "modello", "da": "modello-a"}}}
+        righe = [{"id": "a1", "data": "1980-04-15", "citazione": "Renmin Ribao, 1980-04-15", "riga": 9,
+                  "file": "riviste/renmin_ribao/1980-04-15.txt", "analisi": analisi},
+                 {"id": "vecchio", "data": "1979-01-01", "file": "x.txt", "riga": 1, "analisi": analisi}]
+        (cartella / "classificati.jsonl").write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in righe),
+                                                     encoding="utf-8")
+        codice, r = self.get("/api/passaggi?ricerca=prova_visore")       # senza risposta.html: va bene lo stesso
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["passaggi"], [{"data": "1980-04-15", "fonte": "Renmin Ribao, 1980-04-15", "pagina": "1",
+                                          "pertinente": "sì", "letto_da": "modello-a",
+                                          "traduzione": "Berlinguer a Pechino.",
+                                          "file": "riviste/renmin_ribao/1980-04-15.txt", "riga": "9"}])
+        for q in ("ricerca=..", "ricerca=assente", "risposta=..%2F..%2Fconfig.ini", ""):
+            self.assertEqual(self.get("/api/passaggi?" + q)[0], 400, q)
+
+    def test_glossario(self):
+        codice, r = self.get("/api/glossario")
+        self.assertEqual(codice, 200, r)
+        scheda = next(s for s in r["schede"] if s["nome"] == "Enrico Berlinguer")
+        self.assertEqual(scheda["campi"]["varianti"], "贝林格")
+        self.assertTrue(r["serie"])
+        self.assertTrue(all({"nome", "campi"} <= set(s) for s in r["serie"]))
 
 
 def sezione(testo, titolo):

@@ -31,9 +31,9 @@
       <button type="button" role="tab" data-scheda="risposta" class="attiva">Risposta</button>
       <button type="button" role="tab" data-scheda="storico">Storico</button>
       <button type="button" role="tab" data-scheda="importazioni">Importazioni</button>
-      <button type="button" role="tab" data-scheda="fonte" disabled title="Prossimamente">Fonte</button>
-      <button type="button" role="tab" data-scheda="passaggi" disabled title="Prossimamente">Passaggi</button>
-      <button type="button" role="tab" data-scheda="glossario" disabled title="Prossimamente">Glossario</button>
+      <button type="button" role="tab" data-scheda="fonte">Fonte</button>
+      <button type="button" role="tab" data-scheda="passaggi">Passaggi</button>
+      <button type="button" role="tab" data-scheda="glossario">Glossario</button>
     </nav>
 
     <div class="pannello" data-pannello="risposta">
@@ -84,6 +84,42 @@
       <div id="imp-avanzamento" class="barra" hidden><div id="imp-barra"></div></div>
       <p id="imp-stato" class="nota"></p>
       <pre id="imp-esiti" class="registro" hidden></pre>
+    </div>
+
+    <div class="pannello" data-pannello="fonte" hidden>
+      <p id="fonte-vuota" class="nota">Qui compare la pagina di una fonte: aprila da un passaggio (scheda «Passaggi»)
+        o dal documento della risposta («Apri la fonte» accanto a ogni passaggio).</p>
+      <div id="fonte" hidden>
+        <p id="fonte-titolo" class="titolo-ricerca"></p>
+        <p id="fonte-citazione" class="nota"></p>
+        <div class="riga">
+          <button type="button" id="fonte-prima" aria-label="Pagina precedente">‹</button>
+          <select id="fonte-pagine" aria-label="Pagina"></select>
+          <button type="button" id="fonte-dopo" aria-label="Pagina successiva">›</button>
+          <label id="fonte-immagine-l" class="casella" hidden><input id="fonte-immagine" type="checkbox"> Pagina
+            dell'originale</label>
+        </div>
+        <img id="fonte-img" class="fonte-img" alt="Pagina dell'originale" hidden>
+        <div id="fonte-testo" class="fonte-testo"></div>
+      </div>
+    </div>
+
+    <div class="pannello" data-pannello="passaggi" hidden>
+      <p id="passaggi-nota" class="nota">Apri una risposta o una ricerca (scheda «Storico»): qui compaiono i suoi
+        passaggi, e un clic apre la pagina della fonte.</p>
+      <input id="passaggi-filtro" type="search" placeholder="filtra per fonte, data, traduzione" hidden>
+      <div class="scorrimento-passaggi"><table id="passaggi-tabella" class="passaggi"></table></div>
+    </div>
+
+    <div class="pannello" data-pannello="glossario" hidden>
+      <p class="nota">Schede delle entità e profili delle serie del progetto, in sola lettura. Una scheda nuova nasce
+        dal percorso guidato della ricerca; serie e schede si correggono anche dalla chat (strumenti «schede» e
+        «serie»).</p>
+      <input id="gl-filtro" type="search" placeholder="filtra per nome o forma">
+      <h2>Schede delle entità <span id="gl-n-schede" class="nota"></span></h2>
+      <div id="gl-schede"></div>
+      <h2>Serie <span id="gl-n-serie" class="nota"></span></h2>
+      <div id="gl-serie"></div>
     </div>
   </section>
 

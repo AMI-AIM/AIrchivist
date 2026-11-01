@@ -50,7 +50,7 @@ button {
 button:hover:not(:disabled) { border-color: var(--accento); }
 button:disabled { opacity: .5; cursor: default; }
 button.primario { background: var(--accento); color: var(--accento-testo); border-color: var(--accento); }
-input[type=text], input[type=password], select {
+input[type=text], input[type=password], input[type=search], select {
   background: var(--superficie);
   border: 1px solid var(--bordo);
   border-radius: 6px;
@@ -155,6 +155,36 @@ fieldset label { display: inline-flex; gap: .3rem; margin-right: .8rem; }
 .conv-passaggio { border-left: 3px solid var(--ok); margin: .4rem 0 0; padding: .2rem .6rem; font-size: .88rem; }
 .conv-passaggio p { margin: .2rem 0; }
 .attenzione-testo { color: var(--male); }
+
+/* visore della fonte, passaggi, glossario (lavoro 36) */
+.fonte-img { display: block; max-width: 100%; margin: .6rem 0; border: 1px solid var(--bordo); background: #fff; }
+.fonte-testo { margin-top: .6rem; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif;
+  border: 1px solid var(--bordo); border-radius: 6px; background: var(--superficie); padding: .4rem 0; }
+.riga-fonte { display: flex; gap: .6rem; padding: 0 .6rem; }
+.riga-fonte .n { color: var(--tenue); min-width: 3.2em; text-align: right; font: .75rem/1.9 system-ui, sans-serif;
+  user-select: none; flex: none; }
+.riga-fonte .t { white-space: pre-wrap; overflow-wrap: anywhere; flex: 1; }
+.riga-fonte.marcatore .t { color: var(--tenue); }
+.riga-fonte.evidenziata { background: var(--avviso); box-shadow: inset 3px 0 0 var(--accento); }
+#fonte-pagine { max-width: 14rem; }
+.scorrimento-passaggi { overflow: auto; margin-top: .5rem; }
+table.passaggi { border-collapse: collapse; width: 100%; font-size: .85rem; }
+table.passaggi th, table.passaggi td { border-bottom: 1px solid var(--bordo); padding: .35rem .45rem; text-align: left;
+  vertical-align: top; }
+table.passaggi th { position: sticky; top: 0; background: var(--sfondo); }
+table.passaggi tbody tr { cursor: pointer; }
+table.passaggi tbody tr:hover { background: var(--sfondo); }
+table.passaggi .traduzione { max-width: 28rem; }
+table.passaggi .taglia { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden; }
+table.passaggi .no { color: var(--tenue); }
+#passaggi-filtro, #gl-filtro { width: 100%; }
+.voce-glossario { border-bottom: 1px solid var(--bordo); padding: .35rem 0; }
+.voce-glossario summary { cursor: pointer; font-weight: 600; }
+.voce-glossario dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .8rem; margin: .4rem 0 .2rem;
+  font-size: .88rem; }
+.voce-glossario dt { color: var(--tenue); }
+.voce-glossario dd { margin: 0; overflow-wrap: anywhere; }
 
 a { color: var(--accento); }
 
