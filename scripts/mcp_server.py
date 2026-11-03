@@ -810,9 +810,10 @@ def t_ricerca(azione="attendi", entita="", collegate=None, modalita="occorrenze"
     return t_attendi_ricerca(secondi)
 
 
-def t_modello(azione="elenca", profilo="", ruoli=None, solo_progetto=False):
+def t_modello(azione="elenca", profilo="", ruoli=None, solo_progetto=False, gia_provato=False):
     """Profili dei modelli che leggono i passaggi (installa.py modello, lavoro 26): elenca, prova, usa. «usa» cambia
-    la scelta solo se la prova di collegamento riesce, come da riga di comando."""
+    la scelta solo se la prova di collegamento riesce, come da riga di comando. gia_provato (non nello schema dello
+    strumento: solo per l'interfaccia) salta la prova appena fatta da «Aggiungi modello»."""
     import installa
     installa.FILE_CONFIG = Path(CONFIG).resolve() if CONFIG else posizioni.file_config()
     c = cfg()
@@ -830,7 +831,7 @@ def t_modello(azione="elenca", profilo="", ruoli=None, solo_progetto=False):
         ok = installa.prova_profilo(c, profilo, righe.append)
         return {"riuscita": ok, "messaggi": righe}
     codice = installa.modello_usa(argparse.Namespace(nome=profilo, ruolo=ruoli or None, progetto=bool(solo_progetto)),
-                                  righe.append)
+                                  righe.append, gia_provato=gia_provato)
     out = {"cambiato": codice == 0, "messaggi": righe}
     d, s_ = lavori.attivo(c)
     if d and codice == 0:

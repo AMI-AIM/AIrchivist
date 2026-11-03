@@ -110,9 +110,16 @@ def contenitore(meta):
 
 
 def data_affidabile(meta):
-    """False se la data è dichiarata inattendibile (METADATA_SOURCE) o non verificata (<CAMPO>_STATUS, lavoro 8)."""
+    """False se la data è dichiarata inattendibile (METADATA_SOURCE), da verificare o solo probabile (<CAMPO>_STATUS,
+    lavoro 8). Una data «dedotto» (dal nome del file, dai metadati, indicata all'importazione) si cita per intero:
+    prima la citazione di un quotidiano datato dal nome del file riportava solo l'anno."""
     from estrai_occorrenze import stato_attivo          # vocabolario degli stati: modulo unico (estrai_occorrenze)
-    return not (meta.get("METADATA_SOURCE") in DATE_INATTENDIBILI or stato_attivo(meta, "DATE"))
+    if meta.get("METADATA_SOURCE") in DATE_INATTENDIBILI:
+        return False
+    stato = stato_attivo(meta, "DATE")
+    if stato == "dedotto":                              # «probabile (motivo)» del corpus storico resta all'anno
+        return not (meta.get("DATE_STATUS") or "").strip().lower().startswith("probabile")
+    return not stato
 
 
 def valori_da_intestazione(meta, profilo=None):

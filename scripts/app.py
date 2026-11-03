@@ -220,9 +220,10 @@ class App:
         self._collegamenti[nome] = (time.time(), out)
         return out
 
-    def usa_modello(self, nome):
-        """La scelta passa per la prova di collegamento: se fallisce resta il profilo di prima."""
-        out = M.t_modello("usa", nome)
+    def usa_modello(self, nome, gia_provato=False):
+        """La scelta passa per la prova di collegamento: se fallisce resta il profilo di prima. gia_provato: la prova
+        è appena riuscita («Aggiungi modello»), non si rifà."""
+        out = M.t_modello("usa", nome, gia_provato=gia_provato)
         self._collegamenti.pop(nome, None)
         if out.get("errore"):
             raise Errore(out["errore"])
@@ -308,7 +309,7 @@ class App:
         riuscita = installa.prova_profilo(self.cfg(), nome, righe.append)
         out = {"profilo": nome, "riuscita": riuscita, "messaggi": righe, "cambiato": False}
         if riuscita and usa:
-            u = self.usa_modello(nome)
+            u = self.usa_modello(nome, gia_provato=True)    # una prova sola: prima si faceva due volte
             out["cambiato"] = u.get("cambiato", False)
             out["messaggi"] += u.get("messaggi", [])
         elif not riuscita:
@@ -779,10 +780,13 @@ class App:
         esito = r.get("esito") or {}
         if esito.get("codice") == 2 and esito.get("errore"):                  # tabella con errori: da correggere
             r["avviso"] = esito["errore"]
-        for x in reversed(righe):                    # «pagina 3/12 ...» o «riga 2 di 5: ...»
+        for x in reversed(righe):                    # «esaminati 3/12» o «[2/5] documento»
             a = re.search(r"(\d+)\s*/\s*(\d+)", x)
             if a:
-                r["avanzamento"] = {"fatto": int(a.group(1)), "totale": int(a.group(2)), "testo": x[:120]}
+                fatto = int(a.group(1))
+                if x.startswith("["):                # «[k/N] documento»: il k-esimo è in corso, non finito
+                    fatto -= 1
+                r["avanzamento"] = {"fatto": fatto, "totale": int(a.group(2)), "testo": righe[-1][:120]}
                 break
         return r
 

@@ -246,6 +246,13 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(set(self.get("/api/modelli")[1]["in_uso"].values()), {"a"})
         self.assertEqual(self.post("/api/modello/nuovo", {"servizio": "openai", "url": url,
                                                           "modello": "modello-a", "nome": "nuovo-a"})[0], 400)
+        # aggiunto e scelto: una sola prova di collegamento (prima una per «aggiungi» e una per «usa»)
+        with mock.patch.object(A.installa, "prova_profilo", wraps=A.installa.prova_profilo) as prova:
+            codice, r = self.post("/api/modello/nuovo", {"servizio": "openai", "url": url, "modello": "modello-a",
+                                                         "chiave_env": "AIRCHIVIST_PROVA", "nome": "nuovo-b"})
+        self.assertTrue(r["cambiato"], r)
+        self.assertEqual(prova.call_count, 1)
+        self.assertEqual(set(self.get("/api/modelli")[1]["in_uso"].values()), {"nuovo-b"})
 
     # ------------------------------------------------------------ percorso guidato
     def test_scheda_trovata(self):
@@ -398,6 +405,12 @@ class Interfaccia(unittest.TestCase):
             self.assertEqual(r["avanzamento"]["totale"], 12)
             self.assertNotIn("tabella", r)
             self.assertNotIn("registro", r)                                   # alla pagina solo le ultime righe
+            # importazione: «[k/N]» annuncia il documento in corso, la barra non si riempie prima della fine
+            (lavoro / "registro.txt").write_text("[1/1] a.pdf\n  OCR (sqi, 2 pagine alla volta) ...\n",
+                                                 encoding="utf-8")
+            a = self.get("/api/importa?id=" + lavoro.name)[1]["avanzamento"]
+            self.assertEqual((a["fatto"], a["totale"]), (0, 1))
+            self.assertIn("OCR", a["testo"])
 
             (lavoro / "registro.txt").write_text(f"pagina 12/12 b.pdf\n\nTabella: {f}\n", encoding="utf-8")
             (lavoro / "esito.json").write_text(json.dumps({"codice": 0}), encoding="utf-8")

@@ -33,6 +33,15 @@ class CitazioneDalTipo(unittest.TestCase):
                               {"SERIES": "Zëri i Popullit", "DATE": "1967-01-12"}),
                          "*Zëri i Popullit*, 12 gennaio 1967, p. 3.")
 
+    def test_quotidiano_con_data_dedotta(self):
+        # data dal nome del file: si cita per intero; da verificare o solo probabile resta all'anno
+        meta = {"SERIES": "L'Unità", "DATE": "1980-04-12", "YEAR": "1980"}
+        profilo = {"tipo": "periodico", "lingua": "it"}
+        for stato in ("dedotto", "dal nome del file"):
+            self.assertEqual(nota(profilo, dict(meta, DATE_STATUS=stato)), "*L'Unità*, 12 aprile 1980, p. 3.")
+        for stato in ("da verificare", "probabile (poche occorrenze nel testo)"):
+            self.assertEqual(nota(profilo, dict(meta, DATE_STATUS=stato)), "*L'Unità*, 1980, p. 3.")
+
     def test_articolo_di_rivista(self):
         meta = {"SERIES": "The American Historical Review", "VOLUME": "121", "ISSUE": "2", "DATE": "2016-04",
                 "TITLE": "The Transnational and the Text-Searchable", "AUTHOR": "Putnam, Lara", "PAGES": "377-402"}

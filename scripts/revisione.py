@@ -677,7 +677,7 @@ def cmd_applica(args, stampa=print):
            + ("; ".join(f"{n} ({v['tipo_serie']}, {v['lingua']}, data/{v['cartella_serie']})"
                         for n, v in da_creare.items()) or "nessuna"))
     if args.prova:
-        stampa("Prova: nessuna scrittura. Per importare: lo stesso comando senza --prova.")
+        stampa("Prova: nessuna scrittura. Per importare: lo stesso comando senza --prova (nell'interfaccia: «Importa»).")
         return 0
     for nome, v in da_creare.items():
         stampa(importa.aggiungi_serie(nome, v["tipo_serie"], v["lingua"], v["cartella_serie"], sigla=v["sigla"]))
