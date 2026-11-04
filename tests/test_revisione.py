@@ -223,6 +223,10 @@ class Revisione(unittest.TestCase):
         meta = leggi_intestazione(dopo.decode("utf-8"))[0]
         self.assertEqual(meta["ISSUE"], "12")
         self.assertNotIn("DATE_STATUS", meta)
+        # B5: FULL_CITATION deve essere ricalcolata
+        self.assertIn("FULL_CITATION", meta)
+        self.assertIn("Zëri I Popullit", meta["FULL_CITATION"])
+        self.assertIn("12 gennaio 1967", meta["FULL_CITATION"])          # ricomposta da tutti i campi, non solo dai cambiati
         self.assertEqual(dopo.split(nl + nl, 1)[1], prima.split(nl + nl, 1)[1])     # testo intatto
         copia = next((self.progetto / "system/backups").rglob("ZP1967-01-12.txt"))
         self.assertEqual(copia.read_bytes(), prima)
@@ -260,6 +264,37 @@ class Revisione(unittest.TestCase):
         self.assertEqual(codice, 2, uscita)
         self.assertIn("SERIES va a capo", uscita)
         self.assertEqual(file_dati.read_bytes(), prima)                          # niente scritto
+
+    def test_full_citazione_aggiornata(self):
+        """B5: FULL_CITATION viene ricalcolata quando si modificano i metadati."""
+        self.comando("proponi", self.corpus / "zeri_i_popullit")
+        f, righe = self.tabella()
+        for r in righe:
+            r["importa"] = "no" if "01-14" in r["file"] else "sì"
+        self.scrivi(f, righe)
+        self.assertEqual(self.comando("applica", f)[0], 0)
+        file_dati = self.progetto / "data/riviste/zeri_i_popullit/ZP1967-01-12.txt"
+        meta_prima = leggi_intestazione(file_dati.read_text(encoding="utf-8"))[0]
+        citazione_prima = meta_prima.get("FULL_CITATION", "")
+        
+        # Modifica l'autore
+        self.comando("rivedi", "--serie", "Zëri I Popullit", "--solo-dubbi")
+        fr = next((self.progetto / "audit").glob("review_rivedi_*.csv"))
+        righe = R.leggi_tabella(fr)
+        r = next(x for x in righe if x["file_dati"].endswith("ZP1967-01-12.txt"))
+        r["autore"] = "Lukács, György"
+        self.scrivi(fr, righe, R.COLONNE_RIVEDI)
+        codice, uscita = self.comando("applica", fr)
+        self.assertEqual(codice, 0, uscita)
+        
+        # Verifica che FULL_CITATION sia stato aggiornato
+        meta_dopo = leggi_intestazione(file_dati.read_text(encoding="utf-8"))[0]
+        citazione_dopo = meta_dopo.get("FULL_CITATION", "")
+        # La citazione deve contenere il nuovo autore
+        self.assertIn("Lukács", citazione_dopo)
+        # La citazione deve essere diversa da prima (se l'autore era diverso)
+        if "Lukács" not in citazione_prima:
+            self.assertNotEqual(citazione_prima, citazione_dopo)
 
 
 def xlsx(f, righe):
@@ -312,6 +347,41 @@ class Lingua(unittest.TestCase):
     def test_nome_ambiguo(self):
         self.assertIn("mese o il numero", R.data_e_numero("PR1967-11")[2])
         self.assertEqual(R.data_e_numero("ZP1967-01-12")[:2], ("1967-01-12", ""))
+
+
+class TestRaccolta(unittest.TestCase):
+    """B4: tipo serie 'raccolta' per documenti con segnature d'archivio pubblicate in un volume curato."""
+    
+    def test_proposta_raccolta(self):
+        """Proposta automatica del tipo 'raccolta' quando i documenti hanno segnature."""
+        # Crea documenti fittizi con testo e segnatura
+        doc1 = {
+            "file": [Path("doc1.pdf")],
+            "g": {"file": [Path("doc1.pdf")], "base": "doc1"}, "cartella": "", "schema": R.schema_nome("doc1"),
+            "stem": "doc1", "data_nome": "", "numero_nome": "", "dubbio_nome": "",  # come in cmd_proponi
+            "a": {
+                "formato": "PDF", "testo": "scansione", "qualita_ocr": "media",
+                "pagine_pdf": 5, "inizio": "Some text\n", "fine": "[AQSH, F. 1/1, fl. 1-3]",
+                "meta": {}, "pagine": "", "nota_pagine": "", "stato_pagine": "dedotto",
+                "dubbi": [], "etichette": False, "segnatura": "AQSH, F. 1/1"
+            },
+        }
+        doc2 = {
+            "file": [Path("doc2.pdf")],
+            "g": {"file": [Path("doc2.pdf")], "base": "doc2"}, "cartella": "", "schema": R.schema_nome("doc2"),
+            "stem": "doc2", "data_nome": "", "numero_nome": "", "dubbio_nome": "",  # come in cmd_proponi
+            "a": {
+                "formato": "PDF", "testo": "scansione", "qualita_ocr": "media",
+                "pagine_pdf": 4, "inizio": "Other text\n", "fine": "[AQSH, F. 1/1, fl. 4-6]",
+                "meta": {}, "pagine": "", "nota_pagine": "", "stato_pagine": "dedotto",
+                "dubbi": [], "etichette": False, "segnatura": "AQSH, F. 1/1"
+            },
+        }
+        
+        proposta = R.proponi_serie("raccolta_test", [doc1, doc2], {})
+        self.assertEqual(proposta["tipo_serie"], "raccolta")
+        self.assertTrue(any("raccolta" in d.lower() for d in proposta["dubbi"]), proposta["dubbi"])
+        self.assertTrue(proposta["cartella_serie"].startswith("raccolte/"))
 
 
 if __name__ == "__main__":

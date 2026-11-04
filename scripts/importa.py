@@ -69,6 +69,7 @@ CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
 from estrai_occorrenze import (HDR, STATI_CAMPO, campi_spezzati, leggi_intestazione, stato_attivo,
                            stato_del_valore, nota_del_campo)   # noqa: E402
+import apparato   # noqa: E402   testatine e note dei curatori (lavoro 40, A1)
 
 PDF = {".pdf"}
 IMMAGINI = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".jp2"}
@@ -571,8 +572,10 @@ def nota_scelta(s):
 
 def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stampa=print, max_pagine=None,
                     campione=PAGINE_CAMPIONE, prima_pagina=None, da_pagina=1, pagine_pdf=True, lingua="",
-                    colonne=False):
+                    colonne=False, testatine=None):
     """Legge uno o più file (unendoli nell'ordine dato). Restituisce (testo, rapporto).
+    testatine: forme delle testatine già marcate nella serie (apparato.testatine_note), per riconoscerle anche
+    nei documenti di una o due pagine.
     Le pagine senza testo si rendono come immagini e si passano a Tesseract poche alla volta (in parallelo),
     così anche un volume di centinaia di pagine non riempie il disco; le pagine già lette restano nella cache
     e, se l'importazione si interrompe, alla ripresa non si rileggono."""
@@ -700,6 +703,11 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                 stampate.append(pagina)
             if info["metodo"]:
                 numerazioni.append(info)
+    # testatine e note dei curatori (apparato.py): dopo la numerazione, che legge il numero nelle testatine
+    da_marcare = [i for i, (_, _, m, _) in enumerate(pagine) if m != "testo"]
+    marcate, info_apparato = apparato.marca([pagine[i][1] or "" for i in da_marcare], testatine or ())
+    for i, t in zip(da_marcare, marcate):
+        pagine[i][1] = t
     testo = "\n\n".join(t for _, t, _, _ in pagine if t)
     # caratteri di controllo (i PDF di JSTOR ne hanno a centinaia nella riga di download): rendono il file «binario»
     testo = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", testo)
@@ -718,6 +726,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                 "pagine_stampate": f"{stampate[0]}-{stampate[-1]}" if len(stampate) > 1 else "".join(stampate),
                 "ignorati": ignorati,
                 "pagine_corrotte": corrotte,
+                "apparato": info_apparato,
                 "numerazione": numerazioni[0] if len(numerazioni) == 1 else (
                     {"metodo": "; ".join(dict.fromkeys(x["metodo"] for x in numerazioni)),
                      "stato": "dedotto" if any(x["stato"] for x in numerazioni) else "",
@@ -726,22 +735,153 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
 
 
 # ---------------------------------------------------------------- metadati
-def data_da_testo(s):
-    """Data ISO (AAAA-MM-GG, AAAA-MM o AAAA) in un nome di file o in una stringa; "" se manca."""
+# Numeri romani per i mesi (I-XII)
+ROMANI_MESE = {
+    "i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6,
+    "vii": 7, "viii": 8, "ix": 9, "x": 10, "xi": 11, "xii": 12,
+    "I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6,
+    "VII": 7, "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12,
+}
+# Pattern per date con mesi romani: 7.XII.1962, 14.XII.1964, 3.IV.1964, 04.VII.1964, anche con spazi "7 .XII.1962"
+DATA_ROMANI = re.compile(r"(?<!\d)(?P<g>\d{1,2})\s*[./]\s*(?P<m>[IVXLCDM]+)\s*[./]\s*(?P<a>1[89]\d\d|20\d\d)(?!\d)", re.I)
+# Pattern per date a due cifre: 4/8/62, 23/XI/1962 (anche XI maiuscolo), 24/10/1963
+# Anche con spazi: "23/XI/1962" o "4/8/62"
+DATA_DUE_CIFRE = re.compile(r"(?<!\d)(?P<g>\d{1,2})[/.-](?P<m>\d{1,2}|[IVXLCDM]+)[/.-](?P<a>\d{2})(?!\d)", re.I)
+# Pattern per date con rumore OCR all'inizio: "l 3.IV.1964" -> 13.IV.1964, "l 25.9.1962"
+DATA_RUMORE_INIZIO = re.compile(r"(?<!\d)[l1]\s+(?P<g>\d{1,2})\s*[./]\s*(?P<m>\d{1,2}|[IVXLCDM]+)\s*[./]\s*(?P<a>1[89]\d\d|20\d\d)(?!\d)", re.I)
+# Pattern per date scritte su più righe: luogo + "me" + giorno su riga vicina, mese+anno sull'altra
+# Es: "Tirane, me 8\ngusht 1962" OPPURE "gusht 1962\nTirane, me 8" (da "Nr. 19\ngusht 1962\nTirane, me 8")
+DATA_MULTIRIGA = re.compile(
+    r"(?<!\d)(?:"
+    r"(?P<luogo1>[A-Za-zëçéèûô]+,?\s+me\s+)(?P<g1>\d{1,2})\s*\n\s*(?P<m1>[A-Za-zëçéèûô]{3,10})\s+(?P<a1>1[89]\d\d|20\d\d)"
+    r"|"
+    r"(?P<m2>[A-Za-zëçéèûô]{3,10})\s+(?P<a2>1[89]\d\d|20\d\d)\s*\n\s*(?P<luogo2>[A-Za-zëçéèûô]+,?\s+me\s+)(?P<g2>\d{1,2})"
+    r")",
+    re.I)
+# Pattern per data a mano con rumore OCR: "l 3.IV.1964" -> 13.IV.1964
+
+
+def _data_da_romani(g, m, a):
+    """Converte giorno, mese romano, anno in ISO; None se non valido."""
+    mese = ROMANI_MESE.get(m.upper())
+    if mese and valida(a, mese, g):
+        return f"{a}-{mese:02d}-{g:02d}"
+    return None
+
+
+def _data_da_due_cifre(g, m, a):
+    """Converte giorno, mese, anno a due cifre in ISO; None se non valido."""
+    mese = int(m) if m.isdigit() else ROMANI_MESE.get(m.upper())
+    # Anno a due cifre: 00-69 -> 2000-2069, 70-99 -> 1970-1999
+    anno = int(a)
+    if anno < 70:
+        anno += 2000
+    else:
+        anno += 1900
+    if mese and valida(anno, mese, g):
+        return f"{anno}-{mese:02d}-{g:02d}"
+    return None
+
+
+def _data_da_due_cifre_storico(g, m, a):
+    """Converte giorno, mese, anno a due cifre in ISO assumendo 19xx per documenti storici (1900-1999).
+    Per documenti d'archivio del Novecento, 00-99 -> 1900-1999."""
+    mese = int(m) if m.isdigit() else ROMANI_MESE.get(m.upper())
+    # Anno a due cifre: per documenti storici assumiamo 1900-1999
+    anno = 1900 + int(a)
+    if mese and valida(anno, mese, g):
+        return f"{anno}-{mese:02d}-{g:02d}"
+    return None
+
+
+def date_candidate_da_testo(s):
+    """Tutte le date candidate trovate nel testo: [(iso, forma, priorità, note)].
+    Priorità: 3 = fine documento (accanto a firma/luogo), 2 = intestazione (luogo+data),
+    1 = prima pagina, 0 = nel corpo del testo. Più alta = più affidabile."""
     s = s.replace("_", "-")
-    m = re.search(r"(?<!\d)(1[89]\d\d|20\d\d)[-. ]?([01]\d)[-. ]?([0-3]\d)(?!\d)", s)
-    if m and valida(m.group(1), m.group(2), m.group(3)):
-        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-    m = re.search(r"(?<!\d)([0-3]?\d)[-. /]([01]?\d)[-. /](1[89]\d\d|20\d\d)(?!\d)", s)
-    if m and valida(m.group(3), m.group(2), m.group(1)):
-        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
-    m = re.search(r"(?<!\d)([0-3]?\d)\s*\.?\s*([A-Za-zëçéèûô]{3,10})\.?\s*(1[89]\d\d|20\d\d)(?!\d)", s, re.I)
-    if m and m.group(2).lower() in MESI and valida(m.group(3), MESI[m.group(2).lower()], m.group(1)):
-        return f"{m.group(3)}-{MESI[m.group(2).lower()]:02d}-{int(m.group(1)):02d}"
-    m = re.search(r"(?<!\d)(1[89]\d\d|20\d\d)[-. ]([01]\d)(?!\d)", s)
-    if m and 1 <= int(m.group(2)) <= 12:
-        return f"{m.group(1)}-{m.group(2)}"
-    return ""
+    candidati = []
+
+    # 1. Formato standard AAAA-MM-GG o AAAA-MM
+    for m in re.finditer(r"(?<!\d)(1[89]\d\d|20\d\d)[-. ]?([01]\d)[-. ]?([0-3]\d)(?!\d)", s):
+        if valida(m.group(1), m.group(2), m.group(3)):
+            iso = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+            candidati.append((iso, m.group(0), 0, "standard AAAA-MM-GG"))
+
+    # 2. GG/MM/AAAA o GG-MM-AAAA
+    for m in re.finditer(r"(?<!\d)([0-3]?\d)[-. /]([01]?\d)[-. /](1[89]\d\d|20\d\d)(?!\d)", s):
+        if valida(m.group(3), m.group(2), m.group(1)):
+            iso = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+            candidati.append((iso, m.group(0), 0, "GG/MM/AAAA"))
+
+    # 3. GG Mese AAAA (mesi in lettere)
+    for m in re.finditer(r"(?<!\d)([0-3]?\d)\s*\.?\s*([A-Za-zëçéèûô]{3,10})\.?\s*(1[89]\d\d|20\d\d)(?!\d)", s, re.I):
+        if m.group(2).lower() in MESI and valida(m.group(3), MESI[m.group(2).lower()], m.group(1)):
+            iso = f"{m.group(3)}-{MESI[m.group(2).lower()]:02d}-{int(m.group(1)):02d}"
+            candidati.append((iso, m.group(0), 0, "GG Mese AAAA"))
+
+    # 4. Mesi romani: GG.MM(romani).AAAA (anche con spazi)
+    for m in DATA_ROMANI.finditer(s):
+        iso = _data_da_romani(int(m.group("g")), m.group("m"), int(m.group("a")))
+        if iso:
+            candidati.append((iso, m.group(0), 0, "mesi romani"))
+
+    # 5. Due cifre anno: GG/MM/AA o GG.MM(romani).AA -> assumiamo 19xx per documenti storici
+    for m in DATA_DUE_CIFRE.finditer(s):
+        iso = _data_da_due_cifre_storico(int(m.group("g")), m.group("m"), m.group("a"))
+        if iso:
+            candidati.append((iso, m.group(0), 0, "anno due cifre (19xx)"))
+
+    # 6. Rumore OCR all'inizio: "l 3.IV.1964" -> 13.IV.1964, "l 25.9.1962"
+    for m in DATA_RUMORE_INIZIO.finditer(s):
+        g = int(m.group("g"))
+        m_str = m.group("m")
+        a = int(m.group("a"))
+        # Se il giorno è 1-9 e c'è un 'l' o '1' davanti, potrebbe essere 10-19 o 20-29
+        # Proviamo prima come giorno a due cifre (10+g), poi come giorno singolo
+        for giorno in (10 + g, g):
+            if giorno <= 31:
+                if m_str.isdigit():
+                    mese = int(m_str)
+                    if valida(a, mese, giorno):
+                        iso = f"{a}-{mese:02d}-{giorno:02d}"
+                        candidati.append((iso, m.group(0), 0, "rumore OCR inizio"))
+                        break
+                else:
+                    mese = ROMANI_MESE.get(m_str.upper())
+                    if mese and valida(a, mese, giorno):
+                        iso = f"{a}-{mese:02d}-{giorno:02d}"
+                        candidati.append((iso, m.group(0), 0, "rumore OCR inizio (romani)"))
+                        break
+
+    # 7. Date su più righe: "Tirane, me 8\ngusht 1962" o "gusht 1962\nTirane, me 8"
+    for m in DATA_MULTIRIGA.finditer(s):
+        if m.group("luogo1"):  # formato: luogo, me giorno\nmese anno
+            g = int(m.group("g1"))
+            m_str = m.group("m1")
+            a = int(m.group("a1"))
+        else:  # formato: mese anno\nluogo, me giorno
+            g = int(m.group("g2"))
+            m_str = m.group("m2")
+            a = int(m.group("a2"))
+        mese = MESI.get(m_str.lower())
+        if mese and valida(a, mese, g):
+            iso = f"{a}-{mese:02d}-{g:02d}"
+            candidati.append((iso, m.group(0).replace("\n", " "), 0, "multiriga luogo+data"))
+
+    # 8. Solo AAAA-MM
+    for m in re.finditer(r"(?<!\d)(1[89]\d\d|20\d\d)[-. ]([01]\d)(?!\d)", s):
+        if 1 <= int(m.group(2)) <= 12:
+            iso = f"{m.group(1)}-{m.group(2)}"
+            candidati.append((iso, m.group(0), 0, "AAAA-MM"))
+
+    return candidati
+
+
+def data_da_testo(s):
+    """Data ISO (AAAA-MM-GG, AAAA-MM o AAAA) in un nome di file o in una stringa; "" se manca.
+    Restituisce la prima data valida trovata (per retrocompatibilità)."""
+    cand = date_candidate_da_testo(s)
+    return cand[0][0] if cand else ""
 
 
 def valida(a, m, g):
@@ -789,10 +929,12 @@ def nome_file(scheda, serie, valori, origine):
     import profili
     if profili.datato(scheda):
         sigla = scheda.get("sigla") or re.sub(r"[^A-Z]", "", serie.upper())[:4] or "DOC"
-        base = sigla + (valori.get("data_iso") or "s.d.")
+        # senza data ma con l'anno (B6): MP1962-..., non MPs.d.-...
+        anno = (valori.get("anno") or "").strip()
+        base = sigla + (valori.get("data_iso") or (anno if re.fullmatch(r"\d{4}", anno) else "s.d."))
         if valori.get("numero") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", valori.get("data_iso") or ""):
             base += f"-n{valori['numero']}"
-        if scheda.get("tipo") in ("articolo", "archivio") and valori.get("titolo"):
+        if scheda.get("tipo") in ("articolo", "archivio", "raccolta") and valori.get("titolo"):
             # più articoli o documenti con la stessa data: il titolo li distingue
             base += "-" + profili.slug(valori["titolo"])[:40]
         elif not valori.get("data_iso") and not valori.get("numero"):
@@ -820,6 +962,8 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("TITLE", valori.get("titolo", "")),
         ("PUBLISHER", valori.get("editore", "")),
         ("PUBLICATION_PLACE", valori.get("luogo", "")),
+        # segnatura d'archivio del documento (raccolte di documenti pubblicati, B4): entra nella citazione
+        ("CALL_NUMBER", valori.get("segnatura", "")),
         ("LANG", scheda.get("lingua", "")),
         ("SOURCE_FILE", valori.get("originale", "")),
         ("SOURCE_HASH", valori.get("impronta_originale", "")),
@@ -846,7 +990,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
     v = {"serie": serie}
     for k in ("autore", "titolo", "luogo", "editore", "anno", "volume"):
         v[k] = scheda.get(k, "")
-    for k in ("autore", "titolo", "luogo", "editore", "anno", "volume", "numero"):
+    for k in ("autore", "titolo", "luogo", "editore", "anno", "volume", "numero", "segnatura"):
         if getattr(args, k, None):
             v[k] = getattr(args, k)
         if riga_csv.get(k):
@@ -856,7 +1000,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
         data, provenienza = data_da_testo(riga_csv["data"]) or riga_csv["data"].strip(), "dal file dei metadati"
     elif args.data:
         data, provenienza = data_da_testo(args.data) or args.data, "indicata all'importazione"
-    elif scheda.get("tipo", "periodico") in ("periodico", "articolo", "archivio"):
+    elif scheda.get("tipo", "periodico") in ("periodico", "articolo", "archivio", "raccolta"):
         data = data_da_testo(Path(origine).stem)
         if data:
             provenienza = "dal nome del file"
@@ -900,7 +1044,8 @@ def citazione_documento(serie, scheda, v, pagine=""):
             "VOLUME": v.get("volume", ""), "ISSUE": v.get("numero", ""), "YEAR": v.get("anno", ""),
             "DATE": data if re.fullmatch(r"\d{4}-\d{2}(-\d{2})?", data) else "",
             "DATE_STATUS": v.get("stato_data", ""), "PAGES": pagine,
-            "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", "")}
+            "PUBLICATION_PLACE": v.get("luogo", ""), "PUBLISHER": v.get("editore", ""),
+            "CALL_NUMBER": v.get("segnatura", "")}
     return voce(meta, scheda)
 
 
@@ -1091,7 +1236,9 @@ def cmd_importa(args, stampa=print):
         stampa("\n--- inizio del testo ---\n" + testo[:3000] + "\n--- fine dell'estratto ---")
         return 0
     dest.mkdir(parents=True, exist_ok=True)
+    testatine = apparato.testatine_note(dest)            # quelle già marcate nei documenti della serie
     scritti, saltati, problemi = [], [], []
+    senza_testatine = []                                 # file da ricontrollare con le testatine trovate dopo
     for k, doc in enumerate(gruppi, 1):
         g, origine = doc["file"], doc["origine"]
         stampa(f"[{k}/{len(gruppi)}] {origine}")
@@ -1102,6 +1249,7 @@ def cmd_importa(args, stampa=print):
         try:
             testo, rap = leggi_documento(g, ocr, args.ocr, processi, cache, stampa, campione=args.campione,
                                          lingua=scheda.get("lingua", ""), colonne=ordine_per_colonne(scheda),
+                                         testatine=testatine,
                                          **opzioni_pagine(args, metadati.get(doc["nome"], {})))
         except Exception as e:
             problemi.append(f"{origine}: {type(e).__name__}: {e}")
@@ -1143,7 +1291,7 @@ def cmd_importa(args, stampa=print):
         if rap["pagine_deboli"]:
             avvisi.append(f"{len(rap['pagine_deboli'])} pagine con OCR debole")
         if not v["data_iso"] and scheda.get("tipo", "periodico") in ("periodico", "articolo", "archivio"):
-            avvisi.append("data non trovata: aggiungila con --data o --metadati")
+            avvisi.append("data non trovata: indica la colonna 'data' della tabella (oppure 'anno')")
         elif v["stato_data"]:
             avvisi.append(f"data con stato «{v['stato_data']}» ({v['nota_data']})")
         try:
@@ -1160,6 +1308,12 @@ def cmd_importa(args, stampa=print):
         tmp.replace(out)
         shutil.rmtree(cache, ignore_errors=True)
         scritti.append(nome)
+        testatine |= rap["apparato"]["forme"]
+        if not rap["apparato"]["testatine"]:
+            senza_testatine.append(out)
+        if rap["apparato"]["testatine"] or rap["apparato"]["note"]:
+            avvisi.append(f"apparato: {rap['apparato']['testatine']} testatine, {rap['apparato']['note']} blocchi "
+                          "di note dei curatori marcati (fuori dai passaggi)")
         if getattr(args, "esiti", None) is not None:            # revisione.py: dove è finito il documento
             args.esiti.append({"origine": origine, "destinazione": out.relative_to(dati).as_posix()})
         stampa(f"  -> {out.relative_to(dati)} ({rap['pagine']} pagine, {rap['metodo']}"
@@ -1176,6 +1330,9 @@ def cmd_importa(args, stampa=print):
            + ". Registro: audit\\imports.csv")
     for p in problemi:
         stampa(f"  {p}")
+    completati = [f for f in senza_testatine if apparato.completa(f, testatine)]
+    if completati:
+        stampa(f"Testatine marcate con quelle della serie in {len(completati)} documenti brevi.")
     if scritti and not args.senza_indice:
         from indice import Indice, percorso_indice
         ind = Indice(percorso_indice(cfg), dati)
@@ -1245,7 +1402,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
         # le pagine numerate devono seguire l'ordine del documento
         for riga in t[pos:].splitlines():
             r = riga.strip()
-            if r.startswith("[[") and not MARCATORE_PAGINA.match(r):
+            if r.startswith("[[") and not MARCATORE_PAGINA.match(r) and not apparato.e_marcatore(r):
                 righe.append((rel, "errore", f"marcatore di pagina non riconosciuto: {r[:60]}"))
         numeri = [int(p) for _, p in marcatori_pagina(t, pos) if p.isdigit()]
         inversioni = [(a, b) for a, b in zip(numeri, numeri[1:]) if b <= a]

@@ -136,9 +136,13 @@ async function apriFonte(file, riga, pagina) {
   const box = $("fonte-testo");
   box.replaceChildren();
   let evidenziata = null;
+  let inNota = false;                           // righe tra [[nota]] e [[/nota]]: note dei curatori (apparato.py)
   for (const x of r.righe) {
     const riga_ = el("div", null, "riga-fonte");
+    if (/^\s*\[\[nota\]\]\s*$/.test(x.testo)) inNota = true;
     if (/^\s*\[\[.*\]\]\s*$/.test(x.testo)) riga_.classList.add("marcatore");
+    else if (inNota) riga_.classList.add("nota");
+    if (/^\s*\[\[\/nota\]\]\s*$/.test(x.testo)) inNota = false;
     riga_.append(el("span", String(x.n), "n"), el("span", x.testo, "t"));
     if (x.n === r.evidenzia) {
       riga_.classList.add("evidenziata");

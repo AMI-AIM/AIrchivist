@@ -24,6 +24,7 @@ fonte_data dice da dove viene la data proposta e diventa DATE_NOTE dell'intestaz
 import argparse
 import csv
 import datetime as dt
+import getpass
 import io
 import json
 import re
@@ -37,16 +38,19 @@ CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
 
 # colonne della tabella: prima quelle da controllare, in fondo quelle informative
-COLONNE = ["importa", "file", "serie", "tipo_serie", "lingua", "cartella_serie", "sigla", "tipo_documento",
+COLONNE = ["importa", "file", "serie", "tipo_serie", "lingua", "cartella_serie", "sigla", "curatori",
+           "titolo_volume", "tipo_documento",
            "data", "stato_data", "fonte_data", "numero", "stato_numero", "titolo", "autore", "anno", "volume", "luogo", "editore",
-           "prima_pagina", "da_pagina", "pagine", "formato", "testo", "qualita_ocr", "da_controllare", "percorso"]
+           "prima_pagina", "da_pagina", "pagine", "segnatura", "formato", "testo", "qualita_ocr", "da_controllare", "percorso"]
 COLONNE_RIVEDI = ["file_dati", "serie", "data", "stato_data", "numero", "stato_numero", "titolo", "autore", "anno",
-                  "volume", "luogo", "editore", "lingua", "pagine", "da_controllare"]
+                  "volume", "luogo", "editore", "lingua", "pagine", "segnatura", "da_controllare"]
 # colonna della tabella -> campo dell'intestazione dei file in data
 CAMPI = {"data": "DATE", "stato_data": "DATE_STATUS", "numero": "ISSUE", "stato_numero": "ISSUE_STATUS",
          "titolo": "TITLE", "autore": "AUTHOR", "anno": "YEAR", "volume": "VOLUME", "luogo": "PUBLICATION_PLACE",
-         "editore": "PUBLISHER", "lingua": "LANG", "serie": "SERIES"}
-TIPI_SERIE = ("periodico", "articolo", "volume", "archivio")
+         "editore": "PUBLISHER", "lingua": "LANG", "serie": "SERIES", "segnatura": "CALL_NUMBER"}
+TIPI_SERIE = ("periodico", "articolo", "volume", "archivio", "raccolta")
+# valori fissi delle serie di tipo «raccolta» (documenti pubblicati in un volume curato), dalla tabella a series.ini
+CAMPI_RACCOLTA = ("curatori", "titolo_volume")
 TIPI_DOCUMENTO = ("fascicolo", "articolo", "volume")
 STATI = ("dedotto", "da verificare", "verificato")
 SI = ("sì", "si", "s", "x", "yes", "y", "1", "vero", "true")
@@ -68,6 +72,16 @@ SCARICAMENTO = re.compile(r"download|accessed|retrieved|this content|scaricat|co
 FONTE_JSTOR = re.compile(r"Source:\s*(?P<serie>[^,\n]+),\s*(?P<data>[^,\n]*?\d{4})(?:\s*,\s*Vol\.\s*(?P<volume>[\w.]+))?"
                          r"(?:\s*,\s*No\.\s*(?P<numero>[\w./-]+))?", re.IGNORECASE)
 
+# segnatura d'archivio nelle ultime pagine: riga con AQSH, F., D., fl.
+# Esempi: "[AQSH, F. 14/APMP ML Itali, V. 1964, D. 1, fl. 9-12]"
+SEGNATURA = re.compile(
+    r"\[?\s*(AQSH|Fond(?:i)?|Archivio|Archive)[^\]\n]*?F\s*\.\s*[\w/\-]+"  # AQSH/Archivio con F. (anche «F .»)
+    r"(?:,\s*D\.\s*\d+(?:-\d+)?)?"                   # D. numero opzionale (con intervallo)
+    r"(?:,\s*fl\.\s*[\d\-]+)?"                        # fl. pagine opzionale
+    r"[^\]\n]*",                                      # fino alla fine della riga, non oltre
+    re.IGNORECASE
+)
+
 
 def fonte_jstor(testo):
     """Rivista, data, volume e numero dal frontespizio di JSTOR; {} se non c'è."""
@@ -87,6 +101,48 @@ def fonte_jstor(testo):
             "numero": m.group("numero") or "", "autore": autore.group(1).strip() if autore else ""}
 TITOLI_INUTILI = re.compile(r"^(untitled|senza titolo|microsoft word|document\d*|scan\d*|\S+\.(docx?|pdf|tiff?))",
                             re.IGNORECASE)
+# titolo che è un nome di file (estensione, numeri di pagina tipo 1-58, 41-44): si scarta
+TITOLO_NOME_FILE = re.compile(r"\.(pdf|docx?|tiff?|jpg|jpeg|png|txt|xml|zip)$", re.IGNORECASE)
+# autore uguale al nome utente del sistema o a un programma: si scarta
+AUTORE_NOME_UTENTE = re.compile(r"^(admin|administrator|user|utente|root|system|default|public)$", re.IGNORECASE)
+AUTORE_PROGRAMMA = re.compile(r"^(microsoft|adobe|acrobat|word|writer|libreoffice|openoffice|pdf|scanner|tesseract)$",
+                              re.IGNORECASE)
+
+
+def autore_plausibile(a, utente_sistema=None):
+    """Restituisce l'autore se plausibile, altrimenti ''.
+    Si scarta: vuoto, nome utente del sistema, nome di programma, solo iniziali, solo numeri."""
+    a = (a or "").strip()
+    if not a or len(a) < 3:
+        return ""
+    if utente_sistema and a.lower() == utente_sistema.lower():
+        return ""
+    if AUTORE_NOME_UTENTE.match(a) or AUTORE_PROGRAMMA.match(a):
+        return ""
+    # solo iniziali (es. "A.B." o "A B") o solo numeri
+    if re.fullmatch(r"([A-Z]\.?\s*)+", a) or a.isdigit():
+        return ""
+    return a
+
+
+def titolo_plausibile(t, stem=None):
+    """Restituisce il titolo se plausibile, altrimenti ''.
+    Si scarta: vuoto, troppo lungo, nomi di file con estensione, pattern '1-58', 'Fonti Albanesi 1-58.pdf',
+    o che corrispondono al nome del file (stem)."""
+    t = (t or "").strip()
+    if not (3 <= len(t) <= 200):
+        return ""
+    if TITOLI_INUTILI.match(t):
+        return ""
+    if TITOLO_NOME_FILE.search(t):
+        return ""
+    # pattern tipo "1-58", "41-44", "1-100" (pagine nel titolo)
+    if re.search(r"\b\d{1,3}\s*-\s*\d{1,3}\b", t):
+        return ""
+    # se il titolo contiene lo stem del file (es. "Fonti Albanesi 1-58" per stem "Fonti Albanesi 1-58")
+    if stem and stem.lower() in t.lower():
+        return ""
+    return t
 
 
 # ---------------------------------------------------------------- lettura dei documenti (senza OCR)
@@ -109,9 +165,26 @@ def prime_righe(testo, n=8):
     return [r.strip() for r in (testo or "").splitlines() if len(r.strip()) >= 3][:n]
 
 
-def titolo_plausibile(t):
-    t = (t or "").strip()
-    return t if 3 <= len(t) <= 200 and not TITOLI_INUTILI.match(t) else ""
+def titolo_dal_testo(testo, massimo=250):
+    """Titolo dalla prima pagina: la prima riga che non sia una testatina («16 I», «…socialist I 45»,
+    «ARMANDO BOÇE, ARBËR BILBILI») né il numero del documento in una raccolta, con le righe che la seguono nello
+    stesso paragrafo (un titolo va spesso su due righe: «…derguar KQ te PPSH-se mbi / takimin me grupet…»)."""
+    import apparato
+
+    def buona(r):
+        return len(re.findall(r"[^\W\d_]{3,}", r)) >= 2 and not apparato.aspetto_di_testatina(r)
+    righe = [r.strip() for r in (testo or "").splitlines()][:40]
+    k = next((i for i, r in enumerate(righe) if buona(r)), None)
+    if k is None:
+        return ""
+    titolo = righe[k]
+    for r in righe[k + 1:]:
+        # continua il titolo solo una riga che prosegue la frase (minuscola in testa), non firma né testo
+        if not r or not r[0].islower() or not buona(r) or titolo.endswith((".", "?", "!")) or \
+                len(titolo) + len(r) > massimo:
+            break
+        titolo += " " + r
+    return re.sub(r"\s+\d{1,4}$", "", titolo).rstrip(".")[:massimo]
 
 
 def dpi_stimati(pag):
@@ -179,8 +252,8 @@ def analizza(doc, ocr_disponibile):
     import numerazione
     file = doc["file"]
     est = file[0].suffix.lower()
-    a = {"formato": "", "testo": "", "qualita_ocr": "", "pagine_pdf": 0, "inizio": "", "meta": {}, "pagine": "",
-         "nota_pagine": "", "stato_pagine": "", "dubbi": [], "etichette": False}
+    a = {"formato": "", "testo": "", "qualita_ocr": "", "pagine_pdf": 0, "inizio": "", "fine": "", "meta": {},
+         "pagine": "", "nota_pagine": "", "stato_pagine": "", "dubbi": [], "etichette": False, "segnatura": ""}
     if est in importa.PDF:
         a["formato"] = "PDF"
         try:
@@ -191,7 +264,10 @@ def analizza(doc, ocr_disponibile):
         n = len(p["testi"])
         nativo = sum(1 for t in p["testi"] if importa.testo_utile(t) >= importa.SOGLIA_TESTO_PDF)
         a["pagine_pdf"], a["meta"] = n, p["meta"]
+        # Prima pagina (o prime 2) per intestazioni, titolo, autore
         a["inizio"] = "\n".join(p["testi"][:2])[:3000]
+        # Ultima pagina (o ultime 2) per data in calce, firma, segnatura
+        a["fine"] = "\n".join(p["testi"][-2:])[-3000:] if n >= 2 else a["inizio"]
         if p["scansioni"] and nativo:
             a["testo"] = "scansione con strato di testo"
             a["qualita_ocr"] = qualita(p["dpi"]) + "; lo strato si confronta con un OCR nuovo all'importazione"
@@ -199,6 +275,7 @@ def analizza(doc, ocr_disponibile):
             a["testo"] = "scansione senza testo" if not nativo else "scansione"
             a["qualita_ocr"] = qualita(p["dpi"])
             a["inizio"] = ""                     # niente testo da cui dedurre: lo darà l'OCR
+            a["fine"] = ""
         else:
             a["testo"] = "testo nativo"
             a["qualita_ocr"] = "non serve"
@@ -216,7 +293,9 @@ def analizza(doc, ocr_disponibile):
     elif est in importa.TESTI:
         a["formato"], a["testo"], a["qualita_ocr"] = "testo", "testo nativo", "non serve"
         try:
-            a["inizio"] = file[0].read_text(encoding="utf-8-sig", errors="replace")[:3000]
+            testo = file[0].read_text(encoding="utf-8-sig", errors="replace")
+            a["inizio"] = testo[:3000]
+            a["fine"] = testo[-3000:]
         except OSError:
             pass
     else:
@@ -227,6 +306,10 @@ def analizza(doc, ocr_disponibile):
         a["dubbi"].append("serve l'OCR, ma Tesseract non c'è: installalo prima di applicare la tabella")
     if a["qualita_ocr"].startswith("bassa"):
         a["dubbi"].append("scansione a bassa risoluzione: OCR probabilmente scadente")
+    # B4: estrae la segnatura d'archivio dalle ultime pagine (riga con AQSH, F., D., fl.)
+    m = SEGNATURA.search(a["fine"])
+    if m:
+        a["segnatura"] = m.group(0).strip(" []")
     return a
 
 
@@ -365,11 +448,19 @@ def proponi_serie(chiave, docs, esistenti, serie_forzata=""):
         p = esistenti[nome]
         return {"serie": nome, "tipo_serie": p.get("tipo", "periodico"), "lingua": p.get("lingua", lingua),
                 "cartella_serie": p.get("cartella", ""), "sigla": p.get("sigla", ""), "esiste": True,
+                **{k: p.get(k, "") for k in CAMPI_RACCOLTA},
                 "dubbi": [f"serie già in series.ini: «{nome}»"] + (
                     [f"la lingua dei testi sembra «{lingua}», la serie ha «{p.get('lingua')}»"]
                     if lingua and p.get("lingua") and lingua != p.get("lingua") else [])}
     periodico = con_data >= max(1, len(docs) / 2) or (len(docs) > 1 and all(d["a"]["pagine_pdf"] < PAGINE_VOLUME
                                                                              for d in docs))
+    # B4: rileva se i documenti hanno segnature d'archivio (tipo "raccolta")
+    con_segnatura = sum(1 for d in docs if d["a"].get("segnatura"))
+    # un documento solo è una raccolta se, oltre alla segnatura, ha i numeri di pagina stampati di un volume
+    # (pagine non da 1): la scansione di un documento d'archivio ha la segnatura ma non quei numeri
+    pagine_di_volume = sum(1 for d in docs if re.match(r"\s*(\d+)", d["a"].get("pagine") or "")
+                           and int(re.match(r"\s*(\d+)", d["a"]["pagine"]).group(1)) > 1)
+    raccolta = con_segnatura >= max(1, len(docs) / 2) and (len(docs) > 1 or pagine_di_volume)
     titolo = titolo_ricorrente([d["a"]["inizio"] for d in docs])
     riviste = {fonte_jstor(d["a"]["inizio"]).get("serie") for d in docs}
     if not nome and len(riviste) == 1 and None not in riviste and "" not in riviste:
@@ -388,7 +479,7 @@ def proponi_serie(chiave, docs, esistenti, serie_forzata=""):
             # un libro da solo: la serie è il libro stesso (o la sua collana)
             a = docs[0]["a"]
             righe = prime_righe(a["inizio"], 1)
-            nome = titolo_plausibile(a["meta"].get("title")) or (re.sub(r"[\s\d]+$", "", righe[0])[:80] if righe else "")
+            nome = titolo_plausibile(a["meta"].get("title"), docs[0]["stem"]) or (re.sub(r"[\s\d]+$", "", righe[0])[:80] if righe else "")
             nome = nome.title() if nome.isupper() else nome
             dubbi.append("serie = titolo del libro (o la sua collana): controlla")
         elif len(docs) == 1:
@@ -399,16 +490,74 @@ def proponi_serie(chiave, docs, esistenti, serie_forzata=""):
             dubbi.append("nome della serie dal nome dei file: scrivi quello vero")
     if not lingua:
         dubbi.append("lingua non riconosciuta (testo assente o troppo breve): indicala")
-    tipo = "periodico" if periodico else "volume"
+    if raccolta:
+        tipo = "raccolta"
+        # Per le raccolte, i valori fissi della serie sono: curatori, titolo_volume, luogo, editore, anno (del volume)
+        # Si possono dedurre dal primo documento o dalla testata ricorrente
+        dubbi.append("tipo «raccolta»: documenti d'archivio pubblicati in un volume curato")
+        dubbi.append("raccolta: indica i curatori e controlla titolo_volume (valori della serie)")
+    elif con_segnatura >= max(1, len(docs) / 2):
+        # segnatura d'archivio senza i numeri di pagina di un volume: documenti d'archivio
+        tipo = "archivio"
+        dubbi.append("tipo «archivio»: i documenti portano una segnatura d'archivio (se sono pubblicati in un "
+                     "volume curato, scegli «raccolta»)")
+    else:
+        tipo = "periodico" if periodico else "volume"
     sigla = ""
     if tipo == "periodico":
         prefissi = Counter((re.match(r"[A-Za-z]{1,6}(?=\d)", d["stem"]) or [""])[0].upper() for d in docs)
         sigla = prefissi.most_common(1)[0][0] if prefissi and prefissi.most_common(1)[0][0] else ""
         sigla = sigla or re.sub(r"[^A-Z]", "", (nome or "").title())[:4]
     # senza nome la cartella resta vuota: applica la ricava dal nome che il ricercatore scrive nella tabella
-    cartella = ("riviste/" if tipo == "periodico" else "volumi/") + slug(nome or sotto) if (nome or sotto) else ""
+    import profili
+    cartella = profili.CARTELLE[tipo] + "/" + slug(nome or sotto) if (nome or sotto) else ""
+    # raccolta: il titolo del volume è di solito il nome proposto per la serie; i curatori vanno indicati
     return {"serie": nome, "tipo_serie": tipo, "lingua": lingua, "cartella_serie": cartella, "sigla": sigla,
-            "esiste": False, "dubbi": dubbi}
+            "curatori": "", "titolo_volume": nome if tipo == "raccolta" else "", "esiste": False, "dubbi": dubbi}
+
+
+# data accanto a un luogo («Tiranë, më 8 gusht 1962», «Rome 12/IV/64»): è la data del documento, non una citata
+CON_LUOGO = re.compile(r"(tiran[ëe]?|tirana|rom[ëea]|[a-zà-ÿ]+,?\s+m[ëe]\s+\d)", re.IGNORECASE)
+CARATTERI_TESTA, CARATTERI_CODA = 1500, 1200
+# data di un altro documento citato («letrën tuaj të datës 23.5.1963», «your letter dated», «la lettera del»)
+DATA_CITATA = re.compile(r"\b(?:t[ëe]\s+dat[ëe]s|e\s+dat[ëe]s|dated?|of\s+the|in\s+data|del(?:la)?|du|vom)\s*$",
+                         re.IGNORECASE)
+# data della battitura, della stampa o della copia, non del documento («Dakt. P.K. 12.X.1963», «U shtyp», «Kopje»)
+DATA_DI_COPIA = re.compile(r"dakt|shtyp|kopj|typed|copia|copie|dattilo", re.IGNORECASE)
+
+
+def date_proposte(a):
+    """Date candidate del documento, la più affidabile per prima: [(iso, forma, priorità, dove)]. Nei documenti
+    d'archivio la data sta spesso in fondo, accanto alla firma, o in testa con il luogo; una data nel corpo del
+    testo cita di solito un altro documento (B2). Priorità: coda con luogo 4, coda 3, testa con luogo 2, testa 1.
+    Le righe con la data di scaricamento o di consultazione non contano."""
+    import importa
+
+    def righe_utili(t):
+        return "\n".join(r for r in (t or "").splitlines() if not SCARICAMENTO.search(r))
+
+    voci = []
+    for testo, base, dove in ((righe_utili(a.get("inizio"))[:CARATTERI_TESTA], 1, "letta nella prima pagina"),
+                              (righe_utili(a.get("fine"))[-CARATTERI_CODA:], 3, "letta in fondo al documento")):
+        piatto = testo.replace("\n", " ")
+        trovate = importa.date_candidate_da_testo(testo)
+        forme = [x[1].replace("\n", " ") for x in trovate]
+        for iso, forma, _, _ in trovate:
+            forma = forma.replace("\n", " ")
+            # la lettura più lunga dello stesso punto vale di più: «l 3.IV.1964» (13 aprile) contro «3.IV.1964»
+            if any(forma != f and forma in f for f in forme):
+                continue
+            k = piatto.find(forma)
+            prima = piatto[max(0, k - 30):k] if k >= 0 else ""
+            if DATA_CITATA.search(prima) or DATA_DI_COPIA.search(prima):
+                voci.append((iso, forma, 0, "citata nel testo o data di copia"))
+            else:
+                voci.append((iso, forma, base + (1 if CON_LUOGO.search(prima + forma) else 0), dove))
+    per_iso = {}
+    for v in voci:
+        if v[0] not in per_iso or v[2] > per_iso[v[0]][2]:
+            per_iso[v[0]] = v
+    return sorted(per_iso.values(), key=lambda x: (-x[2], x[0]))
 
 
 def riga_documento(d, s, radice):
@@ -422,14 +571,14 @@ def riga_documento(d, s, radice):
     if pagine >= PAGINE_VOLUME or (s["tipo_serie"] == "volume" and pagine > PAGINE_ARTICOLO):
         tipo_doc = "volume"
     elif (nativo or "strato" in a["testo"]) and pagine and pagine <= PAGINE_ARTICOLO and (
-            (titolo_plausibile(meta.get("title")) and meta.get("author")) or a["etichette"] or
+            (titolo_plausibile(meta.get("title"), d["stem"]) and meta.get("author")) or a["etichette"] or
             (a["pagine"] and not a["pagine"].split("-")[0] in ("1", "i"))):
         tipo_doc = "articolo"
     else:
         tipo_doc = "fascicolo" if s["tipo_serie"] == "periodico" else "volume"
     data, stato_data, numero, stato_numero = d["data_nome"], "", d["numero_nome"], ""
     jstor = fonte_jstor(a["inizio"])
-    if tipo_doc == "articolo" and not s["esiste"]:
+    if tipo_doc == "articolo" and not s["esiste"] and s["tipo_serie"] not in ("raccolta", "archivio"):
         # articoli: serie di tipo articolo (la rivista, un file per articolo con autore e titolo)
         s = dict(s, tipo_serie="articolo", cartella_serie="riviste/" + slug(s["serie"]) if s["serie"] else "")
     fonte_data = ""
@@ -441,26 +590,42 @@ def riga_documento(d, s, radice):
     elif data:
         stato_data, fonte_data = "dedotto", "dal nome del file"
         dubbi += [d["dubbio_nome"]] if d["dubbio_nome"] else []
-    elif a["inizio"]:
-        data = importa.data_da_testo("\n".join(r for r in a["inizio"][:1500].splitlines()
-                                               if not SCARICAMENTO.search(r)))
-        if data:
-            stato_data, fonte_data = "da verificare", "letta nella prima pagina"
-            dubbi.append("data letta nella prima pagina")
-    if not data and tipo_doc != "volume":
-        dubbi.append("data non trovata: indicala")
+    else:
+        # B2: cerca la data in testa E in coda del documento; preferisci data in calce (accanto a firma/luogo)
+        # e date con luogo+data; elenca alternative in da_controllare
+        candidati = date_proposte(a)
+        if candidati and candidati[0][2] > 0:
+            data, _, _, fonte_data = candidati[0]
+            stato_data = "da verificare"
+            dubbi.append(f"data {fonte_data}")
+            if len(candidati) > 1:
+                alt = ", ".join(f"{c[0]} ({c[3]})" for c in candidati[1:])
+                dubbi.append(f"altre date candidate: {alt}")
+        elif candidati and tipo_doc != "volume":
+            # solo date di altri documenti citati o di copia: nessuna proposta
+            dubbi.append("data non trovata: indicala (nel testo solo date citate o di copia: "
+                         + ", ".join(c[0] for c in candidati) + ")")
+        elif tipo_doc != "volume":
+            dubbi.append("data non trovata: indicala")
     if numero and not stato_numero:
         stato_numero = "dedotto"
     titolo = autore = anno = ""
     if tipo_doc in ("articolo", "volume"):
-        titolo = titolo_plausibile(meta.get("title"))
-        autore = (meta.get("author") or jstor.get("autore") or "").strip()
-        autore = autore.title() if autore.isupper() else autore
+        titolo = titolo_plausibile(meta.get("title"), d["stem"])
+        autore_raw = (meta.get("author") or jstor.get("autore") or "").strip()
+        autore = autore_plausibile(autore_raw, getpass.getuser())
+        if autore:
+            autore = autore.title() if autore.isupper() else autore
         if not titolo:
-            righe = prime_righe(a["inizio"], 3)
-            titolo = re.sub(r"\s+\d{1,4}$", "", righe[0])[:150] if righe else ""
+            # la prima riga che non sia una testatina («16 I», «…socialist I 45», «ARMANDO BOÇE, ARBËR BILBILI»)
+            # né il numero del documento in una raccolta; altrimenti il nome del file (B1)
+            titolo = titolo_dal_testo(a["inizio"])
             titolo = titolo.title() if titolo.isupper() else titolo
-            dubbi.append("titolo dalla prima riga della prima pagina" if titolo else "titolo da indicare")
+            if titolo:
+                dubbi.append("titolo dalla prima riga della prima pagina")
+            else:
+                titolo = d["stem"]
+                dubbi.append("titolo dal nome del file")
         if autore and (";" in autore or " and " in autore or
                        ("," in autore and len(autore.split(",")[0].split()) >= 2)):
             dubbi.append("più autori nei metadati del PDF: scrivili come vanno citati (Cognome, Nome, Nome Cognome…)")
@@ -491,11 +656,12 @@ def riga_documento(d, s, radice):
         file_rel += f" (+ {len(g['file']) - 1} pagine)"
     return {"importa": "sì", "file": file_rel, "serie": s["serie"], "tipo_serie": s["tipo_serie"],
             "lingua": s["lingua"], "cartella_serie": s["cartella_serie"], "sigla": s["sigla"],
+            **{k: s.get(k, "") for k in CAMPI_RACCOLTA},
             "tipo_documento": tipo_doc, "data": data, "stato_data": stato_data, "fonte_data": fonte_data,
             "numero": numero,
-            "stato_numero": stato_numero, "titolo": titolo, "autore": autore, "anno": anno or data[:4],
+            "stato_numero": stato_numero, "titolo": titolo, "autore": autore, "anno": anno or (data[:4] if data else ""),
             "volume": jstor.get("volume", ""), "luogo": "", "editore": "", "prima_pagina": "", "da_pagina": "",
-            "pagine": a["pagine"],
+            "pagine": a["pagine"], "segnatura": a.get("segnatura", ""),
             "formato": a["formato"] + (f", {pagine} pagine" if pagine and a["formato"] == "PDF" else ""),
             "testo": a["testo"], "qualita_ocr": a["qualita_ocr"],
             "da_controllare": "; ".join(dict.fromkeys(x for x in dubbi if x)), "percorso": percorso}
@@ -605,7 +771,8 @@ def controlla_righe(righe, esistenti):
                     avvisi.append(f"riga {n}: {campo} «{v}» diverso da quello di series.ini («{p.get(chiave)}»): "
                                   "vale series.ini")
             continue
-        voce = {k: (r.get(k) or "").strip() for k in ("tipo_serie", "lingua", "cartella_serie", "sigla")}
+        voce = {k: (r.get(k) or "").strip() for k in ("tipo_serie", "lingua", "cartella_serie", "sigla")
+                + CAMPI_RACCOLTA}
         if not voce["cartella_serie"] and voce["tipo_serie"] in TIPI_SERIE:
             import profili
             voce["cartella_serie"] = profili.completa(serie, {"tipo": voce["tipo_serie"]})["cartella"]
@@ -680,12 +847,14 @@ def cmd_applica(args, stampa=print):
         stampa("Prova: nessuna scrittura. Per importare: lo stesso comando senza --prova (nell'interfaccia: «Importa»).")
         return 0
     for nome, v in da_creare.items():
-        stampa(importa.aggiungi_serie(nome, v["tipo_serie"], v["lingua"], v["cartella_serie"], sigla=v["sigla"]))
+        fissi = {k: v[k] for k in CAMPI_RACCOLTA if v.get(k)} if v["tipo_serie"] == "raccolta" else {}
+        stampa(importa.aggiungi_serie(nome, v["tipo_serie"], v["lingua"], v["cartella_serie"], sigla=v["sigla"],
+                                      **fissi))
     proposte = {}
     if file_proposte(args.tabella).exists():
         dati = json.loads(file_proposte(args.tabella).read_text(encoding="utf-8"))
         proposte = {r["percorso"]: r for r in dati.get("righe", [])}
-    importati, falliti, modifiche = 0, [], []
+    importati, falliti, modifiche, scritti = 0, [], [], []
     for n, r in attive:
         proposta = proposte.get(r["percorso"], {})
         valori = {k: (r.get(k) or "").strip() for k in COLONNE}
@@ -708,6 +877,7 @@ def cmd_applica(args, stampa=print):
             nota_data=(valori["fonte_data"] or "dalla tabella di revisione")
             if valori["stato_data"] in ("dedotto", "da verificare") else "",
             stato_numero=None if valori["stato_numero"] == "verificato" else valori["stato_numero"],
+            segnatura=valori["segnatura"] or None,
             esiti=esiti)
         stampa(f"\n=== riga {n}: {r.get('file')} -> {valori['serie']}")
         try:
@@ -719,12 +889,15 @@ def cmd_applica(args, stampa=print):
             falliti.append(f"riga {n} ({r.get('file')}): non importato (vedi i messaggi sopra)")
             continue
         importati += 1
+        scritti += [e["destinazione"] for e in esiti]
         for campo, chiave in CAMPI.items():
             prima, dopo = (proposta.get(campo) or "").strip(), valori.get(campo, "")
             if proposta and prima != dopo and campo not in ("stato_data", "stato_numero"):
                 modifiche.append([esiti[0]["destinazione"], chiave, prima or "(assente)", dopo or "(assente)",
                                   "corretto nella tabella di revisione dell'importazione (importa.py applica)"])
     registra_modifiche(cfg, modifiche)
+    if scritti:
+        completa_testatine(cfg, scritti, stampa)
     if importati:
         from indice import Indice, percorso_indice
         from llm import percorso
@@ -738,6 +911,24 @@ def cmd_applica(args, stampa=print):
     for f in falliti:
         stampa("  " + f)
     return 4 if falliti and not importati else (1 if falliti else 0)
+
+
+def completa_testatine(cfg, scritti, stampa=print):
+    """Ogni riga della tabella è un'importazione a sé: i documenti di una o due pagine importati per primi non
+    conoscono ancora le testatine della serie. A tabella finita si ricontrollano i file scritti con le testatine
+    marcate in tutta la loro cartella (apparato.py)."""
+    import apparato
+    from llm import percorso
+    dati = percorso(cfg, "dati").resolve()
+    per_cartella = {}
+    for rel in scritti:
+        per_cartella.setdefault((dati / rel).parent, []).append(dati / rel)
+    cambiati = 0
+    for cartella, file in per_cartella.items():
+        note = apparato.testatine_note(cartella)
+        cambiati += sum(1 for f in file if apparato.completa(f, note))
+    if cambiati:
+        stampa(f"Testatine marcate con quelle della serie in {cambiati} documenti brevi.")
 
 
 # ---------------------------------------------------------------- revisione dei documenti già importati
@@ -785,9 +976,10 @@ def cmd_rivedi(args, stampa=print):
     return 0
 
 
-def riscrivi_intestazione(f, nuovi):
+def riscrivi_intestazione(f, nuovi, aggiorna_citazione=False, serie=None):
     """Cambia, aggiunge ("" o None toglie) campi dell'intestazione [CAMPO: valore] di un file, lasciando com'è il
-    resto: testo, codifica (BOM), fine riga."""
+    resto: testo, codifica (BOM), fine riga.
+    Se aggiorna_citazione è vero, rigenera FULL_CITATION dal profilo della serie (B5 del roadmap)."""
     dati = f.read_bytes()
     bom = dati.startswith(b"\xef\xbb\xbf")
     testo = dati.decode("utf-8-sig")
@@ -814,6 +1006,21 @@ def riscrivi_intestazione(f, nuovi):
     # i campi nuovi prima di FULL_CITATION, che resta l'ultima riga dell'intestazione
     pos = next((i for i, r in enumerate(testata) if r.strip().upper().startswith("[FULL_CITATION:")), len(testata))
     testata[pos:pos] = [f"[{k}: {v}]" for k, v in resto.items() if v]
+    
+    # B5: rigenera FULL_CITATION se richiesto, dall'intestazione come risulta dopo le correzioni (tutti i campi,
+    # non solo quelli cambiati) e dal profilo attuale della serie
+    if aggiorna_citazione and serie:
+        import profili
+        from citazioni import voce
+        finale = {m.group(1).upper(): m.group(2) for m in (HDR.match(r.strip()) for r in testata) if m}
+        finale.pop("FULL_CITATION", None)
+        nuova_citazione = voce(finale, profili.di(serie, str(f)))
+        fc_pos = next((i for i, r in enumerate(testata) if r.strip().upper().startswith("[FULL_CITATION:")), None)
+        if fc_pos is not None:
+            testata[fc_pos] = f"[FULL_CITATION: {nuova_citazione}]"
+        else:
+            testata.append(f"[FULL_CITATION: {nuova_citazione}]")
+    
     f.write_bytes((("﻿" if bom else "") + nl.join(testata + righe[fine:])).encode("utf-8"))
 
 
@@ -888,13 +1095,16 @@ def applica_revisione(args, righe, stampa):
         if "data" in cambi and not cambi.get("anno") and cambi["data"][1][:4] != meta.get("YEAR", "") \
                 and cambi["data"][1][:4].isdigit():
             nuovi["YEAR"] = cambi["data"][1][:4]
-        riscrivi_intestazione(f, nuovi)
+        # Assicurati che SERIE sia in nuovi per aggiornare FULL_CITATION
+        if "SERIES" not in nuovi:
+            nuovi["SERIES"] = meta.get("SERIES", "")
+        riscrivi_intestazione(f, nuovi, aggiorna_citazione=True, serie=nuovi.get("SERIES", ""))
         for chiave, valore in nuovi.items():
             if (meta.get(chiave) or "") != (valore or ""):
                 modifiche.append([rel, chiave, meta.get(chiave) or "(assente)", valore or "(assente)",
                                   "revisione in tabella (importa.py rivedi / applica)"])
     registra_modifiche(cfg, modifiche)
     stampa(f"Corretti {len(piano)} documenti; {len(modifiche)} righe in audit/changes.csv; copie di prima in {copie}. "
-           "FULL_CITATION non è stata ricalcolata: le risposte compongono le citazioni dall'intestazione "
-           "(citazioni.py). Se le correzioni chiudono problemi di audit/open_issues.csv, aggiornalo.")
+           "FULL_CITATION è stata ricalcolata (citazioni.py). Se le correzioni chiudono problemi di "
+           "audit/open_issues.csv, aggiornalo.")
     return 0

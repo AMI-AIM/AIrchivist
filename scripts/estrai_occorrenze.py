@@ -306,8 +306,19 @@ def passaggi_del_testo(testo, inizio_testo, rel, nome, info, finestra):
 
     L'identificativo del gruppo è la posizione della prima occorrenza, che non dipende dalla
     finestra; il raggruppamento sì, quindi se cambia la finestra possono nascere gruppi nuovi
-    (con lo stesso id del gruppo da cui derivano: vale l'ultima lettura registrata)."""
-    hits = [(m.start(), m.end(), m.group(0)) for m in info["rx"].finditer(testo, inizio_testo)]
+    (con lo stesso id del gruppo da cui derivano: vale l'ultima lettura registrata).
+
+    Apparato editoriale marcato all'importazione (apparato.py): le occorrenze nelle testatine non contano; le note
+    dei curatori restano fuori dai passaggi del testo, e un'occorrenza dentro una nota è un passaggio a sé, limitato
+    alla nota e segnato «apparato: nota»."""
+    import apparato
+    spazi = apparato.intervalli(testo, inizio_testo)
+    hits, in_nota = [], {}
+    for m in info["rx"].finditer(testo, inizio_testo):
+        tratto = apparato.dove(spazi, m.start())
+        if tratto and tratto[2] == "testatina":
+            continue
+        (in_nota.setdefault(tratto[:2], []) if tratto else hits).append((m.start(), m.end(), m.group(0)))
     gruppi = []
     for s, e, t in hits:
         if gruppi and s - finestra <= gruppi[-1]["fine"] + finestra:
@@ -315,24 +326,36 @@ def passaggi_del_testo(testo, inizio_testo, rel, nome, info, finestra):
             gruppi[-1]["hits"].append((s, e, t))
         else:
             gruppi.append({"inizio": s, "fine": e, "hits": [(s, e, t)]})
+    for (x, y), h in in_nota.items():
+        a, b = apparato.corpo_nota(testo, x, y)
+        gruppi.append({"inizio": h[0][0], "fine": h[-1][1], "hits": h, "nota": (a, b)})
+    gruppi.sort(key=lambda g: g["inizio"])
     out = []
     righe_inizio = [0] + [k + 1 for k, ch in enumerate(testo) if ch == "\n"]   # una volta sola, non per gruppo
     for g in gruppi:
-        a = max(inizio_testo, g["inizio"] - finestra)
-        b = min(len(testo), g["fine"] + finestra)
-        a, b = allarga(testo, a, b)
-        a = max(a, inizio_testo)
-        grezzo = testo[a:b]
+        if "nota" in g:
+            a, b = g["nota"]
+            tolti = []
+        else:
+            # la finestra conta solo il testo del documento: l'apparato tolto (note, testatine) si recupera
+            # allargandola, così il contesto prima dell'occorrenza (chi parla, di chi si parla) non si accorcia
+            a = apparato.indietro(testo, g["inizio"], finestra, spazi, inizio_testo)
+            b = apparato.avanti(testo, g["fine"], finestra, spazi)
+            a, b = allarga(testo, a, b)
+            a = max(a, inizio_testo)
+            tolti = spazi
+        grezzo = apparato.senza(testo, a, b, tolti)
 
         evidenziato, cursore = [], a
         for s, e, _ in g["hits"]:
-            evidenziato.append(testo[cursore:s])
+            evidenziato.append(apparato.senza(testo, cursore, s, tolti))
             evidenziato.append(INIZIO_EVID + testo[s:e] + FINE_EVID)
             cursore = e
-        evidenziato.append(testo[cursore:b])
+        evidenziato.append(apparato.senza(testo, cursore, b, tolti))
 
         norm_pass = normalizza(grezzo)
         out.append(({
+            **({"apparato": "nota"} if "nota" in g else {}),
             "id": id_passaggio(rel, nome, g["inizio"]),
             "entita": nome,
             "file": rel,

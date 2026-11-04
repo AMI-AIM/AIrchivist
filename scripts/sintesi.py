@@ -183,6 +183,8 @@ def sez_passaggi(docs, modello):
                 continue
             from archivio import descrivi_provenienza, provenienza
             righe += [f"> {a['citazione_testuale']}", "", f"— {riferimento(c)}", ""]
+            if c.get("apparato") == "nota":
+                righe += ["*Nota dei curatori dell'edizione, non testo del documento.*", ""]
             if (a.get("traduzione_it") or "").strip():
                 righe += [f"Traduzione: {a['traduzione_it']}", ""]
             if a.get("sintesi_it"):
@@ -445,7 +447,9 @@ def elenco_per_modello(docs):
             if not a.get("citazione_verificata"):
                 continue
             altri = "; ".join(f"{x['nome']} ({x.get('ruolo', '')})" for x in (a.get("altri_nominati") or [])[:12])
-            righe.append(f"[{d['n']}] {d['rif']} (data del documento: {data_per_modello(d, c)}): "
+            # nota a piè di pagina dei curatori dell'edizione (apparato.py): il dato è dei curatori, non del documento
+            nota = " NOTA DEI CURATORI DELL'EDIZIONE, non testo del documento:" if c.get("apparato") == "nota" else ""
+            righe.append(f"[{d['n']}] {d['rif']} (data del documento: {data_per_modello(d, c)}):{nota} "
                          f"{a.get('sintesi_it', '')} (frase: «{a.get('traduzione_it', '')}»)"
                          + (f" | Nominati nello stesso passaggio: {altri}" if altri else ""))
     return righe
@@ -465,6 +469,16 @@ def filtra_rif(voci, validi):
     return tenute, scartate
 
 
+# 3/11/2026 (lavoro 40, A4): un fatto smentito dai documenti stessi (una persona data per morta che ricompare in un
+# documento successivo) va segnalato come contraddizione, non riportato come dato. L'esempio è volutamente diverso
+# dal caso della prova, che serve da controllo.
+REGOLA_CONTRADDIZIONI = ("CONTROLLO DELLE CONTRADDIZIONI: confronta i dati tra loro e con le date dei documenti. Un dato "
+                         "smentito da un altro documento (per esempio una persona data per morta, o arrestata, che in un "
+                         "documento successivo agisce liberamente) non va tra i dati espliciti: va nei "
+                         "'problemi_interpretativi' come contraddizione tra fonti, con i numeri di entrambi i documenti, "
+                         "ricordando che può dipendere da una traduzione sbagliata.")
+
+
 def scrivi_con_modello(llm, entita, domanda, docs, glossario=None, dimensione=25):
     righe = elenco_per_modello(docs)
     testi = " ".join(c["passaggio"] for d in docs for c in d["voci"])
@@ -482,8 +496,12 @@ Elenca i DATI ESPLICITI che questi documenti attestano sull'entità: fatti, date
 Un dato per voce, in ordine cronologico, ciascuno con i numeri dei documenti che lo attestano.
 Indica la data degli eventi come la dà il testo. Se il testo non la dà, non attribuire all'evento la data del
 documento: scrivi "(notizia del <data del documento>)".
+Un dato che viene da una NOTA DEI CURATORI DELL'EDIZIONE comincia con "Secondo la nota dei curatori,".
+Ogni dato riguarda la persona a cui il documento lo riferisce: se l'entità racconta qualcosa di un'altra persona
+("X riferisce che Y era socialdemocratico"), il dato è il racconto dell'entità, non un fatto sull'entità.
 Usa per persone, partiti e testate i nomi del GLOSSARIO.
 Non dedurre e non aggiungere nulla che non sia scritto.
+{REGOLA_CONTRADDIZIONI}
 JSON: {{"dati_espliciti": [{{"testo": "...", "rif": [1, 2]}}]}}""", SCHEMA_DATI)
         tenuti, s = filtra_rif(r.get("dati_espliciti", []), validi)
         dati += tenuti
@@ -503,7 +521,7 @@ Persone e organizzazioni nominate negli stessi passaggi:
    si basa e la fondatezza (alta/media/bassa). Non presentarle come certezze.
 2. "problemi_interpretativi": ciò che complica la lettura dei documenti, con i numeri dei documenti. In
    particolare: la stessa organizzazione che compare più volte con dirigenti o firmatari diversi; nomi
-   uguali per soggetti diversi; contraddizioni tra documenti; identificazioni incerte. Lista vuota se nulla.
+   uguali per soggetti diversi; contraddizioni tra documenti; identificazioni incerte. {REGOLA_CONTRADDIZIONI} Lista vuota se nulla.
 3. "risposta_finale": risposta alla domanda in 1-3 paragrafi, basata solo sui dati sopra, con i numeri dei
    documenti tra parentesi quadre, tenendo conto dei problemi interpretativi. Se i dati non bastano, dillo.
 JSON.""", SCHEMA_FINALE)

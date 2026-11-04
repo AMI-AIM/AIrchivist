@@ -45,7 +45,7 @@ MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio
            "settembre", "ottobre", "novembre", "dicembre"]
 ROMANI = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
 
-TIPI_VOCE = ("periodico", "articolo", "volume", "archivio")
+TIPI_VOCE = ("periodico", "articolo", "volume", "archivio", "raccolta")
 SENZA_DATA = "s.d."                                   # Chicago «n.d.»: anno sconosciuto
 DATE_INATTENDIBILI = {"filename+local_header"}      # METADATA_SOURCE con date ricavate dal testo (Peking Review)
 
@@ -143,14 +143,17 @@ def valori_da_intestazione(meta, profilo=None):
         "segnatura": meta.get("CALL_NUMBER", ""),
         "fondo": meta.get("COLLECTION", ""),
         "archivio": meta.get("ARCHIVE", ""),
+        # campi per tipo "raccolta" (documenti d'archivio pubblicati in una raccolta curata)
+        "curatori": meta.get("EDITORS", ""),
+        "titolo_volume": meta.get("VOLUME_TITLE", ""),
     }
-    for k in ("fondo", "archivio", "segnatura"):
+    for k in ("fondo", "archivio", "segnatura", "curatori", "titolo_volume"):
         if not v[k] and profilo.get(k):
             v[k] = profilo[k].strip()
     if not v["archivio"]:
         v["archivio"] = v["serie"]
     titolo_proprio = v["titolo"]
-    for k in ("titolo", "autore", "luogo", "editore", "anno", "serie"):
+    for k in ("titolo", "autore", "luogo", "editore", "anno", "serie", "curatori", "titolo_volume"):
         if not v[k] and profilo.get(k):
             v[k] = profilo[k].strip()
     if profilo.get("titolo_fisso"):
@@ -250,6 +253,24 @@ def voce_del_tipo(tipo, v):
         archivio = "" if not autore and f"*{v['archivio']}*" == testata else v["archivio"]
         coda = ", ".join(x for x in (v["segnatura"], v["fondo"], archivio, v["luogo"]) if x)
         return (s + (f" {maiuscola(coda)}" if coda else "")).rstrip(".")
+    if tipo == "raccolta":
+        # Documento d'archivio pubblicato in una raccolta curata
+        # Autore. "Titolo." Data. In *Titolo del volume*, a cura di Curatori, pagine. Segnatura.
+        s = (f"{autore}. " if autore else "") + (f"“{titolo}.” " if titolo else "")
+        data_doc = v["data"] or v["anno_o_sd"]
+        s += f"{data_doc}. "
+        s += f"In *{v['titolo_volume'] or v['serie']}*"           # il volume è la serie, se non ha un titolo proprio
+        if v["curatori"]:
+            s += f", a cura di {v['curatori']}"
+        if v["pagine"]:
+            s += f", {v['pagine']}"
+        s += "."
+        # l'archivio vale solo se indicato: quello predefinito è il nome della serie, cioè il volume già citato
+        archivio = "" if v["archivio"] == v["serie"] else v["archivio"]
+        coda = ", ".join(x for x in (v["segnatura"], v["fondo"], archivio) if x)
+        if coda:
+            s += f" {maiuscola(coda)}"
+        return s.rstrip(".")
     # periodico e articolo: senza autore la voce comincia dal titolo o, senza titolo (il fascicolo intero), dalla
     # testata (Chicago 17, 14.175, 14.207)
     s = (f"{autore}. " if autore else "") + (f"“{titolo}.” " if titolo else "") + testata

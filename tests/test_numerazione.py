@@ -55,8 +55,9 @@ class NumeriStampati(unittest.TestCase):
     def test_scarto_zero(self):
         pagine, scarto = N.da_testo(self.libro(da=3))
         self.assertEqual(scarto, 0)
-        self.assertEqual(min(pagine), 3)                                  # niente prima del primo numero letto
-        self.assertEqual(pagine[3], ("3", True))
+        self.assertEqual(min(pagine), 2)                                  # B3: una sola pagina prima della prima letta
+        self.assertEqual(pagine[2], ("2", False))                         # dedotta per continuità
+        self.assertEqual(pagine[3], ("3", True))                          # prima letta
 
     def test_scarto_e_pagine_senza_numero(self):
         pagine, info = N.numera(self.libro(scarto=40, senza=(6,)))
@@ -80,7 +81,9 @@ class NumeriStampati(unittest.TestCase):
         indice = "Contents\nIntroduction ........ 13\nChapter I ........ 18\nThe Founding ........ 69"
         pagine, scarto = N.da_testo([indice, indice] + self.libro(scarto=0, n=12)[2:])
         self.assertEqual(scarto, 0)
-        self.assertEqual(min(pagine), 3)
+        self.assertEqual(min(pagine), 2)                                  # B3: una pagina indietro, non l'indice in testa
+        self.assertNotIn(1, pagine)
+        self.assertEqual(pagine[3], ("3", True))                          # prima letta (pagina 3 del libro = posizione 3)
 
 
 class Indicazione(unittest.TestCase):

@@ -174,28 +174,43 @@ def verifica(rec, analisi):
     return bool(cit) and normalizza(cit) in normalizza(rec["passaggio"])
 
 
-def frase_chiave(rec, max_car=260):
-    """Frase che contiene la prima occorrenza (testo esatto, senza i segni ⟦ ⟧ né i marcatori di pagina)."""
+FRASE_MASSIMA = 600          # caratteri al più della citazione (A3: una frase intera, non il passaggio intero)
+
+
+def frase_chiave(rec):
+    """Frase (o frasi adiacenti) che contiene la prima occorrenza.
+    Testo esatto, senza i segni ⟦ ⟧ né i marcatori di pagina.
+    La citazione deve permettere il controllo (A3): si estende ai confini di frase
+    e include la frase che contiene la forma del nome. Non si tronca a lunghezza fissa.
+    """
     # i marcatori diventano spazi della stessa lunghezza: le posizioni restano, e il punto di «p.» non
     # chiude più una frase (25/10/2026: «1 | pdf 1]] 中苏两国…» in testa a una citazione)
     t = MARCATORE.sub(lambda m: " " * len(m.group(0)), rec["passaggio_evidenziato"])
     i = t.find("⟦")
     if i < 0:
-        return rec["passaggio"][:max_car]
+        return rec["passaggio"]
     j = t.find("⟧", i)
+    # inizio: ultimo terminatore di frase prima di ⟦
     inizio = max(t.rfind(c, 0, i) for c in "。！？!?\n") + 1
     # per l'inglese: fine frase con ". " prima dell'occorrenza
     m = list(re.finditer(r"[.;]\s", t[:i]))
     if m and m[-1].end() > inizio:
         inizio = m[-1].end()
+    # fine: primo terminatore di frase dopo ⟧
     fine_cand = [k for k in (t.find(c, j) for c in "。！？!?") if k >= 0]
     m2 = re.search(r"[.;]\s", t[j:])
     if m2:
         fine_cand.append(j + m2.start())
     fine = (min(fine_cand) + 1) if fine_cand else len(t)
-    if fine - inizio > max_car:          # frase troppo lunga: finestra attorno all'occorrenza
-        inizio = max(inizio, i - max_car // 2)
-        fine = min(fine, j + max_car // 2)
+    # la citazione copre la frase intera; senza punteggiatura (OCR, testi cinesi senza 。) la «frase» sarebbe il
+    # passaggio intero: oltre FRASE_MASSIMA si tiene una finestra attorno all'occorrenza, tagliata agli spazi
+    if fine - inizio > FRASE_MASSIMA:
+        a, b = max(inizio, i - FRASE_MASSIMA // 2), min(fine, j + FRASE_MASSIMA // 2)
+        if a > inizio and " " in t[a:i]:
+            a = t.index(" ", a) + 1
+        if b < fine and " " in t[j:b]:
+            b = t.rindex(" ", j, b)
+        inizio, fine = a, b
     return re.sub(r" {2,}", " ", t[inizio:fine].replace("⟦", "").replace("⟧", "")).strip()
 
 
@@ -232,13 +247,22 @@ def carica_jsonl(path):
 
 
 # ---------------------------------------------------------------- prompt
+# occorrenza in una nota a piè di pagina dei curatori dell'edizione (apparato.py): non è testo del documento
+NOTA_CURATORI = ("Il passaggio è una NOTA DEI CURATORI dell'edizione, non il testo del documento: le informazioni "
+                 "vengono dai curatori. Nella sintesi scrivi «secondo la nota dei curatori».")
+
+
+def avviso_nota(rec):
+    return NOTA_CURATORI + "\n" if rec.get("apparato") == "nota" else ""
+
+
 def prompt_smistamento(rec, scheda, n=0):
     return f"""Entità cercata: {rec['entita']}
 Altre forme del nome: {'; '.join(scheda['varianti'])}
 Note: {scheda['note'] or '-'}
 
 Fonte: {rec.get('citazione') or rec['fonte']}
-
+{avviso_nota(rec)}
 Nel passaggio seguente le occorrenze trovate dalla ricerca sono tra ⟦ e ⟧.
 Decidi se si riferiscono davvero all'entità cercata.
 - "sì": il passaggio parla dell'entità cercata (anche solo nominandola in un elenco).
@@ -259,12 +283,32 @@ REGOLA_ANNO = ("Per le date: scrivi l'anno solo se il passaggio lo indica o se s
                "dell'anno seguente. Se non è certo, scrivi la data senza anno e aggiungi «(anno non indicato)».")
 
 
+# 3/11/2026 (lavoro 40, A2): in un rapporto della Legazione albanese Dinucci racconta la biografia di un comunista
+# di Udine («Deri më 1952 ka qenë social demokrat…», «tha Dinuçi»), e la lettura l'ha attribuita a Dinucci.
+REGOLA_DISCORSO = ("Chi dice che cosa: molti documenti riferiscono discorsi (un rapporto riporta ciò che una persona "
+                   "ha detto, e quella persona può raccontare di altri). Attribuisci ogni fatto alla persona a cui il "
+                   "testo lo riferisce. Formule come «disse X», «tha X», «X ci informò», «said X» indicano chi parla, "
+                   "non di chi si parla: se l'entità racconta le azioni, le opinioni o la biografia di un'altra "
+                   "persona, scrivi «[entità] riferisce che [altra persona] …», mai come fatti dell'entità stessa. "
+                   "Se non è chiaro a chi si riferisce un fatto, dillo.")
+
+
+# 3/11/2026 (lavoro 40, A4): nella prova un nome comune («vajtje», andata) è stato letto come un altro («vajtim», lutto)
+# e la traduzione ha fatto morire una persona; i nomi declinati restavano declinati («Gripen» per Gripa). Gli esempi
+# del prompt sono volutamente diversi dal caso della prova, che serve da controllo.
+REGOLA_DECLINAZIONI = ("Nomi declinati: molte lingue (albanese, rumeno, lingue slave, greco…) declinano anche i nomi "
+                       "propri. Nella traduzione riporta il nome al nominativo (albanese «Hoxhës» → Hoxha, «Shehun» → "
+                       "Shehu; rumeno «Ceaușescului» → Ceaușescu). Traduci le parole per quello che sono: se una parola "
+                       "somiglia a un'altra di senso molto diverso (un viaggio, una morte, un arresto), scegli il senso "
+                       "che il contesto conferma e, se resta il dubbio, segnalalo tra parentesi quadre.")
+
+
 def prompt_analisi(rec, scheda, frase, n=0, glossario=None):
     testo = ritaglia(rec, n)
     return f"""{blocco(glossario or [], testo + frase)}Entità cercata: {rec['entita']}
 Note: {scheda['note'] or '-'}
 Fonte: {rec.get('citazione') or rec['fonte']} (data: {rec.get('data') or 's.d.'})
-
+{avviso_nota(rec)}
 PASSAGGIO (le occorrenze sono tra ⟦ e ⟧):
 {testo}
 
@@ -273,8 +317,8 @@ FRASE DA TRADURRE:
 
 Compiti:
 1. "tipo_menzione": uno tra {', '.join(TIPI)}.
-2. "traduzione_it": traduzione italiana fedele della FRASE DA TRADURRE (non del passaggio intero). Per persone, partiti e testate usa i nomi del GLOSSARIO, se presenti. Se un termine è incerto, segnalalo tra parentesi quadre.
-3. "sintesi_it": 1-3 frasi su ciò che il passaggio dice ESPLICITAMENTE dell'entità (chi, cosa, quando). {REGOLA_ANNO} Nessuna informazione esterna.
+2. "traduzione_it": traduzione italiana fedele della FRASE DA TRADURRE (non del passaggio intero). Per persone, partiti e testate usa i nomi del GLOSSARIO, se presenti. {REGOLA_DECLINAZIONI} Se un termine è incerto, segnalalo tra parentesi quadre.
+3. "sintesi_it": 1-3 frasi su ciò che il passaggio dice ESPLICITAMENTE dell'entità (chi, cosa, quando): ciò che fa, dice o riferisce. {REGOLA_DISCORSO} {REGOLA_ANNO} Nessuna informazione esterna.
 4. "nuove_varianti": altre forme del nome dell'entità presenti nel passaggio e non già note (lista vuota se nessuna).
 5. "altri_nominati": altre persone e organizzazioni nominate nel passaggio accanto all'entità, ciascuna con il ruolo o il rapporto con l'entità come risulta dal testo. Se la stessa organizzazione compare più volte con firmatari o dirigenti diversi, riporta ogni voce separatamente.
 6. "ruolo_entita": titolo, carica o qualifica che il passaggio attribuisce all'entità (es. "segretario del Comitato centrale", "organo del partito"); stringa vuota se non indicato.
@@ -285,7 +329,7 @@ Rispondi con JSON."""
 
 
 def prompt_lotto(gruppo, scheda, n=0):
-    blocchi = "\n\n".join(f"[{k}] Fonte: {rec.get('citazione') or rec['fonte']}\n{ritaglia(rec, n)}"
+    blocchi = "\n\n".join(f"[{k}] Fonte: {rec.get('citazione') or rec['fonte']}\n{avviso_nota(rec)}{ritaglia(rec, n)}"
                            for k, rec in enumerate(gruppo, 1))
     return f"""Entità cercata: {gruppo[0]['entita']}
 Altre forme del nome: {'; '.join(scheda['varianti'])}
@@ -385,6 +429,30 @@ def scrivi_non_letti(cart, n):
         f.write_text(json.dumps({"non_letti": n}), encoding="utf-8")
     elif f.exists():
         f.unlink()
+
+
+def registro_lettura(cart, secondi, letti, modelli):
+    """Tempi della lettura (G1), in tempi_lettura.json della cartella della ricerca (una voce per lancio) e in due
+    righe per il registro: quanta parte del tempo è lavoro del modello e quanta attesa del motore (pause, limiti del
+    servizio, errori), quante richieste e quante risposte da richiedere di nuovo. modelli: {ruolo: LLM}."""
+    ruoli = {r: {"richieste": m.richieste, "secondi_modello": round(m.secondi_modello, 1),
+                 "secondi_attesa": round(m.secondi_attesa, 1), "risposte_scartate": m.risposte_scartate}
+             for r, m in modelli.items() if m is not None}
+    voce = {"quando": time.strftime("%Y-%m-%d %H:%M"), "secondi": round(secondi, 1), "passaggi_letti": letti,
+            **ruoli}
+    f = Path(cart) / "tempi_lettura.json"
+    try:
+        storia = json.loads(f.read_text(encoding="utf-8")) if f.exists() else []
+    except (ValueError, OSError):
+        storia = []
+    f.write_text(json.dumps(storia + [voce], ensure_ascii=False, indent=1), encoding="utf-8")
+    righe = [f"Lettura: {letti} passaggi in {secondi / 60:.1f} min"]
+    for r, x in ruoli.items():
+        righe.append(f"  {r}: {x['richieste']} richieste, {x['secondi_modello'] / 60:.1f} min di risposta del modello, "
+                     f"{x['secondi_attesa'] / 60:.1f} min di attesa"
+                     + (f", {x['risposte_scartate']} risposte inutilizzabili richieste di nuovo"
+                        if x["risposte_scartate"] else ""))
+    return righe
 
 
 def da_completare(a):
@@ -521,6 +589,9 @@ def main():
     schede = carica_entita(Path(args.entita))
     passaggi = carica_jsonl(cart / "passaggi.jsonl")
     fatti = {c["id"]: c for c in carica_jsonl(p_out)}
+    # usati anche dopo la lettura: con --solo-rapporto la lettura non c'è
+    llm_s = llm_a = None
+    t_inizio, fatti_ora = time.time(), 0
 
     if not args.solo_rapporto:
         from llm import LLM, leggi_config, percorso
@@ -733,6 +804,9 @@ def main():
                           key=lambda c: (c["entita"], c["data"], c["file"], c["riga"]))
     scrivi_csv(classificati, cart / "classificati.csv")
     scrivi_rapporto(classificati, cart / "rapporto.md")
+    if llm_s or llm_a:
+        modelli = {"smistamento": llm_s} if llm_s is llm_a else {"smistamento": llm_s, "analisi": llm_a}
+        print("\n".join(registro_lettura(cart, time.time() - t_inizio, fatti_ora, modelli)))
     n = Counter(c["analisi"]["pertinente"] for c in classificati)
     print(f"Classificati: {len(classificati)} | pertinenti {n.get('sì', 0)} | incerti {n.get('incerto', 0)} "
           f"| esclusi {n.get('no', 0)}")

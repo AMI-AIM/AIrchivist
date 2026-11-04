@@ -97,7 +97,17 @@ def normale(s):
 
 
 def paesi_nel_testo(testo):
-    """Paesi nominati in un testo latino: [(forma cinese, sigle dei partiti)], nell'ordine della tavola."""
+    """Paesi nominati in un testo latino: [(forma cinese, sigle dei partiti)], nell'ordine della tavola.
+    
+    D1 (TODO): Le forme composte dovrebbero essere cercate come interi, prima di parole singole.
+    Il formato attuale dei dati PAESI non utilizza separatori chiari tra le varianti composte
+    e singole (es. "nuova zelanda new zealand"), causando falsi positivi come "Nuova Unità"
+    che matcha "Nuova Zelanda".
+    
+    Fissi futuro: modificare il formato dati per usare separatori multipli (doppio spazio) 
+    o trattini tra le varianti, o implementare un'analisi più sofisticata per distinguere
+    forme composte da parole singole.
+    """
     t = " " + re.sub(r"[^a-z' -]", " ", normale(testo)) + " "
     out = []
     for zh, sigle, forme in PAESI:

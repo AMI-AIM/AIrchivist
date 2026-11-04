@@ -32,10 +32,10 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 _PROFILI = None
-TIPI = ("periodico", "articolo", "volume", "archivio")
+TIPI = ("periodico", "articolo", "volume", "archivio", "raccolta")
 # cartella predefinita dentro data, per tipo (i periodici in riviste/, come li conta copertura_fonti)
-CARTELLE = {"periodico": "riviste", "articolo": "riviste", "volume": "volumi", "archivio": "archivi"}
-DATATI = ("periodico", "articolo", "archivio")         # tipi con una data per documento
+CARTELLE = {"periodico": "riviste", "articolo": "riviste", "volume": "volumi", "archivio": "archivi", "raccolta": "raccolte"}
+DATATI = ("periodico", "articolo", "archivio", "raccolta")         # tipi con una data per documento
 
 
 def slug(s):

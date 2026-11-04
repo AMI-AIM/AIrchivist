@@ -19,6 +19,7 @@ import configparser
 import json
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -48,12 +49,22 @@ class ModelloNonAmmesso(ErroreModello):
 
 
 class LimiteRaggiunto(Exception):
-    def __init__(self, attesa, motivo="limite del servizio raggiunto"):
+    def __init__(self, attesa, motivo="limite del servizio raggiunto", tipo="rate_limit"):
         self.attesa = attesa
         self.motivo = motivo
+        self.tipo = tipo  # "rate_limit", "connection_error", "service_error"
+
+
+class TimeoutException(Exception):
+    """Timeout separato per connessione vs risposta."""
+    def __init__(self, tipo="risposta"):
+        self.tipo = tipo  # "connessione" o "risposta"
 
 
 RUOLI = ("smistamento", "analisi", "sintesi")
+# risposte da richiedere di nuovo: senza JSON, JSON troncato, forma inattesa (llm.json)
+FORMA_INATTESA = re.compile(r"forma inattesa|non contiene JSON|JSON non valido")
+TENTATIVI_FORMA = 3
 SERVIZI = ("anthropic", "openai", "router", "ollama")
 # voci di un profilo che vengono dalla sezione del servizio nella configurazione precedente
 VOCI_SERVIZIO = ("url", "chiave_env", "json", "parametri_extra", "pausa_secondi", "num_ctx", "modelli_ammessi")
@@ -177,6 +188,12 @@ def catalogo_router(cfg, solo_disponibili=True):
 class LLM:
     """ruolo = 'smistamento' | 'analisi' | 'sintesi'; nome_profilo: un profilo di models.ini al posto di quello
     scelto nella configurazione (per provarlo prima di sceglierlo)."""
+    # conteggi per il registro della ricerca (G1): richieste inviate, secondi passati ad aspettare la risposta del
+    # modello e secondi di attesa del motore (pause, limiti del servizio, errori), risposte da richiedere di nuovo
+    richieste = 0
+    secondi_modello = 0.0
+    secondi_attesa = 0.0
+    risposte_scartate = 0
 
     def __init__(self, cfg, ruolo, nome_profilo=None):
         self.profilo, p = profilo(cfg, ruolo, nome_profilo)
@@ -287,6 +304,9 @@ class LLM:
         except urllib.error.URLError as e:
             raise ErroreModello(f"il servizio non risponde su {self.url} ({getattr(e, 'reason', e)}): "
                                 "controlla l'indirizzo e che il servizio sia acceso")
+        except TimeoutException as t:
+            raise ErroreModello(f"il servizio su {self.url} non ha risposto entro {self.timeout:.0f} s "
+                                f"(timeout della {t.tipo})")
         except (OSError, ValueError) as e:      # timeout, connessione chiusa, risposta che non è JSON
             raise ErroreModello(f"il servizio su {self.url} non ha dato una risposta valida ({e})")
         finally:
@@ -301,6 +321,8 @@ class LLM:
                                               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ricerca-fonti/1.0",
                                               **intestazioni})
         try:
+            # il timeout vale per ogni attesa sul collegamento, compresa quella della risposta intera (senza
+            # streaming il modello non manda nulla finché non ha finito): deve restare quello del profilo
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.load(r), {k.lower(): v for k, v in r.headers.items()}
         except urllib.error.HTTPError as e:
@@ -311,13 +333,20 @@ class LLM:
                 try:
                     attesa = float(attesa)
                 except (TypeError, ValueError):
-                    attesa = 20.0
+                    attesa = 20.0          # quota senza indicazione: i piani gratuiti si liberano in decine di secondi
                 raise LimiteRaggiunto(min(max(attesa, 2.0), 120.0))
             if e.code in (500, 502, 504):
-                # errore temporaneo del servizio (con un router: tutti i tentativi verso i fornitori falliti,
-                # spesso per sovraccarico momentaneo): si riprova dopo una breve attesa
-                raise LimiteRaggiunto(15.0, f"errore temporaneo del servizio ({e.code})")
+                # G4: attesa più breve e incremento rapido per i tentativi
+                raise LimiteRaggiunto(2.0, f"errore temporaneo del servizio ({e.code})")
             raise ErroreModello(f"Il servizio ha risposto con errore {e.code}: {testo[:400]}")
+        except urllib.error.URLError as e:
+            # solo il timeout del collegamento diventa TimeoutException; servizio spento, indirizzo sbagliato e
+            # simili restano URLError, che prova() spiega («il servizio non risponde»)
+            if isinstance(e.reason, (socket.timeout, TimeoutError)):
+                raise TimeoutException("connessione")
+            raise
+        except (socket.timeout, TimeoutError):
+            raise TimeoutException("risposta")
 
     # ---------------- backend ----------------
     def _anthropic(self, sistema, utente, schema):
@@ -384,32 +413,64 @@ class LLM:
     def testo(self, sistema, utente):
         return self._chiama(sistema, utente, None)
 
-    def json(self, sistema, utente, schema):
-        return come_oggetto(estrai_json(self._chiama(sistema, utente, schema)), schema)
+    def json(self, sistema, utente, schema, tentativi_forma=TENTATIVI_FORMA):
+        """La risposta come oggetto JSON. Una risposta senza JSON o di forma inattesa (un elenco di più oggetti al
+        posto dell'oggetto) si richiede di nuovo, fino a tentativi_forma volte: con un router la richiesta nuova
+        può andare a un altro modello della catena (C2). Solo dopo l'ultimo tentativo il passaggio resta da leggere."""
+        for n in range(tentativi_forma):
+            try:
+                return come_oggetto(estrai_json(self._chiama(sistema, utente, schema)), schema)
+            except ErroreModello as e:
+                if not FORMA_INATTESA.search(str(e)) or n == tentativi_forma - 1:
+                    raise
+                self.risposte_scartate += 1
+                print(f"    risposta del modello non utilizzabile ({e}): la richiedo di nuovo")
 
     def _chiama(self, sistema, utente, schema, tentativi=6):
         funzione = {"anthropic": self._anthropic, "openai": self._openai, "ollama": self._ollama}[self.backend]
         errore, temporanei = None, 0
+        attesa_temporanea = 2.0  # attesa iniziale per errori temporanei
+
+        def aspetta(secondi):           # ogni attesa del motore entra nel registro della ricerca (G1)
+            self.secondi_attesa += secondi
+            time.sleep(secondi)
+
         for n in range(tentativi):
             attesa = self.pausa - (time.time() - self._ultima)
             if attesa > 0:
-                time.sleep(attesa)
+                aspetta(attesa)
             try:
                 self._ultima = time.time()
-                return funzione(sistema, utente, schema)
+                self.richieste += 1
+                try:
+                    return funzione(sistema, utente, schema)
+                finally:
+                    self.secondi_modello += time.time() - self._ultima
             except LimiteRaggiunto as l:
-                if l.motivo.startswith("errore temporaneo"):
+                if l.motivo.startswith("errore temporaneo") or l.tipo == "service_error":
                     temporanei += 1
                     if temporanei > 2:        # dopo 3 tentativi si lascia il passaggio per il prossimo lancio
                         raise ErroreModello(f"{l.motivo}, ripetuto 3 volte")
-                print(f"    {l.motivo}: attendo {l.attesa:.0f} s...")
-                time.sleep(l.attesa)
+                    # G4: attesa che cresce con i tentativi (2, 4, 8 s)
+                    attesa_temporanea = min(2.0 * (2 ** (temporanei - 1)), 15.0)
+                pausa = max(l.attesa, attesa_temporanea)
+                print(f"    {l.motivo}: attendo {pausa:.0f} s...")
+                aspetta(pausa)
                 errore = l.motivo
+            except TimeoutException as t:
+                # G4: timeout diversi per connessione vs risposta
+                if t.tipo == "connessione":
+                    # retry veloce per problemi di rete
+                    aspetta(min(2 ** n, 10))
+                else:
+                    aspetta(min(5 * (n + 1), 30))
+                errore = f"timeout {t.tipo}"
+                continue
             except ErroreModello:
                 raise
-            except Exception as e:      # rete, timeout
+            except Exception as e:      # rete, altri errori
                 errore = e
-                time.sleep(5 * (n + 1))
+                aspetta(min(5 * (n + 1), 30))  # attesa progressiva, max 30 s
         raise ErroreModello(f"Chiamata al modello fallita dopo {tentativi} tentativi: {errore}")
 
 

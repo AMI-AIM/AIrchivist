@@ -30,6 +30,7 @@ from estrai_occorrenze import is_cjk, leggi_intestazione, metadati, pattern_vari
 
 RIGHE_PER_FILE = 10_000_000          # rowid = id del file * RIGHE_PER_FILE + numero di riga
 CJK = re.compile(r"([㐀-鿿豈-﫿])")
+import apparato   # noqa: E402   testatine marcate all'importazione: non sono attestazioni dei nomi
 from profili import serie_breve   # noqa: E402   nome della serie nell'indice (Red Flag -> Hongqi: gruppo del profilo)
 
 
@@ -175,7 +176,7 @@ class Indice:
         righe = testo.split("\n")
         c.executemany("INSERT INTO testo(rowid, t) VALUES (?, ?)",
                       ((fid * RIGHE_PER_FILE + n, prepara(r)) for n, r in enumerate(righe, 1)
-                       if n >= inizio and r.strip()))
+                       if n >= inizio and r.strip() and not apparato.e_testatina(r)))
         c.execute("INSERT INTO file VALUES (?,?,?,?,?,?,?,?)",
                   (fid, rel, serie_breve(fonte), citazione, data, anno, inizio,
                    lingua_testo(meta, testo[pos:pos + 4000])))
@@ -354,10 +355,14 @@ class Indice:
                 if lingua == "zh" or not ammesso(fid):
                     continue
                 testo = (self.dati / rel).read_text(encoding="utf-8", errors="replace")
-                inizi, viste = None, set()
-                for m in rx.finditer(testo):
+                inizi, viste, spazi = None, set(), None
+                # dal testo vero e proprio: l'intestazione (titolo, citazione) non è un'attestazione del nome
+                for m in rx.finditer(testo, leggi_intestazione(testo)[1]):
                     if inizi is None:
                         inizi = [0] + [k + 1 for k, ch in enumerate(testo) if ch == "\n"]
+                        spazi = [x for x in apparato.intervalli(testo) if x[2] == "testatina"]
+                    if apparato.dove(spazi, m.start()):          # testatina (apparato.py): non è il documento
+                        continue
                     n = bisect.bisect_right(inizi, m.start())
                     if n in viste:
                         continue
