@@ -5,121 +5,114 @@
   </picture>
 </h1>
 
-<p align="center">Ricerca nelle fonti primarie</p>
+<p align="center">
+  <b>Ogni menzione di un nome nelle tue fonti, con il passaggio originale e la citazione esatta.</b><br>
+  <a href="https://github.com/AMI-AIM/Pressmark/releases/latest">Scarica per Windows</a> ·
+  <a href="docs/quickstart.it.md">Primi passi</a> ·
+  <a href="docs/user_guide.it.md">Guida d'uso</a> ·
+  <a href="README.md">English</a>
+</p>
 
-Pressmark è un'applicazione per trovare **tutte** le occorrenze di una persona o di un ente (partito, Stato,
-testata) in un ampio corpus di fonti primarie e rispondere con i passaggi originali, la traduzione e il riferimento esatto, con
-citazioni Chicago note-bibliografia fino alla pagina. La ricerca gira in Python sul tuo computer; i modelli linguistici
-(gratuiti, locali o a pagamento, a tua scelta) leggono solo i passaggi. Le domande si fanno da un client di chat
-collegato al server MCP del motore (Jan, Claude Desktop, LM Studio) o da riga di comando. Funziona su Windows,
-macOS e Linux.
+Pressmark è un'applicazione per storici e ricercatori che lavorano su grandi raccolte di fonti primarie: giornali,
+riviste, documenti d'archivio, scansioni. Chiedi di una persona o di un ente (un partito, uno Stato, una testata) e
+Pressmark trova **tutte** le occorrenze nel tuo corpus, poi risponde con i passaggi originali, la loro traduzione e
+la citazione fino alla pagina.
 
-Nato per un progetto di dottorato sul comunismo dissidente tra Pechino e Tirana (fonti cinesi, poi albanesi e
-italiane), è pensato per adattarsi ad altre ricerche: le fonti si importano da PDF, scansioni (con OCR), `.txt` ed
-esportazioni PAGE/ALTO XML di Transkribus o eScriptorium.
+La ricerca gira sul tuo computer. Il modello linguistico che scegli legge soltanto i passaggi trovati dalla ricerca:
+decide se ciascuno è pertinente, lo traduce e aiuta a scrivere la risposta. Le fonti non le inventa mai.
 
-## Per cominciare
+## Che cosa fa
 
-- [`docs/quickstart.it.md`](docs/quickstart.it.md): dall'installazione alla prima risposta in circa 15 minuti.
-- [`docs/user_guide.it.md`](docs/user_guide.it.md): la guida completa.
-- [`docs/troubleshooting.it.md`](docs/troubleshooting.it.md): problemi frequenti.
-
-In inglese: [`README.md`](README.md), [`docs/quickstart.md`](docs/quickstart.md),
-[`docs/user_guide.md`](docs/user_guide.md), [`docs/troubleshooting.md`](docs/troubleshooting.md).
+- **Trova ogni forma di un nome**, comprese varianti di grafia, errori dell'OCR (sillabazioni spezzate, parole
+  attaccate, spazi tra i caratteri) e scritture non latine. Per un nome nuovo propone solo le forme davvero
+  attestate nelle tue fonti, e sei tu a confermarle.
+- **Risponde con le prove**: passaggi originali, traduzioni, dati espliciti tenuti distinti dalle inferenze, limiti e
+  copertura della ricerca. Le citazioni seguono il Chicago Manual of Style e si ricavano dai metadati di ogni
+  documento.
+- **Ti fa controllare tutto**: ogni citazione apre la pagina da cui viene, con la scansione se c'è. Nella
+  conversazione, un riferimento che nessuna fonte sostiene è segnato in rosso.
+- **Importa il tuo materiale**: PDF, scansioni di pagine (con OCR), file `.txt` ed esportazioni PAGE XML o ALTO XML di
+  Transkribus o eScriptorium. Prima di importare, controlli i metadati in una tabella.
+- **Non rilegge mai lo stesso passaggio**: ogni lettura è archiviata con il modello che l'ha fatta, così le domande
+  nuove costano meno e si vede chi ha deciso che cosa.
 
 ## Installazione
 
-### Su Windows, senza terminale
+### Windows
 
-`Pressmark-<versione>-setup.exe`, da scaricare dalle [release](https://github.com/AMI-AIM/Pressmark/releases/latest), installa il programma per il solo utente, senza diritti di amministratore, in
-`%LOCALAPPDATA%\Programs\Pressmark`, con tutto ciò che serve (Python, PyMuPDF, la finestra propria, Tesseract
-con le lingue OCR). Si apre dal menu Start, «Pressmark»: la finestra «Preparazione» guida progetto, modello, prime
-fonti e collegamento alla chat. Le scelte stanno in `%APPDATA%\Pressmark`, i progetti in `Documenti\Pressmark`:
-aggiornare o disinstallare il programma non li tocca. Serve Windows 10 o 11 a 64 bit.
+Scarica `Pressmark-<versione>-setup.exe` dall'[ultima release](https://github.com/AMI-AIM/Pressmark/releases/latest)
+e avvialo. Non servono diritti di amministratore e c'è già tutto: Python, la lettura dei PDF, l'OCR (inglese e
+italiano; le altre lingue si scaricano dal programma). Apri **Pressmark** dal menu Start. Al primo avvio la finestra
+«Preparazione» ti guida a creare un progetto, scegliere un modello e importare le prime fonti.
 
-Per costruire l'installatore da questo repository (Python della stessa versione di quello da includere, Tesseract
-installato, Inno Setup 6):
+Serve Windows 10 o 11 a 64 bit. L'installatore non è ancora firmato: se SmartScreen avvisa, scegli «Ulteriori
+informazioni» → «Esegui comunque». Aggiornare o disinstallare il programma non tocca i tuoi progetti, che stanno in
+`Documenti\Pressmark`.
 
-```
-python confezione/costruisci.py
-```
+### macOS, Linux o dal codice
 
-Il risultato è in `confezione/uscita` (fuori da git): la cartella del programma, provata dallo script con il suo
-Python, e l'installatore.
+Serve Python 3.10 o successivo.
 
-### Dal repository
-
-Serve Python 3.10 o successivo (quello di python.org, o su macOS di Homebrew). I requisiti si installano nel
-sistema, mai dentro la cartella. Dalla cartella `scripts` del repository (su macOS e Linux, `python3`):
-
-```
-python installa.py inizia
+```bash
+git clone https://github.com/AMI-AIM/Pressmark.git
+cd Pressmark
+python scripts/installa.py inizia
+python scripts/app.py
 ```
 
-`inizia` guida i passi per la prima volta (ambiente, modello, primo progetto, chat, riepilogo); si possono fare
-anche uno per volta:
+`installa.py inizia` controlla il sistema e ti dice che cosa manca, con il comando per il tuo sistema: PyMuPDF per i
+PDF (`python scripts/installa.py librerie`), Tesseract per le scansioni. `app.py` apre l'interfaccia. Su macOS e
+Linux il comando può essere `python3`.
 
+## Scegliere il modello
+
+Pressmark funziona con il modello che preferisci, e lo cambi quando vuoi:
+
+| Scelta | Esempi | Note |
+|---|---|---|
+| In locale | Ollama | Gratuito, nulla esce dal tuo computer; serve una macchina capace |
+| Un servizio con una chiave | Groq, OpenRouter, Gemini, qualsiasi servizio compatibile OpenAI | Molti hanno un piano gratuito |
+| API di Anthropic | Claude | A consumo |
+| Un router tra servizi gratuiti | FreeLLMAPI | Passa a un altro servizio quando una quota finisce |
+
+Le chiavi restano nelle variabili d'ambiente, mai nei file di Pressmark. Prima di cambiare modello Pressmark prova il
+collegamento, e ti dice quali modelli sono stati misurati sulle tue fonti.
+
+## Come funziona
+
+1. **Il nome**: una scheda elenca tutte le forme che la ricerca deve trovare, e quelle ambigue.
+2. **La ricerca**: un indice del testo e schemi che tollerano gli errori dell'OCR trovano tutte le occorrenze. È
+   codice, non un modello: completa e ripetibile.
+3. **La lettura**: il modello smista i passaggi e traduce quelli pertinenti, qualcuno alla volta. Le ricerche lunghe
+   vanno avanti da sole e, se una quota gratuita finisce, riprendono per conto loro.
+4. **La risposta**: un documento da leggere, stampare o conservare, con la risposta in testa e dopo le prove su cui
+   si fonda.
+
+Le domande si possono fare anche da un client di chat come Jan, Claude Desktop o LM Studio: Pressmark include un
+server MCP con gli stessi strumenti, e la «Preparazione» lo collega per te.
+
+## Documentazione
+
+- [Primi passi](docs/quickstart.it.md): dall'installazione alla prima risposta in circa 15 minuti.
+- [Guida d'uso](docs/user_guide.it.md): tutto nel dettaglio, compresa la riga di comando.
+- [Problemi frequenti](docs/troubleshooting.it.md): i problemi più comuni e come risolverli.
+
+L'interfaccia per ora è in italiano, e in italiano sono anche le traduzioni dei passaggi. Le guide ci sono in
+italiano e in inglese.
+
+## Sviluppo
+
+```bash
+python -m unittest discover -s tests
+python confezione/costruisci.py --lingue ita
 ```
-python installa.py librerie
-python installa.py modello
-python installa.py controlla
-python installa.py client jan --scrivi
-```
 
-- `librerie`: installa le librerie facoltative di `requirements.txt` (PyMuPDF, per importare i PDF).
-- `modello`: procedura guidata per il modello che legge i passaggi (Ollama, un servizio con una chiave, API di
-  Anthropic o FreeLLMAPI); si cambia quando si vuole con `installa.py modello usa <profilo>`.
-- `controlla`: verifica Python, l'indice FTS5, il modello scelto (chiave e raggiungibilità), il progetto
-  in uso, PyMuPDF, Tesseract e le lingue OCR richieste dalle serie. Se manca qualcosa di necessario, lo dice e
-  indica il comando per il sistema in uso.
-- `client`: mostra cosa scrivere nel client per collegare il server MCP (`jan`, `claude`, `lmstudio`, `json`);
-  con `--scrivi` aggiunge o aggiorna da sé la voce nel file del client (copia di sicurezza, conferma prima di
-  scrivere); `client --verifica` controlla che il server risponda come lo avvierebbe il client.
-
-## Come si usa
-
-1. Importa le fonti: `python importa.py proponi <cartella>` scrive una tabella di revisione dei metadati da
-   controllare in Excel o LibreOffice, `python importa.py applica <tabella>` importa.
-2. Nel client di chat, scrivi la domanda, per esempio «Cosa dicono le fonti di Jacques Grippa nel 1964?».
-3. L'assistente propone le forme del nome attestate nelle fonti; dopo la tua conferma avvia la ricerca e, alla
-   fine, indica il documento della risposta (HTML, da aprire nel browser e stampare).
-
-Gli stessi passi, senza client di chat, nell'interfaccia nel browser: `python app.py` (menu «Progetto» e
-«Modello», ricerca guidata, importazione, storico). Da riga di comando: scheda dell'entità in
-`glossary/entities.ini` del progetto e `python ricerca.py "Nome" --apri`.
-
-## Dove sono le cose
-
-Il repository contiene il motore:
-
-| Cartella | Contenuto |
-|---|---|
-| `scripts` | programmi, `config.ini` (profilo di modello in uso, parametri, progetto in uso), `models_template.ini` (esempi di profili di modello) e `series_template.ini` (modello per i progetti nuovi) |
-| `assets/marchio` | logotipo e favicon di Pressmark, in versione chiara e scura (SVG) |
-| `tests` | test automatici e progetto di prova (`tests/test_project`) |
-| `docs` | primi passi, guida d'uso, problemi frequenti (in italiano e in inglese) |
-| `projects` | i progetti di ricerca, fuori dal controllo di versione |
-
-Ogni progetto di ricerca (`projects/<nome>`) ha la stessa struttura:
-
-| Cartella | Contenuto |
-|---|---|
-| `project.ini` | nome e impostazioni del progetto. Per un'altra ricerca: `python progetto.py nuovo ../projects/<nome>` (vedi `docs/user_guide.it.md`, «Progetti di ricerca») |
-| `glossary` | schede delle entità (`entities.ini`), serie di fonti (`series.ini`) e regole per la chat (`instructions.md`) |
-| `sources` | documenti originali caricati, che non si modificano |
-| `data` | le fonti processate |
-| `audit` | registro delle correzioni fatte ai metadati delle fonti (`changes.csv`), lacune ancora aperte (`open_issues.csv`), registro delle importazioni (`imports.csv`), tabelle di revisione e controlli delle intestazioni (`checks`) |
-| `results/archive` | i passaggi già letti (non vengono mai riletti) |
-| `results/searches` | una cartella per ogni ricerca |
-| `results/answers` | tutte le risposte complete delle ricerche avviate dalla chat, una per domanda |
-| `results/references` | letture di riferimento per provare i modelli |
-| `results/past_sessions` | lavori delle sessioni assistite |
-| `results/trials` | prove dei modelli, dell'OCR e della chat |
-| `results/evaluation` | insiemi di riferimento verificati a mano e misure di precisione e richiamo |
-| `system` | indice di ricerca delle fonti (`index`), stato e registro di ogni ricerca avviata dalla chat (`jobs`), copie dei file prima delle modifiche (`backups`) |
+Il primo comando esegue i test, che usano un progetto di prova proprio (`tests/test_project/`). Il secondo costruisce
+l'installatore per Windows (servono Python della versione da includere, Tesseract e Inno Setup 6). I progetti di
+ricerca stanno fuori dal controllo di versione: il repository contiene solo l'applicazione.
 
 ## Licenza
 
-Il codice è distribuito con la licenza GNU Affero General Public License, versione 3 (`LICENSE`). Chi offre
-una versione modificata come servizio in rete, anche come server MCP usato da altri, deve renderne disponibile il
-codice. La licenza non riguarda le fonti del corpus, che restano soggette ai propri diritti.
+Copyright (C) 2026 Ivan Masci. Pressmark è software libero con licenza GNU Affero General Public License, versione 3
+([`LICENSE`](LICENSE)). Chi offre una versione modificata come servizio in rete, anche come server MCP usato da altri,
+deve renderne disponibile il codice. La licenza non riguarda le tue fonti, che restano soggette ai propri diritti.
