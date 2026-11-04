@@ -108,5 +108,17 @@ class Progetto(unittest.TestCase):
         self.assertFalse((self.tmp / "x").exists())
 
 
+class ComandoDellaVariabile(unittest.TestCase):
+    """E1: su Windows anche la forma di PowerShell, dove «set …» non imposta la variabile."""
+    def test_forme(self):
+        from unittest import mock
+        with mock.patch.object(P.os, "name", "nt"):
+            c = P.comando_variabile(r"C:\progetti\prova uno")
+        self.assertIn(r'$env:PRESSMARK_PROGETTO = "C:\progetti\prova uno"', c)
+        self.assertIn(r'set "PRESSMARK_PROGETTO=C:\progetti\prova uno"', c)
+        with mock.patch.object(P.os, "name", "posix"):
+            self.assertEqual(P.comando_variabile("/p/x"), 'export PRESSMARK_PROGETTO="/p/x"')
+
+
 if __name__ == "__main__":
     unittest.main()

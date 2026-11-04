@@ -60,7 +60,7 @@ import posizioni
 CARTELLA = Path(__file__).resolve().parent
 REQUISITI = CARTELLA.parent / "requirements.txt"
 PYTHON_MINIMO = (3, 10)
-NOME_SERVER = "airchivist"
+NOME_SERVER = "pressmark"
 
 
 class Esito:
@@ -171,7 +171,7 @@ def stato_lingue(cfg):
     from progetto import NessunProgetto
     exe = importa.cerca_tesseract(cfg)
     out = {"tesseract": exe, "cartella": None, "scrivibile": False, "installate": [], "richieste": [],
-           "mancanti": [], "proposte": []}
+           "mancanti": [], "proposte": [], "nomi": importa.NOMI_LINGUE}
     if not exe:
         return out
     cartella = importa.cartella_lingue(cfg, exe)
@@ -180,11 +180,58 @@ def stato_lingue(cfg):
         richieste = importa.lingue_delle_serie() | {"osd"}
     except (NessunProgetto, configparser.Error):
         richieste = {"osd"}
-    proposte = sorted((set(importa.LINGUE_OCR.values()) | set(importa.ALTRE_LINGUE)) - installate)
+    # da installare: tutti i modelli di tessdata_best che non ci sono ancora
+    proposte = sorted((set(importa.NOMI_LINGUE) | set(importa.LINGUE_OCR.values()) | set(importa.ALTRE_LINGUE))
+                      - installate)
+    propria = importa.cartella_modelli(cfg) is not None
     out.update(cartella=str(cartella) if cartella else None, scrivibile=importa.scrivibile(cartella),
                installate=sorted(installate), richieste=sorted(richieste),
-               mancanti=sorted(richieste - installate), proposte=proposte)
+               mancanti=sorted(richieste - installate), proposte=proposte,
+               # una cartella delle lingue propria si può creare se quella di Tesseract non si può scrivere
+               propria=propria, cartella_utente=str(cartella_lingue_utente()),
+               dimensione_mb=round(_dimensione(cartella) / 1e6) if cartella else 0)
     return out
+
+
+def cartella_lingue_utente():
+    """Dove vanno le lingue OCR dell'utente quando quella di Tesseract chiede l'amministratore: nella cartella dei
+    dati dell'applicazione dell'utente (anche in modo sviluppo: 100 MB e più non vanno nel repository)."""
+    return posizioni.cartella_sistema() / "tessdata"
+
+
+def _dimensione(cartella):
+    try:
+        return sum(f.stat().st_size for f in Path(cartella).rglob("*") if f.is_file() and f.suffix != ".jar")
+    except OSError:
+        return 0
+
+
+def usa_cartella_lingue_propria(cfg, file_config, stampa=print):
+    """Copia i modelli della cartella di Tesseract (lingue, configs, tessconfigs; non i .jar di ScrollView) nella
+    cartella dell'utente e la indica in config.ini ([ocr] modelli): da lì si scaricano le lingue nuove senza i
+    diritti di amministratore. Tesseract resta com'è. Restituisce la cartella."""
+    import importa
+    exe = importa.cerca_tesseract(cfg)
+    if not exe:
+        raise ValueError("Tesseract non trovato: senza, le lingue non servono.")
+    sorgente = importa.cartella_lingue(cfg, exe)
+    dest = cartella_lingue_utente()
+    if sorgente is not None and Path(sorgente).resolve() == dest.resolve():
+        raise ValueError(f"Le lingue stanno già in {dest}.")
+    prima = importa.lingue_installate(exe, importa.cartella_modelli(cfg))
+    dest.mkdir(parents=True, exist_ok=True)
+    if sorgente is not None and Path(sorgente).is_dir():
+        stampa(f"Copio i modelli da {sorgente} in {dest}…")
+        shutil.copytree(sorgente, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.jar", "*.parziale"))
+    dopo = importa.lingue_installate(exe, dest)
+    perse = prima - dopo
+    if perse:
+        raise ValueError(f"Nella cartella nuova Tesseract non vede: {', '.join(sorted(perse))}. La configurazione "
+                         f"non è cambiata; la copia resta in {dest}.")
+    copia_di_sicurezza(file_config)
+    imposta_voci(file_config, "ocr", {"modelli": str(dest)})
+    stampa(f"Le lingue OCR ora stanno in {dest} ({len(dopo)} modelli).")
+    return dest
 
 
 def cmd_lingue(args, stampa=print):
@@ -355,10 +402,10 @@ def cartella_dati():
     return Path(xdg) if xdg else Path.home() / ".config"
 
 
-# nomi con cui i client indicano il nostro server nelle loro configurazioni esistenti
-ALIAS_CLIENT = {"claude": ("airchivist", "AIrchivist", "Pipeline"),
-                "lmstudio": ("airchivist", "AIrchivist", "Pipeline"),
-                "jan": ("airchivist", "AIrchivist", "Pipeline")}
+# nomi con cui i client indicano il nostro server nelle loro configurazioni esistenti (anche i nomi di prima,
+# «airchivist» e «Pipeline»: la voce già scritta si aggiorna invece di aggiungerne una seconda)
+NOMI_PRECEDENTI = ("airchivist", "AIrchivist", "Pipeline")
+ALIAS_CLIENT = {c: ("pressmark", "Pressmark") + NOMI_PRECEDENTI for c in ("claude", "lmstudio", "jan")}
 
 
 def file_client(nome, dati=None):
@@ -502,11 +549,11 @@ def unisci_voci(client, esistente, nome_server, voce):
 
 
 def scrivi_file_client(f, doc):
-    """Scrive il file JSON con copia di sicurezza «<file>.airchivist-<data>.bak» accanto all'originale."""
+    """Scrive il file JSON con copia di sicurezza «<file>.pressmark-<data>.bak» accanto all'originale."""
     _, bom, fine_riga = _leggi_testo(f)
     testo = json.dumps(doc, ensure_ascii=False, indent=2) + fine_riga
     if f.exists():
-        copia = f.with_name(f"{f.name}.airchivist-{dt.date.today().isoformat()}.bak")
+        copia = f.with_name(f"{f.name}.pressmark-{dt.date.today().isoformat()}.bak")
         shutil.copyfile(f, copia)
         yield f"copia di sicurezza: {copia}"
     f.parent.mkdir(parents=True, exist_ok=True)
@@ -588,7 +635,7 @@ def cmd_client_scrivi(args, stampa, chiedi=input, nome_server=None):
     for riga in scrivi_client(p):
         stampa("  " + riga)
     if nome == "jan":
-        stampa("Apri Jan: il server AIrchivist è acceso. Le altre impostazioni dell'assistente sono nella guida "
+        stampa("Apri Jan: il server Pressmark è acceso. Le altre impostazioni dell'assistente sono nella guida "
                "(docs/user_guide.it.md, «Jan»).")
     else:
         stampa("Riavvia il client perché legga la nuova configurazione.")
@@ -702,7 +749,16 @@ SERVIZI_CHIAVE = [
     ("Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "GEMINI_API_KEY",
      "gemini-3.8-flash", "5", "https://aistudio.google.com/apikey"),
     ("OpenRouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "", "3.5", "https://openrouter.ai/keys"),
+    # a consumo o con piano gratuito: il modello si sceglie dall'elenco del servizio, non lo proponiamo noi
+    ("OpenAI", "https://api.openai.com/v1", "OPENAI_API_KEY", "", "0", "https://platform.openai.com/api-keys"),
+    ("Mistral", "https://api.mistral.ai/v1", "MISTRAL_API_KEY", "", "1", "https://console.mistral.ai/api-keys"),
+    ("xAI", "https://api.x.ai/v1", "XAI_API_KEY", "", "0", "https://console.x.ai"),
+    ("MiniMax", "https://api.minimax.io/v1", "MINIMAX_API_KEY", "", "0", "https://platform.minimax.io"),
+    ("Hugging Face", "https://router.huggingface.co/v1", "HF_TOKEN", "", "1", "https://huggingface.co/settings/tokens"),
+    ("NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", "", "1.5", "https://build.nvidia.com"),
 ]
+# servizi che elencano i modelli anche con una chiave sbagliata: l'elenco non prova la chiave
+ELENCO_SENZA_CHIAVE = {"Hugging Face", "NVIDIA NIM"}
 
 
 def leggi_cfg():
@@ -715,13 +771,13 @@ def oggi():
 
 
 def copia_di_sicurezza(f):
-    """Copia accanto al file (<file>.airchivist-<data>.bak, esclusa da git); None se il file non c'è."""
+    """Copia accanto al file (<file>.pressmark-<data>.bak, esclusa da git); None se il file non c'è."""
     if not f.exists():
         return None
-    dest = f.with_name(f"{f.name}.airchivist-{oggi()}.bak")
+    dest = f.with_name(f"{f.name}.pressmark-{oggi()}.bak")
     n = 2
     while dest.exists():
-        dest = f.with_name(f"{f.name}.airchivist-{oggi()}-{n}.bak")
+        dest = f.with_name(f"{f.name}.pressmark-{oggi()}-{n}.bak")
         n += 1
     shutil.copy2(f, dest)
     return dest
@@ -795,6 +851,18 @@ def togli_profilo(f, nome):
     while inizio > 0 and righe[inizio - 1].lstrip().startswith(("#", ";")):
         inizio -= 1
     del righe[inizio:fine]
+    _scrivi_testo(f, righe, bom, nl)
+    return True
+
+
+def rinomina_profilo(f, vecchio, nuovo):
+    """Cambia solo l'intestazione della sezione: voci e commenti restano dove sono."""
+    testo, bom, nl = _leggi_testo(f)
+    righe = testo.splitlines()
+    inizio, _fine = _limiti_sezione(righe, vecchio)
+    if inizio is None:
+        return False
+    righe[inizio] = f"[{nuovo}]"
     _scrivi_testo(f, righe, bom, nl)
     return True
 
@@ -881,6 +949,59 @@ def stato_misura(p, misurati, coppie):
     return "no"
 
 
+def fornitore(p):
+    """Chi fornisce il modello di un profilo, per raggrupparli nell'interfaccia. «servizio» dice il protocollo, non il
+    fornitore (Groq, Gemini e OpenRouter sono tutti «openai»): per quelli conta l'indirizzo. «servizio_id» è la voce
+    della procedura «Aggiungi modello» che crea un profilo dello stesso fornitore."""
+    import urllib.parse
+    servizio = p.get("servizio", "")
+    if servizio == "ollama":
+        return {"id": "ollama", "nome": "Ollama", "servizio_id": "ollama", "dove_chiave": ""}
+    if servizio == "anthropic":
+        return {"id": "anthropic", "nome": "Anthropic", "servizio_id": "anthropic",
+                "dove_chiave": "https://console.anthropic.com/settings/keys"}
+    if servizio == "router":
+        return {"id": "freellmapi", "nome": "FreeLLMAPI", "servizio_id": "router", "dove_chiave": ""}
+    host = urllib.parse.urlsplit(p.get("url", "")).hostname or ""
+    for n, url, _env, _modello, _pausa, dove in SERVIZI_CHIAVE:
+        if host and host == urllib.parse.urlsplit(url).hostname:
+            return {"id": n.lower().replace(" ", "-"), "nome": n, "servizio_id": f"chiave:{n}", "dove_chiave": dove}
+    return {"id": "openai:" + host, "nome": host or "Servizio compatibile OpenAI", "servizio_id": "openai",
+            "dove_chiave": ""}
+
+
+# Interruttori (config.ini, sezione [disattivati]): fornitori, chiavi (per nome della variabile) e profili spenti.
+# Spento non vuol dire tolto: il profilo resta in models.ini e la chiave nella sua variabile, ma non si sceglie.
+SEZIONE_SPENTI = "disattivati"
+TIPI_SPENTI = {"fornitore": "fornitori", "chiave": "chiavi", "profilo": "profili"}
+
+
+def spenti(cfg):
+    """{"fornitori": set, "chiavi": set, "profili": set} dalla sezione [disattivati] (voci separate da virgole)."""
+    out = {}
+    for voce in TIPI_SPENTI.values():
+        testo = cfg.get(SEZIONE_SPENTI, voce, fallback="") if cfg.has_section(SEZIONE_SPENTI) else ""
+        out[voce] = {x.strip() for x in testo.split(",") if x.strip()}
+    return out
+
+
+def env_chiave(p):
+    return p.get("chiave_env", "") or ("ANTHROPIC_API_KEY" if p.get("servizio") == "anthropic" else "")
+
+
+def motivo_spento(nome, p, s):
+    """Perché un profilo non si può scegliere: "" se si può, altrimenti la spiegazione."""
+    if nome in s["profili"]:
+        return f"il modello «{nome}» è spento"
+    f = fornitore(p)
+    if f["id"] in s["fornitori"]:
+        return f"il fornitore {f['nome']} è spento"
+    env = env_chiave(p)
+    if env and env in s["chiavi"]:
+        return f"la chiave {env} è spenta"
+    return ""
+
+
 def stato_profili(cfg):
     """Profili, scelta per ruolo, chiavi e misure, come dati (per lo strumento MCP «modello»)."""
     from llm import RUOLI, ErroreModello, file_profili, leggi_profili, nome_scelto, profilo, usa_profili
@@ -892,12 +1013,15 @@ def stato_profili(cfg):
     except NessunProgetto:
         misurati, coppie = set(), set()
     scelti = {r: nome_scelto(cfg, r) for r in RUOLI}
+    s = spenti(cfg)
     out = {"file_profili": str(file_profili(cfg)), "profili": []}
     for nome, p in leggi_profili(cfg).items():
-        env = p.get("chiave_env", "") or ("ANTHROPIC_API_KEY" if p.get("servizio") == "anthropic" else "")
+        env = env_chiave(p)
         voce = {"nome": nome, "servizio": p.get("servizio", ""), "modello": p.get("modello", ""),
                 "chiave": ("presente" if os.environ.get(env) else "assente") if env else "non serve",
-                "in_uso_per": [r for r in RUOLI if scelti[r] == nome]}
+                "chiave_env": env, "fornitore": fornitore(p), "url": p.get("url", ""),
+                "in_uso_per": [r for r in RUOLI if scelti[r] == nome],
+                "spento": nome in s["profili"], "bloccato": motivo_spento(nome, p, s)}
         voce["misurato"] = stato_misura(p, misurati, coppie)
         out["profili"].append(voce)
     try:
@@ -964,6 +1088,11 @@ def modello_usa(args, stampa, gia_provato=False, default=None, **_):
     if not nome or nome not in leggi_profili(cfg):
         stampa(f"Indica un profilo esistente: python installa.py modello usa <profilo> "
                f"(profili: {', '.join(leggi_profili(cfg)) or 'nessuno'}).")
+        return 1
+    motivo = motivo_spento(nome, leggi_profili(cfg)[nome], spenti(cfg))
+    if motivo:
+        stampa(f"Non si può scegliere «{nome}»: {motivo} (sezione [{SEZIONE_SPENTI}] di config.ini, o le "
+               "Impostazioni dell'interfaccia).")
         return 1
     ruoli = list(dict.fromkeys(args.ruolo or RUOLI))
     try:
@@ -1185,7 +1314,7 @@ def modello_nuovo(args, stampa, chiedi=input, segreto=getpass.getpass, salva=sal
     stampa("Nuovo profilo di modello. Quale servizio legge i passaggi?")
     tipo = _scegli(chiedi, stampa, "Scelta", [
         "Ollama, sul tuo computer: gratuito, nessuna chiave; serve un computer abbastanza potente",
-        "Un servizio con una sola chiave (Groq, Google Gemini, OpenRouter o altro compatibile OpenAI)",
+        "Un servizio con una sola chiave (Groq, Gemini, OpenAI, Mistral, OpenRouter e altri compatibili OpenAI)",
         "API di Anthropic (Claude): a consumo",
         "FreeLLMAPI (avanzato): più servizi gratuiti in catena, sul tuo computer"])
     dove_chiave = ""
@@ -1392,7 +1521,7 @@ CLIENT_GUIDA = [("jan", "Jan"), ("claude", "Claude Desktop"), ("lmstudio", "LM S
 
 
 def voce_presente(codice, file=None):
-    """Vero se il file di configurazione del client contiene la voce di AIrchivist (anche col nome «Pipeline»)."""
+    """Vero se il file di configurazione del client contiene la voce di Pressmark (anche col nome «Pipeline»)."""
     f = Path(file) if file else file_client(codice)
     if f is None or not f.exists():
         return False
@@ -1410,7 +1539,7 @@ def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
     1 saltato o non riuscito. «file» e «scrivi_voce» servono solo ai test: percorso del file da usare al posto di
     quello reale e voce del server finta."""
     gia = next((c for c, _ in CLIENT_GUIDA if voce_presente(c, file)), None)
-    stampa("Quale programma di chat colleghi a AIrchivist? (la chat è diversa dal modello che legge i passaggi)")
+    stampa("Quale programma di chat colleghi a Pressmark? (la chat è diversa dal modello che legge i passaggi)")
     predefinita = next((i for i, (c, _) in enumerate(CLIENT_GUIDA, 1) if c == gia), 1)
     n = _scegli(chiedi, stampa, "Scelta", [etichetta for _, etichetta in CLIENT_GUIDA] + ["nessuno, per ora"],
                 predefinita=predefinita)
@@ -1453,7 +1582,7 @@ def riepilogo(stampa, file_client_fn=None):
            "- Progetto: nessuno ancora (python installa.py inizia --passi 3)")
     configurati = [etichetta for codice, etichetta in CLIENT_GUIDA if voce_presente(codice, fc(codice))]
     if configurati:
-        stampa("- Chat: AIrchivist è nella configurazione di " + ", ".join(configurati) +
+        stampa("- Chat: Pressmark è nella configurazione di " + ", ".join(configurati) +
                "; se il programma era aperto, riavvialo perché legga la voce")
     else:
         stampa("- Chat: non configurata ancora (python installa.py client <jan|claude|lmstudio> --scrivi)")
@@ -1477,7 +1606,7 @@ def cmd_inizia(args, stampa=print, chiedi=input, funzioni=None, riepilogo_fn=Non
     passi = scegli_passi(args, stampa)
     if passi is None:
         return 2
-    stampa("AIrchivist — avvio guidato (puoi interrompere con Ctrl+C e riprendere: i passi già fatti non si "
+    stampa("Pressmark — avvio guidato (puoi interrompere con Ctrl+C e riprendere: i passi già fatti non si "
            "rifanno)\n")
     esiti = {}
     si = getattr(args, "si", False)

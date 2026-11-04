@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Interfaccia di AIrchivist (lavoro 35): un server locale, con la sola libreria standard, che apre una finestra
+Interfaccia di Pressmark (lavoro 35): un server locale, con la sola libreria standard, che apre una finestra
 propria (pywebview, opzionale) con i menu «Progetto» e «Modello» e il percorso guidato della ricerca (domanda,
 forme del nome attestate da confermare, avvio, avanzamento, risposta come documento). Senza pywebview apre nel
-browser. Le funzioni sono quelle del server MCP e del motore: interfaccia e chat fanno le stesse cose allo stesso
+browser. Le funzioni sono quelle del motore (strumenti.py, le stesse del server MCP): interfaccia e chat fanno le stesse cose allo stesso
 modo.
 
 Sicurezza: il server ascolta solo su 127.0.0.1; all'avvio crea un token di sessione e apre la finestra con il
 collegamento che lo contiene; il token diventa un cookie (HttpOnly, SameSite=Strict) e senza di esso ogni richiesta
 è rifiutata. Si accettano solo richieste con Host 127.0.0.1 o localhost (contro il DNS rebinding); le azioni
-(POST) vogliono JSON e l'intestazione X-AIrchivist.
+(POST) vogliono JSON e l'intestazione X-Pressmark.
 
-Progetto: la scelta vale per l'interfaccia (variabile AIRCHIVIST_PROGETTO del processo, ereditata dalle ricerche)
+Progetto: la scelta vale per l'interfaccia (variabile PRESSMARK_PROGETTO del processo, ereditata dalle ricerche)
 e si scrive in config.ini, sezione [progetto], perché la seguano anche chat e riga di comando (una copia di
 sicurezza al giorno). Il cambio è bloccato mentre una ricerca del progetto è in corso.
 Modello: la scelta passa per la prova di collegamento (installa.modello_usa): se fallisce resta il precedente.
-Conversazione sulle fonti (lavoro 38, conversazione.py): con il modello della sintesi e gli strumenti del server MCP;
+Conversazione sulle fonti (lavoro 38, conversazione.py): con il modello della sintesi e gli strumenti del motore;
 disattivata, con la spiegazione, se la prova dice che il modello non sa usare gli strumenti.
 
 Uso (nella cartella scripts):
@@ -46,15 +46,13 @@ import posizioni                # noqa: E402
 
 if sys.stdout is None or sys.stderr is None:
     # pythonw.exe (il collegamento del programma installato) non ha console: i messaggi vanno in app.log nella
-    # cartella dei dati, utile se qualcosa non va, e il server MCP importato qui trova un stdout vero
+    # cartella dei dati, utile se qualcosa non va
     _registro = posizioni.cartella_dati() / "app.log"
     _registro.parent.mkdir(parents=True, exist_ok=True)
     sys.stdout = sys.stderr = open(_registro, "a", encoding="utf-8", buffering=1)
     print(f"--- {dt.datetime.now():%Y-%m-%d %H:%M:%S} avvio", flush=True)
 
-_USCITA = sys.stdout
-import mcp_server as M          # noqa: E402  (il server MCP sposta stdout su stderr: qui non serve)
-sys.stdout = _USCITA
+import strumenti as M           # noqa: E402
 
 import installa                 # noqa: E402
 import lavori                   # noqa: E402
@@ -68,10 +66,11 @@ from llm import ErroreModello   # noqa: E402
 from progetto import VARIABILE, cartella_scelta, leggi_config, percorso   # noqa: E402
 
 PAGINE = CARTELLA / "interfaccia"
+MARCHIO = CARTELLA.parent / "assets" / "marchio"   # logotipo e favicon, serviti come /marchio/<file>
 TIPI = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
-COOKIE = "airchivist"
-INTESTAZIONE_AZIONE = "X-AIrchivist"
+COOKIE = "pressmark"
+INTESTAZIONE_AZIONE = "X-Pressmark"
 TIPI_SCHEDA = ("persona", "organizzazione", "testata", "stato", "altro")
 
 
@@ -158,7 +157,7 @@ class App:
 
     def _scrivi_progetto(self, f):
         os.environ[VARIABILE] = str(f)
-        if not any(self.config.parent.glob(f"{self.config.name}.airchivist-{installa.oggi()}*.bak")):
+        if not any(self.config.parent.glob(f"{self.config.name}.pressmark-{installa.oggi()}*.bak")):
             installa.copia_di_sicurezza(self.config)        # una copia al giorno, non una per ogni cambio
         installa.imposta_voci(self.config, "progetto", {"cartella": str(f)})
         # ciò che il motore tiene in memoria per il progetto di prima
@@ -220,10 +219,13 @@ class App:
         self._collegamenti[nome] = (time.time(), out)
         return out
 
-    def usa_modello(self, nome, gia_provato=False):
+    def usa_modello(self, nome, gia_provato=False, ruoli=None):
         """La scelta passa per la prova di collegamento: se fallisce resta il profilo di prima. gia_provato: la prova
-        è appena riuscita («Aggiungi modello»), non si rifà."""
-        out = M.t_modello("usa", nome, gia_provato=gia_provato)
+        è appena riuscita («Aggiungi modello»), non si rifà. ruoli: solo questi (smistamento, analisi, sintesi);
+        senza, tutti."""
+        if ruoli is not None and not isinstance(ruoli, list):
+            raise Errore("«ruoli» va dato come elenco.")
+        out = M.t_modello("usa", nome, ruoli=ruoli, gia_provato=gia_provato)
         self._collegamenti.pop(nome, None)
         if out.get("errore"):
             raise Errore(out["errore"])
@@ -263,6 +265,168 @@ class App:
         elenco = installa.modelli_servizio(url, chiave) if url else None
         return {"modelli": elenco or [], "raggiungibile": elenco is not None,
                 "chiave_presente": bool(s["chiave_env"] and os.environ.get(s["chiave_env"]))}
+
+    def fornitori(self, stato_locale=False):
+        """I fornitori dei modelli per la pagina Impostazioni: quelli noti, anche senza profili, e quelli dei profili
+        (un indirizzo sconosciuto fa fornitore da sé). «attivo» se la chiave c'è o non serve: l'interfaccia mostra i
+        modelli solo dei fornitori attivi."""
+        tipi = {"ollama": "ollama", "anthropic": "anthropic", "router": "router"}
+        voci = {}
+        for s in self.servizi()["servizi"]:
+            if s["id"] == "openai":                   # «altro servizio»: è l'azione che aggiunge un fornitore
+                continue
+            f = installa.fornitore({"servizio": tipi.get(s["id"], "openai"), "url": s["url"]})
+            voci[f["id"]] = {**f, "chiave_env": s["chiave_env"], "url": s["url"], "profili": []}
+        m = self.modelli()
+        for p in m.get("profili", []):
+            f = p["fornitore"]
+            v = voci.setdefault(f["id"], {**f, "chiave_env": p.get("chiave_env", ""), "url": "", "profili": []})
+            v["chiave_env"] = v["chiave_env"] or p.get("chiave_env", "")
+            v["profili"].append(p)
+        spenti = installa.spenti(self.cfg())
+        for v in voci.values():
+            env = v["chiave_env"]
+            v["url"] = v["url"] or next((p["url"] for p in v["profili"] if p.get("url")), "")
+            v["chiave"] = ("presente" if os.environ.get(env) else "assente") if env else "non serve"
+            # gli interruttori: un fornitore spento, o la sua chiave spenta, non è attivo anche se la chiave c'è
+            v["spento"] = v["id"] in spenti["fornitori"]
+            v["chiave_spenta"] = bool(env) and env in spenti["chiavi"]
+            v["attivo"] = v["chiave"] != "assente" and not v["spento"] and not v["chiave_spenta"]
+            host = v["id"].removeprefix("openai:")
+            v["locale"] = v["id"] in ("ollama", "freellmapi") or host in ("localhost", "127.0.0.1", "::1")
+            v["raggiungibile"] = None                 # non chiesto: l'interfaccia lo chiede a parte (?locali=1)
+            v["installati"] = []
+            v["pronto"] = v["attivo"] if not v["locale"] else (False if not v["attivo"] else None)
+        if stato_locale:
+            self._stato_locale([v for v in voci.values() if v["locale"] and v["attivo"] and v["url"]])
+        return {"fornitori": list(voci.values()), "in_uso": m.get("in_uso", {}), "nota": m.get("nota", ""),
+                "errore": m.get("errore", ""), "locali": stato_locale}
+
+    @staticmethod
+    def _stato_locale(voci):
+        """Un servizio sul computer è pronto solo se risponde (Ollama installato e avviato, il router acceso).
+        Su Windows una porta chiusa risponde dopo qualche secondo: le domande vanno in parallelo."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        def chiedi(v):
+            env = v["chiave_env"]
+            if v["id"] == "ollama":
+                return installa.modelli_ollama(v["url"])
+            return installa.modelli_servizio(v["url"], os.environ.get(env, "") if env else "", timeout=3)
+        if not voci:
+            return
+        with ThreadPoolExecutor(max_workers=len(voci)) as gruppo:
+            for v, elenco in zip(voci, gruppo.map(chiedi, voci)):
+                v["raggiungibile"] = elenco is not None
+                v["installati"] = elenco or []
+                v["pronto"] = elenco is not None
+
+    def salva_chiave(self, fornitore, chiave, conserva=False):
+        """La chiave di un fornitore: prima si prova (dove il servizio elenca i modelli), poi vale subito per questa
+        sessione e, se chiesto, tra le variabili dell'utente. Mai in un file del progetto."""
+        v = next((x for x in self.fornitori()["fornitori"] if x["id"] == fornitore), None)
+        if v is None:
+            raise Errore(f"Fornitore «{fornitore}» sconosciuto.")
+        env = v["chiave_env"]
+        if not env:
+            raise Errore(f"{v['nome']} non usa una chiave.")
+        chiave = (chiave or "").strip()
+        if not chiave:
+            raise Errore("Scrivi la chiave.")
+        provata = None
+        # Anthropic non ha un elenco da provare; Hugging Face e NVIDIA elencano i modelli anche con una chiave sbagliata
+        if v["url"] and v["servizio_id"] != "anthropic" and v["nome"] not in installa.ELENCO_SENZA_CHIAVE:
+            provata = installa.modelli_servizio(v["url"], chiave) is not None
+            if not provata:
+                return {"salvata": False, "messaggi": [f"{v['nome']} rifiuta la chiave o non risponde: non l'ho "
+                                                       "salvata. Controllala e riprova."]}
+        os.environ[env] = chiave
+        righe = ["Chiave provata e impostata." if provata else
+                 "Chiave impostata: si prova la prima volta che usi un modello di questo fornitore."]
+        if conserva:
+            installa.salva_variabile(env, chiave, righe.append)
+        self._collegamenti.clear()
+        return {"salvata": True, "provata": bool(provata), "messaggi": righe}
+
+    # ------------------------------------------------------------ profili: prova, nome, togli
+    def _profilo_libero(self, nome):
+        """Il profilo esiste e nessun ruolo lo usa (né config.ini né il project.ini del progetto)."""
+        from llm import RUOLI, ErroreModello, file_profili, leggi_profili, nome_scelto, profilo
+        c = self.cfg()
+        if nome not in leggi_profili(c):
+            raise Errore(f"Profilo «{nome}» inesistente.")
+        usato = {r for r in RUOLI if nome_scelto(c, r) == nome}
+        try:
+            usato |= {r for r in RUOLI if profilo(c, r)[0] == nome}
+        except ErroreModello:
+            pass
+        if usato:
+            raise Errore(f"«{nome}» è in uso per {', '.join(sorted(usato))}: scegli prima un altro modello.")
+        return file_profili(c)
+
+    def interruttore(self, tipo, nome, acceso):
+        """Accende o spegne un fornitore (per id), una chiave (per variabile) o un profilo. Non si spegne ciò che è in
+        uso: prima si sceglie un altro modello. La scelta sta in config.ini, sezione [disattivati]."""
+        from llm import RUOLI, ErroreModello, leggi_profili, profilo
+        if tipo not in installa.TIPI_SPENTI:
+            raise Errore(f"Interruttore «{tipo}» sconosciuto: fornitore, chiave o profilo.")
+        nome = (nome or "").strip()
+        if not nome or not re.fullmatch(r"[A-Za-z0-9_.:-]+", nome):
+            raise Errore("Nome non valido.")
+        c = self.cfg()
+        profili_ = leggi_profili(c)
+        if tipo == "profilo" and nome not in profili_:
+            raise Errore(f"Profilo «{nome}» inesistente.")
+        if not acceso:
+            try:
+                in_uso = {profilo(c, r)[0] for r in RUOLI}
+            except ErroreModello:
+                in_uso = set()
+            colpiti = [n for n in in_uso if n in profili_ and (
+                (tipo == "profilo" and n == nome) or
+                (tipo == "fornitore" and installa.fornitore(profili_[n])["id"] == nome) or
+                (tipo == "chiave" and installa.env_chiave(profili_[n]) == nome))]
+            if colpiti:
+                raise Errore(f"In uso: {', '.join(sorted(colpiti))}. Scegli prima un altro modello, poi spegni.")
+        voce = installa.TIPI_SPENTI[tipo]
+        insieme = installa.spenti(c)[voce]
+        prima = set(insieme)
+        (insieme.discard if acceso else insieme.add)(nome)
+        if insieme != prima:
+            if not any(self.config.parent.glob(f"{self.config.name}.pressmark-{installa.oggi()}*.bak")):
+                installa.copia_di_sicurezza(self.config)        # una copia al giorno, come per il progetto
+            installa.imposta_voci(self.config, installa.SEZIONE_SPENTI, {voce: ", ".join(sorted(insieme)) or None})
+        return {"tipo": tipo, "nome": nome, "acceso": bool(acceso), "cambiato": insieme != prima}
+
+    def prova_modello(self, nome):
+        """Prova di collegamento di un profilo, senza cambiare la scelta."""
+        out = M.t_modello("prova", nome)
+        if out.get("errore"):
+            raise Errore(out["errore"])
+        self._collegamenti.pop(nome, None)
+        return out
+
+    def rinomina_modello(self, nome, nuovo):
+        from llm import leggi_profili
+        nuovo = (nuovo or "").strip()
+        if not installa.NOME_PROFILO.match(nuovo):
+            raise Errore("Nome del profilo: solo lettere, cifre, punto, trattino e trattino basso, senza spazi.")
+        f = self._profilo_libero(nome)
+        if nuovo == nome:
+            return {"cambiato": False, "profilo": nome}
+        if nuovo in leggi_profili(self.cfg()):
+            raise Errore(f"Esiste già un profilo «{nuovo}».")
+        copia = installa.copia_di_sicurezza(f)
+        installa.rinomina_profilo(f, nome, nuovo)
+        self._collegamenti.pop(nome, None)
+        return {"cambiato": True, "profilo": nuovo, "messaggi": [f"Copia del file prima della modifica: {copia}."]}
+
+    def togli_modello(self, nome):
+        f = self._profilo_libero(nome)
+        copia = installa.copia_di_sicurezza(f)
+        installa.togli_profilo(f, nome)
+        self._collegamenti.pop(nome, None)
+        return {"tolto": True, "messaggi": [f"Profilo «{nome}» tolto. Copia del file prima della modifica: {copia}."]}
 
     def aggiungi_modello(self, servizio, modello, nome="", url="", chiave_env="", chiave="", salva_chiave=False,
                          usa=True):
@@ -330,7 +494,7 @@ class App:
         return ", ".join(sorted(nomi)) if all(n in esistenti for n in nomi) else None
 
     def chat(self):
-        """I client di chat noti: se il programma c'è su questo computer, se AIrchivist è collegato così com'è
+        """I client di chat noti: se il programma c'è su questo computer, se Pressmark è collegato così com'è
         (la voce avvia proprio questo programma) o se c'è una voce da aggiornare (un'altra copia, impostazioni)."""
         out = []
         for codice, etichetta in installa.CLIENT_GUIDA:
@@ -426,6 +590,21 @@ class App:
             raise Errore(f"{f.name} è stato scaricato ma Tesseract non lo vede: controlla {dopo['cartella']}.")
         return {"scaricata": codice, "dimensione_mb": round(f.stat().st_size / 1e6, 1), **dopo}
 
+    def cartella_lingue_propria(self):
+        """Le lingue OCR in una cartella dell'utente, per installarne di nuove senza l'amministratore."""
+        s = installa.stato_lingue(self.cfg())
+        if s["scrivibile"]:
+            raise Errore(f"Nella cartella delle lingue ({s['cartella']}) si può già scrivere: non serve copiarla.")
+        with self._blocco:
+            righe = []
+            try:
+                installa.usa_cartella_lingue_propria(self.cfg(), self.config, righe.append)
+            except ValueError as e:
+                raise Errore(str(e))
+            except OSError as e:
+                raise Errore(f"Copia dei modelli non riuscita: {e}.")
+        return {"messaggi": righe, **installa.stato_lingue(self.cfg())}
+
     def _client_noto(self, nome):
         if nome not in dict(installa.CLIENT_GUIDA):
             raise Errore(f"Programma di chat «{nome}» sconosciuto.")
@@ -441,7 +620,7 @@ class App:
                 "aperto": installa.in_esecuzione(nome)}
 
     def collega_client(self, nome):
-        """Scrive la voce di AIrchivist nel client (con copia di sicurezza) e prova il server come lo avvierà il
+        """Scrive la voce di Pressmark nel client (con copia di sicurezza) e prova il server come lo avvierà il
         client. Lo chiede la pagina dopo aver mostrato l'anteprima: è la conferma di «--scrivi»."""
         self._client_noto(nome)
         etichetta = dict(installa.CLIENT_GUIDA)[nome]
@@ -457,7 +636,7 @@ class App:
                              "persa. Chiudilo (anche dall'icona accanto all'orologio) e riprova.")
             righe += list(installa.scrivi_client(p))
         prova = installa.client_verifica(argparse.Namespace(), righe.append) == 0
-        righe.append(f"Apri {etichetta}: il server AIrchivist è acceso." if nome == "jan" else
+        righe.append(f"Apri {etichetta}: il server Pressmark è acceso." if nome == "jan" else
                      f"Riavvia {etichetta} perché legga la nuova configurazione.")
         return {"scritto": not p["gia"], "prova": prova, "messaggi": righe}
 
@@ -564,13 +743,15 @@ class App:
         risposte = M.t_elenca_risposte(50).get("risposte", [])
         for r in risposte:
             r["documento"] = "/documento?" + urllib.parse.urlencode({"risposta": r["file"]})
+            r["entita"] = _testa_risposta(lavori.cartella_risposte(c) / r["file"])[0]
         ricerche = []
         base = percorso(c, "risultati") / "searches"
         if base.is_dir():
             for d in sorted(base.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
                 f = d / "risposta.html"
                 if f.is_file():
-                    ricerche.append({"cartella": d.name, "data": _data(f),
+                    entita, domanda = _testa_risposta(d / "risposta.md")
+                    ricerche.append({"cartella": d.name, "data": _data(f), "entita": entita, "domanda": domanda,
                                      "documento": "/documento?" + urllib.parse.urlencode({"ricerca": d.name})})
         return {"risposte": risposte, "ricerche": ricerche[:50]}
 
@@ -581,19 +762,85 @@ class App:
             if Path(risposta).name != risposta or not risposta.endswith(".md"):
                 raise Errore("Risposta non valida.")
             f = (lavori.cartella_risposte(c) / risposta).with_suffix(".html")
-            md = f.with_suffix(".md")
-            if not f.exists() and md.exists():
-                from documento import scrivi_html
-                scrivi_html(md)
         elif ricerca:
             if Path(ricerca).name != ricerca or ricerca in (".", ".."):
                 raise Errore("Ricerca non valida.")
             f = percorso(c, "risultati") / "searches" / ricerca / "risposta.html"
         else:
             raise Errore("Quale documento?")
+        # il documento si riscrive dal Markdown se manca o se è più vecchio di documento.py (impaginazione nuova)
+        md = f.with_suffix(".md")
+        stile = CARTELLA / "documento.py"
+        if md.is_file() and (not f.exists() or f.stat().st_mtime < stile.stat().st_mtime):
+            from documento import scrivi_html
+            try:
+                scrivi_html(md)
+            except OSError:
+                pass                    # si mostra il documento che c'è
         if not f.is_file():
             raise Errore("Documento non trovato.")
         return f
+
+    def corpo_documento(self, risposta="", ricerca=""):
+        """Il corpo HTML del documento di una risposta, da mettere nel filo della pagina (documento.py scrive
+        testo sempre con escape; la pagina toglie comunque script e attributi on*)."""
+        t = self.documento(risposta, ricerca).read_text(encoding="utf-8", errors="replace")
+        a, b = t.find("<body>"), t.rfind("</body>")
+        return {"corpo": t[a + 6:b] if 0 <= a < b else ""}
+
+    # ------------------------------------------------------------ fili (lavoro 41)
+    # Un filo è una conversazione della pagina: messaggi di chi scrive, ricerche avviate, risposte (il documento),
+    # repliche della conversazione con il modello. Un file JSON per filo in results/fili; la pagina lo riscrive
+    # intero a ogni messaggio.
+    def _cartella_fili(self):
+        return percorso(self.cfg(), "risultati") / "fili"
+
+    def _file_filo(self, ident):
+        if not re.fullmatch(r"[0-9a-f]{16}", str(ident or "")):
+            raise Errore("Conversazione non valida.")
+        return self._cartella_fili() / f"{ident}.json"
+
+    def fili(self):
+        if not self.progetto_in_uso():
+            return {"fili": []}
+        out = []
+        d = self._cartella_fili()
+        for f in (d.glob("*.json") if d.is_dir() else []):
+            try:
+                x = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            out.append({"id": x.get("id", f.stem), "titolo": x.get("titolo", ""), "entita": x.get("entita", ""),
+                        "aggiornato": x.get("aggiornato", ""), "ricerca": x.get("ricerca", ""),
+                        "documenti": [m.get("documento") for m in x.get("messaggi") or []
+                                      if isinstance(m, dict) and m.get("tipo") == "risposta"]})
+        out.sort(key=lambda x: x["aggiornato"], reverse=True)
+        return {"fili": out[:200]}
+
+    def filo(self, ident):
+        f = self._file_filo(ident)
+        if not f.is_file():
+            raise Errore("Conversazione non trovata.")
+        return json.loads(f.read_text(encoding="utf-8"))
+
+    def salva_filo(self, filo):
+        if not isinstance(filo, dict) or not isinstance(filo.get("messaggi"), list):
+            raise Errore("Conversazione non valida.")
+        ident = filo.get("id") or secrets.token_hex(8)
+        f = self._file_filo(ident)
+        ora = dt.datetime.now().isoformat(timespec="seconds")
+        dati = {"id": ident, "titolo": str(filo.get("titolo") or "")[:200], "entita": str(filo.get("entita") or "")[:200],
+                "domanda": str(filo.get("domanda") or "")[:1000], "ricerca": str(filo.get("ricerca") or "")[:200],
+                "creato": str(filo.get("creato") or ora), "aggiornato": ora,
+                "messaggi": [m for m in filo["messaggi"] if isinstance(m, dict)][:1000]}
+        testo = json.dumps(dati, ensure_ascii=False, indent=1)
+        if len(testo) > 5_000_000:
+            raise Errore("Conversazione troppo lunga per essere salvata.")
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(testo, encoding="utf-8")
+        tmp.replace(f)
+        return {"id": ident, "creato": dati["creato"], "aggiornato": ora}
 
     def fonti(self):
         if not self.progetto_in_uso():
@@ -622,13 +869,21 @@ class App:
         f = (originali / rel).resolve()
         return f if originali in f.parents and f.is_file() else None
 
-    def fonte(self, file, riga="", pagina=""):
+    def fonte(self, file, riga="", pagina="", etichetta="", tra=""):
+        """Una pagina della fonte. `etichetta` (il numero stampato, «47») sceglie la pagina citata; `tra` (righe
+        separate da virgole: quelle del passaggio) dice quale riga evidenziare in quella pagina."""
         f = self._file_dati(file)
         righe = f.read_text(encoding="utf-8", errors="replace").splitlines()
         meta, _ = leggi_intestazione("\n".join(righe[:80]))
         pagine = _pagine(righe)
         riga = int(riga) if str(riga or "").isdigit() else None
-        if str(pagina or "").isdigit() and 1 <= int(pagina) <= len(pagine):
+        citata = next((k for k, p in enumerate(pagine, 1) if etichetta and p["etichetta"] == f"p. {etichetta}"), None)
+        if citata:
+            n = citata
+            p = pagine[n - 1]
+            riga = next((int(x) for x in str(tra or "").split(",")
+                         if x.strip().isdigit() and p["da"] <= int(x) <= p["a"]), riga)
+        elif str(pagina or "").isdigit() and 1 <= int(pagina) <= len(pagine):
             n = int(pagina)
         elif riga:
             n = next((k for k, p in enumerate(pagine, 1) if p["da"] <= riga <= p["a"]), 1)
@@ -655,7 +910,7 @@ class App:
             k = int(pdf) if str(pdf or "").isdigit() else 0
             if not 1 <= k <= len(doc):
                 raise Errore("Pagina inesistente.")
-            return doc[k - 1].get_pixmap(dpi=110).tobytes("png")
+            return doc[k - 1].get_pixmap(dpi=150).tobytes("png")     # la pagina è ora la vista principale
 
     def passaggi(self, risposta="", ricerca=""):
         """I passaggi del documento aperto: per una ricerca quelli letti (classificati.jsonl), con pertinenza, chi li
@@ -694,6 +949,20 @@ class App:
                                 "traduzione": a.get("traduzione_it") or "", "file": p.get("file", ""),
                                 "riga": str(p.get("riga", ""))})
             out.sort(key=lambda x: (x["data"], x["file"], int(x["riga"]) if x["riga"].isdigit() else 0))
+            # la pagina che il modello non ha indicato si ricava dai marcatori del file (letto una volta per file)
+            pagine_file = {}
+            for x in out:
+                if x["pagina"] or not x["riga"].isdigit():
+                    continue
+                if x["file"] not in pagine_file:
+                    try:
+                        testo_f = self._file_dati(x["file"]).read_text(encoding="utf-8", errors="replace")
+                        pagine_file[x["file"]] = [p for p in _pagine(testo_f.splitlines())
+                                                  if p["etichetta"].startswith("p. ")]
+                    except (Errore, OSError):
+                        pagine_file[x["file"]] = []
+                k = int(x["riga"])
+                x["pagina"] = next((p["etichetta"][3:] for p in pagine_file[x["file"]] if p["da"] <= k <= p["a"]), "")
         else:
             for n, v in rimandi.items():
                 out.append({"n": n, "fonte": v["riferimento"], "pertinente": "sì", "file": v["file"],
@@ -714,7 +983,7 @@ class App:
     # ------------------------------------------------------------ importazione (lavoro 37)
     # La scheda «Importazioni» fa tutto dall'interfaccia: proposta (lavoro 29), tabella di revisione modificabile
     # qui oltre che in Excel, controllo senza scrivere (applica --prova), importazione vera, avanzamento dell'OCR.
-    # I processi restano quelli indipendenti del server MCP: la pagina chiude, il lavoro continua.
+    # I processi restano quelli indipendenti avviati dagli strumenti: la pagina chiude, il lavoro continua.
     def importa(self, azione, percorso_file="", serie="", prova=False, sovrascrivi=False):
         if azione not in ("proponi", "applica", "rivedi"):
             raise Errore("Azione d'importazione sconosciuta: proponi, applica o rivedi.")
@@ -840,7 +1109,7 @@ class App:
         return {"salvata": True, "righe": len(nuove), "tabella": str(destinazione)}
 
     # ------------------------------------------------------------ conversazione sulle fonti (lavoro 38)
-    # Il modello della sintesi con gli strumenti del server MCP. La prova degli strumenti si fa una volta per profilo
+    # Il modello della sintesi con gli strumenti del motore. La prova degli strumenti si fa una volta per profilo
     # (finché l'interfaccia resta aperta); la conversazione ricomincia quando cambiano progetto o modello.
     def _stato_conversazione(self, riprova=False):
         if not self.progetto_in_uso():
@@ -936,6 +1205,22 @@ def _anno(v):
     return int(v)
 
 
+def _testa_risposta(md):
+    """(entità, domanda) dalle prime righe di una risposta.md («# Nome» e «*Domanda:* ...»); vuote se mancano."""
+    entita = domanda = ""
+    try:
+        with open(md, encoding="utf-8", errors="replace") as h:
+            for r, _ in zip(h, range(12)):
+                if not entita and r.startswith("# "):
+                    entita = r[2:].strip()
+                m = re.match(r"\*Domanda:\*\s*(.+)", r.strip())
+                if m:
+                    domanda = m.group(1).strip()
+    except OSError:
+        pass
+    return entita, domanda
+
+
 def _data(f):
     return dt.datetime.fromtimestamp(f.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
 
@@ -978,9 +1263,11 @@ def _rimandi(testo):
         if c:
             pagine[m.group(1)] = c.group(1)
     out = {}
-    for m in re.finditer(r"^-\s*\[(\d+)\]\s*`([^`]+)`,\s*rig(?:a|he)\s*(\d+)", testo, re.MULTILINE):
-        out[m.group(1)] = {"file": m.group(2), "riga": int(m.group(3)), "riferimento": titoli.get(m.group(1), ""),
-                           "pagina": pagine.get(m.group(1), "")}
+    for m in re.finditer(r"^-\s*\[(\d+)\]\s*`([^`]+)`,\s*rig(?:a|he)\s*([\d,\s]+)", testo, re.MULTILINE):
+        righe = [int(x) for x in re.findall(r"\d+", m.group(3))]
+        # «righe»: tutte quelle del documento; ogni citazione sotto il passaggio apre la sua pagina (etichetta)
+        out[m.group(1)] = {"file": m.group(2), "riga": righe[0], "righe": righe,
+                           "riferimento": titoli.get(m.group(1), ""), "pagina": pagine.get(m.group(1), "")}
     return out
 
 
@@ -998,22 +1285,34 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/modelli": lambda a, q: a.modelli(),
        "/api/collegamento": lambda a, q: a.collegamento(q.get("nome", "")),
        "/api/servizi": lambda a, q: a.servizi(),
+       "/api/fornitori": lambda a, q: a.fornitori(q.get("locali") == "1"),
        "/api/ricerca": lambda a, q: a.stato_ricerca(),
        "/api/storico": lambda a, q: a.storico(),
        "/api/fonti": lambda a, q: a.fonti(),
        "/api/importa": lambda a, q: a.stato_importazione(q.get("id", "")),
        "/api/tabella": lambda a, q: a.tabella(q.get("percorso", "")),
        "/api/conversazione": lambda a, q: a.conversazione(q.get("riprova") == "1"),
-       "/api/fonte": lambda a, q: a.fonte(q.get("file", ""), q.get("riga", ""), q.get("pagina", "")),
+       "/api/fonte": lambda a, q: a.fonte(q.get("file", ""), q.get("riga", ""), q.get("pagina", ""),
+                                          q.get("etichetta", ""), q.get("tra", "")),
        "/api/passaggi": lambda a, q: a.passaggi(q.get("risposta", ""), q.get("ricerca", "")),
        "/api/glossario": lambda a, q: a.glossario(),
+       "/api/documento": lambda a, q: a.corpo_documento(q.get("risposta", ""), q.get("ricerca", "")),
+       "/api/fili": lambda a, q: a.fili(),
+       "/api/filo": lambda a, q: a.filo(q.get("id", "")),
        "/api/avvio": lambda a, q: a.avvio(),
        "/api/ambiente": lambda a, q: a.ambiente(),
        "/api/client": lambda a, q: a.client(q.get("nome", "")),
        "/api/lingue": lambda a, q: a.lingue()}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
-        "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", "")),
+        "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", ""), ruoli=d.get("ruoli")),
+        "/api/modello/prova": lambda a, d: a.prova_modello(d.get("nome", "")),
+        "/api/interruttore": lambda a, d: a.interruttore(d.get("tipo", ""), d.get("nome", ""),
+                                                       d.get("acceso") is True),
+        "/api/modello/rinomina": lambda a, d: a.rinomina_modello(d.get("nome", ""), d.get("nuovo", "")),
+        "/api/modello/togli": lambda a, d: a.togli_modello(d.get("nome", "")),
+        "/api/chiave": lambda a, d: a.salva_chiave(d.get("fornitore", ""), d.get("chiave", ""),
+                                                   bool(d.get("conserva"))),
         "/api/modello/elenco": lambda a, d: a.elenco_modelli(d.get("servizio", ""), d.get("url", ""),
                                                             d.get("chiave", "")),
         "/api/modello/nuovo": lambda a, d: a.aggiungi_modello(
@@ -1032,15 +1331,45 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/conversazione": lambda a, d: a.conversa(d.get("testo", "")),
         "/api/conversazione/nuova": lambda a, d: a.nuova_conversazione(),
         "/api/client": lambda a, d: a.collega_client(d.get("nome", "")),
-        "/api/lingue": lambda a, d: a.scarica_lingua(d.get("codice", ""))}
+        "/api/lingue": lambda a, d: a.scarica_lingua(d.get("codice", "")),
+        "/api/lingue/cartella": lambda a, d: a.cartella_lingue_propria(),
+        "/api/filo": lambda a, d: a.salva_filo(d.get("filo")),
+        "/api/scegli-cartella": lambda a, d: {"percorso": scegli_cartella()},
+        "/api/guida": lambda a, d: {"aperta": webbrowser.open(GUIDA)}}
+
+GUIDA = "https://github.com/AMI-AIM/Pressmark/blob/main/docs/user_guide.it.md"
+FINESTRA = {}                   # la finestra di pywebview, se c'è: per la scelta della cartella
+
+
+def scegli_cartella():
+    """Il dialogo di sistema per scegliere una cartella: quello di pywebview nella finestra propria, altrimenti
+    tkinter (il server gira sullo stesso computer). Stringa vuota se si annulla."""
+    w = FINESTRA.get("w")
+    if w is not None:
+        import webview
+        tipo = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
+        scelta = w.create_file_dialog(tipo)
+        return scelta[0] if scelta else ""
+    try:
+        import tkinter
+        from tkinter import filedialog
+        radice = tkinter.Tk()
+        radice.withdraw()
+        radice.attributes("-topmost", True)
+        try:
+            return filedialog.askdirectory(parent=radice, title="Cartella da importare") or ""
+        finally:
+            radice.destroy()
+    except Exception as e:          # tkinter assente o senza schermo
+        raise Errore(f"Non riesco ad aprire la scelta della cartella ({e}): scrivi il percorso.")
 
 
 def gestore(app):
     class Gestore(BaseHTTPRequestHandler):
-        server_version = "AIrchivist"
+        server_version = "Pressmark"
 
         def log_message(self, formato, *a):
-            if os.environ.get("AIRCHIVIST_APP_REGISTRO"):
+            if os.environ.get("PRESSMARK_APP_REGISTRO"):
                 sys.stderr.write("app: " + formato % a + "\n")
 
         def _invia(self, codice, corpo, tipo="application/json; charset=utf-8", intestazioni=None):
@@ -1068,7 +1397,7 @@ def gestore(app):
             return COOKIE in c and secrets.compare_digest(c[COOKIE].value, app.token)
 
         def _rifiuta(self):
-            self._invia(403, "<!doctype html><meta charset=utf-8><title>AIrchivist</title><p>Accesso negato. Apri "
+            self._invia(403, "<!doctype html><meta charset=utf-8><title>Pressmark</title><p>Accesso negato. Apri "
                              "l'interfaccia dal collegamento che <code>python app.py</code> stampa all'avvio.</p>",
                         "text/html; charset=utf-8")
 
@@ -1101,8 +1430,11 @@ def gestore(app):
                     return self._invia(404, {"errore": str(e)})
                 return self._invia(200, png, "image/png")
             nome = "index.html" if u.path == "/" else u.path.lstrip("/")
-            f = (PAGINE / nome).resolve()
-            if PAGINE.resolve() not in f.parents or not f.is_file() or f.suffix not in TIPI:
+            base = PAGINE
+            if nome.startswith("marchio/"):
+                base, nome = MARCHIO, nome[len("marchio/"):]
+            f = (base / nome).resolve()
+            if base.resolve() not in f.parents or not f.is_file() or f.suffix not in TIPI:
                 return self._invia(404, {"errore": "Non trovato."})
             self._invia(200, f.read_bytes(), TIPI[f.suffix],
                         {"Content-Security-Policy": "default-src 'self'; style-src 'self'; script-src 'self'; "
@@ -1154,7 +1486,7 @@ def _avvia_finestra_propria(server, url, senza_browser):
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     try:
-        webview.create_window("AIrchivist", url, width=1200, height=800, min_size=(900, 600))
+        FINESTRA["w"] = webview.create_window("Pressmark", url, width=1200, height=800, min_size=(900, 600))
         webview.start()
     except Exception as e:          # per esempio WebView2 assente: si ripiega sul browser
         print(f"Finestra propria non disponibile ({e}): apro il browser.", flush=True)
@@ -1165,7 +1497,7 @@ def _avvia_finestra_propria(server, url, senza_browser):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Interfaccia di AIrchivist (lavoro 35)")
+    ap = argparse.ArgumentParser(description="Interfaccia di Pressmark (lavoro 35)")
     ap.add_argument("--porta", type=int, default=0, help="porta locale (predefinita: una libera)")
     ap.add_argument("--senza-browser", action="store_true",
                     help="non aprire né la finestra né il browser (stampa solo il collegamento)")
@@ -1179,10 +1511,10 @@ def main(argv=None):
         return 1
     url = f"http://127.0.0.1:{server.server_address[1]}/?t={app.token}"
     if _avvia_finestra_propria(server, url, args.senza_browser):
-        print(f"AIrchivist è aperto in una finestra propria. Per chiudere: chiudi la finestra.", flush=True)
+        print(f"Pressmark è aperto in una finestra propria. Per chiudere: chiudi la finestra.", flush=True)
         server.server_close()
         return 0
-    print(f"AIrchivist è aperto nel browser. Se non si apre, copia questo collegamento:\n  {url}\n"
+    print(f"Pressmark è aperto nel browser. Se non si apre, copia questo collegamento:\n  {url}\n"
           "Il collegamento vale finché questa finestra resta aperta. Per chiudere: Ctrl+C.", flush=True)
     if not args.senza_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()

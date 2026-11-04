@@ -43,11 +43,11 @@ class Controlli(unittest.TestCase):
 
     def test_chiave_assente(self):
         cfg = config("[modello]\nbackend = router\n[router]\nurl = http://127.0.0.1:9/v1\n"
-                     "chiave_env = AIRCHIVIST_CHIAVE_DI_PROVA\n")
-        os.environ.pop("AIRCHIVIST_CHIAVE_DI_PROVA", None)
+                     "chiave_env = PRESSMARK_CHIAVE_DI_PROVA\n")
+        os.environ.pop("PRESSMARK_CHIAVE_DI_PROVA", None)
         I.controlla_modelli(self.esito, cfg)
         self.assertEqual(self.esito.mancanti, ["modelli: router"])
-        self.assertIn("AIRCHIVIST_CHIAVE_DI_PROVA", self.righe[0])
+        self.assertIn("PRESSMARK_CHIAVE_DI_PROVA", self.righe[0])
 
     def test_servizio_spento(self):
         cfg = config("[modello]\nbackend = ollama\n[ollama]\nurl = http://127.0.0.1:9\n")
@@ -146,6 +146,14 @@ class Client(unittest.TestCase):
                          {"command": "py", "args": ["s.py"], "env": {}, "active": True, "type": "stdio"})
         self.assertTrue(any("Pipeline" in m and "spenta" in m for m in modifiche))
 
+    def test_riconosce_il_nome_di_prima_airchivist(self):
+        # una voce scritta prima del cambio di nome si aggiorna: niente seconda voce «pressmark» accanto
+        for client in ("claude", "lmstudio", "jan"):
+            base = {"mcpServers": {"airchivist": {"command": "python", "args": ["vecchio.py"], "env": {}}}}
+            doc, _, _ = I.unisci_voci(client, base, I.NOME_SERVER, {"command": "py", "args": ["s.py"], "env": {}})
+            self.assertEqual(list(doc["mcpServers"]), ["airchivist"])
+            self.assertEqual(doc["mcpServers"]["airchivist"]["args"], ["s.py"])
+
     def test_gia_presente_non_scrive(self):
         voce = {"command": "py", "args": ["server.py"], "env": {"PYTHONUTF8": "1"}}
         codice, righe, f = self.scrivi(esistente={"mcpServers": {I.NOME_SERVER: voce}})
@@ -161,7 +169,7 @@ class Client(unittest.TestCase):
         self.assertEqual(json.loads(f.read_text(encoding="utf-8")), base)   # file intatto
         codice, righe, f = self.scrivi(esistente=base, risposta="")         # a vuoto: vale S/n -> sì
         self.assertEqual(codice, 0)
-        copie = list(f.parent.glob("*.airchivist-*.bak"))
+        copie = list(f.parent.glob("*.pressmark-*.bak"))
         self.assertEqual(len(copie), 1)
         self.assertEqual(json.loads(copie[0].read_text(encoding="utf-8")), base)
 
@@ -241,7 +249,7 @@ class Client(unittest.TestCase):
         doc_imp = json.loads(f_imp.read_text(encoding="utf-8"))
         self.assertEqual(doc_imp["theme"], "dark")
         self.assertFalse(json.loads(doc_imp["setting-web-search"])["state"]["webSearchEnabled"])
-        self.assertEqual(len(list(self.cartella.glob("*.airchivist-*.bak"))), 2)       # una copia per file
+        self.assertEqual(len(list(self.cartella.glob("*.pressmark-*.bak"))), 2)       # una copia per file
         # di nuovo: tutto già a posto, nessuna scrittura
         codice, testo, _, _ = self.jan(doc, doc_imp)
         self.assertIn("Nessuna scrittura necessaria", testo)
@@ -342,7 +350,7 @@ class AvvioGuidato(unittest.TestCase):
         env = mock.patch.dict(os.environ, {})
         env.start()
         self.addCleanup(env.stop)
-        os.environ.pop("AIRCHIVIST_PROGETTO", None)
+        os.environ.pop("PRESSMARK_PROGETTO", None)
 
     def inizia(self, risposte, **opzioni):
         r = iter(risposte)
@@ -364,7 +372,7 @@ class AvvioGuidato(unittest.TestCase):
         self.assertFalse((self.tmp / "inesistente").exists())            # nessuna cartella fantasma
         doc = json.loads((self.client / "claude.json").read_text(encoding="utf-8"))
         self.assertIn(I.NOME_SERVER, doc["mcpServers"])
-        self.assertIn("AIrchivist è nella configurazione di Claude Desktop", testo)
+        self.assertIn("Pressmark è nella configurazione di Claude Desktop", testo)
         self.assertIn("python importa.py proponi", testo)                  # comando che esiste (lavoro 29)
         self.assertTrue(testo.rstrip().endswith("Tutto pronto."))
 

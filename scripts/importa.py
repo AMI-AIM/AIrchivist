@@ -228,6 +228,35 @@ CODICE_LINGUA = re.compile(r"^[a-z]{3}(_[a-z]{3,6})*$")       # eng, chi_sim, ch
 # codici proposti nell'interfaccia oltre a quelli di LINGUE_OCR (scritture verticali, cinese tradizionale, lingue antiche)
 ALTRE_LINGUE = ("chi_tra", "chi_sim_vert", "chi_tra_vert", "jpn", "kor", "ara", "heb", "ukr", "bel", "hrv", "slv",
                 "slk", "lat", "grc", "ita_old", "frm", "deu_latf", "vie")
+# i nomi per esteso dei modelli di Tesseract (tessdata_best), per l'interfaccia
+NOMI_LINGUE = {
+    "afr": "Afrikaans", "amh": "Amarico", "ara": "Arabo", "asm": "Assamese", "aze": "Azero", "aze_cyrl": "Azero (cirillico)",
+    "bel": "Bielorusso", "ben": "Bengalese", "bod": "Tibetano", "bos": "Bosniaco", "bre": "Bretone", "bul": "Bulgaro",
+    "cat": "Catalano", "ceb": "Cebuano", "ces": "Ceco", "chi_sim": "Cinese semplificato",
+    "chi_sim_vert": "Cinese semplificato (verticale)", "chi_tra": "Cinese tradizionale",
+    "chi_tra_vert": "Cinese tradizionale (verticale)", "chr": "Cherokee", "cos": "Corso", "cym": "Gallese",
+    "dan": "Danese", "deu": "Tedesco", "deu_latf": "Tedesco (Fraktur)", "div": "Maldiviano", "dzo": "Dzongkha",
+    "ell": "Greco moderno", "eng": "Inglese", "enm": "Inglese medio (1100-1500)", "epo": "Esperanto",
+    "equ": "Formule matematiche", "est": "Estone", "eus": "Basco", "fao": "Faroese", "fas": "Persiano",
+    "fil": "Filippino", "fin": "Finlandese", "fra": "Francese", "frm": "Francese medio (1400-1600)",
+    "fry": "Frisone occidentale", "gla": "Gaelico scozzese", "gle": "Irlandese", "glg": "Galiziano",
+    "grc": "Greco antico", "guj": "Gujarati", "hat": "Creolo haitiano", "heb": "Ebraico", "hin": "Hindi",
+    "hrv": "Croato", "hun": "Ungherese", "hye": "Armeno", "iku": "Inuktitut", "ind": "Indonesiano", "isl": "Islandese",
+    "ita": "Italiano", "ita_old": "Italiano antico", "jav": "Giavanese", "jpn": "Giapponese",
+    "jpn_vert": "Giapponese (verticale)", "kan": "Kannada", "kat": "Georgiano", "kat_old": "Georgiano antico",
+    "kaz": "Kazako", "khm": "Khmer", "kir": "Kirghiso", "kmr": "Curdo (kurmanji)", "kor": "Coreano",
+    "kor_vert": "Coreano (verticale)", "lao": "Lao", "lat": "Latino", "lav": "Lettone", "lit": "Lituano",
+    "ltz": "Lussemburghese", "mal": "Malayalam", "mar": "Marathi", "mkd": "Macedone", "mlt": "Maltese",
+    "mon": "Mongolo", "mri": "Maori", "msa": "Malese", "mya": "Birmano", "nep": "Nepalese", "nld": "Olandese",
+    "nor": "Norvegese", "oci": "Occitano", "ori": "Oriya", "osd": "Orientamento della pagina e scrittura",
+    "pan": "Punjabi", "pol": "Polacco", "por": "Portoghese", "pus": "Pashto", "que": "Quechua", "ron": "Rumeno",
+    "rus": "Russo", "san": "Sanscrito", "sin": "Singalese", "slk": "Slovacco", "slv": "Sloveno", "snd": "Sindhi",
+    "spa": "Spagnolo", "spa_old": "Spagnolo antico", "sqi": "Albanese", "srp": "Serbo (cirillico)",
+    "srp_latn": "Serbo (latino)", "sun": "Sundanese", "swa": "Swahili", "swe": "Svedese", "syr": "Siriaco",
+    "tam": "Tamil", "tat": "Tataro", "tel": "Telugu", "tgk": "Tagico", "tha": "Thailandese", "tir": "Tigrino",
+    "ton": "Tongano", "tur": "Turco", "uig": "Uiguro", "ukr": "Ucraino", "urd": "Urdu", "uzb": "Uzbeko",
+    "uzb_cyrl": "Uzbeko (cirillico)", "vie": "Vietnamita", "yid": "Yiddish", "yor": "Yoruba",
+}
 
 
 def cartella_lingue(cfg, exe=None):
@@ -529,9 +558,12 @@ def decidi_strato(discordanza, confidenza):
     return "strato (incerto)"
 
 
-def scegli_strato(doc, ocr_fn, tmp, campione=PAGINE_CAMPIONE, stampa=print):
+def scegli_strato(doc, ocr_fn, tmp, campione=PAGINE_CAMPIONE, stampa=print, ex=None, cache=None):
     """Per un PDF scansionato con strato di testo: (scelta, dettagli, letture del campione {pagina: (testo, conf)}).
-    Un PDF senza scansioni ha testo nativo: si usa com'è (scelta 'strato', dettagli vuoti)."""
+    Un PDF senza scansioni ha testo nativo: si usa com'è (scelta 'strato', dettagli vuoti).
+    ex: le pagine del campione si leggono in parallelo, con i thread dell'OCR del documento (G5: nei documenti brevi
+    il campione era quasi tutto il documento, letto una pagina alla volta). cache: le letture del campione restano
+    nella cache dell'importazione, come le altre pagine."""
     from confronto_testi import cer, lingua_da_ocr
     candidate = [k for k, pag in enumerate(doc, 1)
                  if testo_utile(pag.get_text("text")) >= SOGLIA_TESTO_PDF and e_scansione(pag)]
@@ -542,14 +574,34 @@ def scegli_strato(doc, ocr_fn, tmp, campione=PAGINE_CAMPIONE, stampa=print):
     letti, errori, caratteri, pesate = {}, 0, 0, []
     scelte = pagine_campione(candidate, campione)
     stampa(f"  Strato di testo su pagine scansionate: confronto con l'OCR sulle pagine {', '.join(map(str, scelte))}")
-    for k in scelte:
-        img = tmp / f"campione_{k:05d}.png"
-        doc[k - 1].get_pixmap(dpi=ocr_fn.dpi, colorspace=fitz.csGRAY).save(img)
+
+    def leggi(k, img):
         try:
             testo, conf, _ = ocr_fn.leggi_immagine(img)
         finally:
             img.unlink(missing_ok=True)
-        letti[k] = (testo, conf)
+        if cache:
+            (cache / f"{k:05d}.txt").write_text(testo, encoding="utf-8")
+            (cache / f"{k:05d}.conf").write_text(str(conf))
+        return testo, conf
+
+    lavori = {}
+    for k in scelte:
+        if cache and (cache / f"{k:05d}.conf").exists():     # importazione interrotta e ripresa
+            letti[k] = ((cache / f"{k:05d}.txt").read_text(encoding="utf-8"),
+                        float((cache / f"{k:05d}.conf").read_text() or 0))
+            continue
+        img = tmp / f"campione_{k:05d}.png"
+        # PyMuPDF solo in questo thread: ai thread va l'immagine già pronta
+        doc[k - 1].get_pixmap(dpi=ocr_fn.dpi, colorspace=fitz.csGRAY).save(img)
+        lavori[k] = ex.submit(leggi, k, img) if ex else None
+        if not ex:
+            letti[k] = leggi(k, img)
+    for k, fut in lavori.items():
+        if fut:
+            letti[k] = fut.result()
+    for k in scelte:
+        testo, conf = letti[k]
         e, c = cer(doc[k - 1].get_text("text"), testo, lingua)
         errori, caratteri = errori + e, caratteri + c
         pesate.append((conf, c))
@@ -650,7 +702,7 @@ def leggi_documento(percorsi, ocr_fn, modo="auto", processi=2, cache=None, stamp
                         if modo == "auto" and ocr_fn and campione:
                             # scansione con un vecchio strato di testo: lo si tiene solo se non è peggiore di
                             # un OCR rifatto su alcune pagine (progettazione, sezione 4, punto 4)
-                            scelta, dettagli, letti = scegli_strato(doc, ocr_fn, tmp, campione, stampa)
+                            scelta, dettagli, letti = scegli_strato(doc, ocr_fn, tmp, campione, stampa, ex, cache)
                             if dettagli:
                                 scelte.append(dict(dettagli, file=p.name))
                             if scelta == "ocr":

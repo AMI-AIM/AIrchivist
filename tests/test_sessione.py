@@ -53,7 +53,7 @@ class RicercaInSessione(unittest.TestCase):
             (rr / f"{data}.txt").write_text(INTESTAZIONE.format(data=data, anno=data[:4]) + testo + "\n",
                                             encoding="utf-8")
         (cls.radice / "glossary" / "entities.ini").write_text(SCHEDA, encoding="utf-8")
-        cls.env = dict(os.environ, AIRCHIVIST_PROGETTO=str(cls.radice), PYTHONIOENCODING="utf-8")
+        cls.env = dict(os.environ, PRESSMARK_PROGETTO=str(cls.radice), PYTHONIOENCODING="utf-8")
         cls.cart = cls.radice / "results" / "searches" / "prova_sessione"
         cls.uscita_prepara = esegui("sessione.py", "prepara", "Enrico Berlinguer", "--cartella", "prova_sessione",
                                     env=cls.env)

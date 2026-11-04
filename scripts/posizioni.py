@@ -5,14 +5,15 @@ Dove stanno i file dell'utente: configurazione, profili dei modelli, progetti (a
 Due modi di funzionare:
 - sviluppo (repository o copia scaricata, il modo di sempre): configurazione in scripts/config.ini, profili in
   scripts/models.ini, progetti nuovi in projects/ accanto al motore;
-- installato: c'è scripts/installazione.ini (lo mette l'installatore) o la variabile d'ambiente AIRCHIVIST_DATI.
+- installato: c'è scripts/installazione.ini (lo mette l'installatore) o la variabile d'ambiente PRESSMARK_DATI.
   La cartella del programma non si modifica: scripts/config.ini porta solo i valori predefiniti, le scelte
   dell'utente vanno nel config.ini della cartella dei dati, letto dopo e quindi prevalente; models.ini e le copie
-  di sicurezza della configurazione stanno lì; i progetti nuovi vanno in Documenti/AIrchivist.
+  di sicurezza della configurazione stanno lì; i progetti nuovi vanno in Documenti/Pressmark.
 
-Cartella dei dati: AIRCHIVIST_DATI; altrimenti, se installato, [installazione] dati di installazione.ini (relativa
-alla cartella del programma, per una copia portatile) o quella del sistema: Windows %APPDATA%\\AIrchivist, macOS
-~/Library/Application Support/AIrchivist, Linux $XDG_CONFIG_HOME/airchivist (~/.config/airchivist).
+Cartella dei dati: PRESSMARK_DATI; altrimenti, se installato, [installazione] dati di installazione.ini (relativa
+alla cartella del programma, per una copia portatile) o quella del sistema: Windows %APPDATA%\\Pressmark, macOS
+~/Library/Application Support/Pressmark, Linux $XDG_CONFIG_HOME/pressmark (~/.config/pressmark). Se c'è solo la
+cartella col nome di prima (AIrchivist, airchivist), si usa quella: un aggiornamento non perde le scelte fatte.
 Cartella dei progetti nuovi: [installazione] progetti, altrimenti quella predefinita del modo in uso.
 
 installazione.ini (facoltative tutte le voci):
@@ -28,8 +29,16 @@ from pathlib import Path
 CARTELLA = Path(__file__).resolve().parent
 CONFIG_BASE = CARTELLA / "config.ini"
 FILE_INSTALLAZIONE = CARTELLA / "installazione.ini"
-VARIABILE_DATI = "AIRCHIVIST_DATI"
-NOME = "AIrchivist"
+VARIABILE_DATI = "PRESSMARK_DATI"
+NOME = "Pressmark"
+NOME_PRECEDENTE = "AIrchivist"     # le cartelle col nome di prima, se ci sono solo quelle, restano in uso
+
+
+def _con_nome(base, nome):
+    """base/nome; se non c'è ancora ma c'è la cartella col nome di prima, quella (installazioni precedenti)."""
+    nuova = base / nome
+    vecchia = base / (NOME_PRECEDENTE.lower() if nome.islower() else NOME_PRECEDENTE)
+    return vecchia if not nuova.exists() and vecchia.is_dir() else nuova
 
 
 def _installazione():
@@ -49,7 +58,7 @@ def _assoluto(valore, base):
 
 
 def installato():
-    """Vero se il motore funziona da programma installato (installazione.ini o AIRCHIVIST_DATI)."""
+    """Vero se il motore funziona da programma installato (installazione.ini o PRESSMARK_DATI)."""
     return bool(os.environ.get(VARIABILE_DATI, "").strip()) or FILE_INSTALLAZIONE.is_file()
 
 
@@ -58,10 +67,10 @@ def cartella_sistema(piattaforma=None):
     piattaforma = piattaforma or sys.platform
     casa = Path.home()
     if piattaforma.startswith("win"):
-        return Path(os.environ.get("APPDATA") or casa / "AppData" / "Roaming") / NOME
+        return _con_nome(Path(os.environ.get("APPDATA") or casa / "AppData" / "Roaming"), NOME)
     if piattaforma == "darwin":
-        return casa / "Library" / "Application Support" / NOME
-    return Path(os.environ.get("XDG_CONFIG_HOME") or casa / ".config") / NOME.lower()
+        return _con_nome(casa / "Library" / "Application Support", NOME)
+    return _con_nome(Path(os.environ.get("XDG_CONFIG_HOME") or casa / ".config"), NOME.lower())
 
 
 def cartella_dati():
@@ -109,11 +118,11 @@ def documenti(piattaforma=None):
 
 
 def cartella_progetti():
-    """Dove proporre i progetti nuovi: projects/ accanto al motore, o Documenti/AIrchivist da installato."""
+    """Dove proporre i progetti nuovi: projects/ accanto al motore, o Documenti/Pressmark da installato."""
     v = _voce("progetti")
     if v:
         return _assoluto(v, CARTELLA.parent)
-    return documenti() / NOME if installato() else CARTELLA.parent / "projects"
+    return _con_nome(documenti(), NOME) if installato() else CARTELLA.parent / "projects"
 
 
 def descrizione():

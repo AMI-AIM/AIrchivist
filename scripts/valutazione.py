@@ -553,7 +553,7 @@ def info_profilo(cfg_file):
 
 def fissa_prova(prova, cfg_file):
     """modelli.json della cartella di prova: classifica.py usa questi profili, qualunque cosa scelga il project.ini
-    del progetto in uso (llm.py, AIRCHIVIST_PROFILI_RICERCA)."""
+    del progetto in uso (llm.py, PRESSMARK_PROFILI_RICERCA)."""
     from llm import RUOLI, profilo
     grezza = config_grezza(cfg_file)
     dati = {"stato": "prova", "ruoli": {r: dict(zip(("nome", "voci"), profilo(grezza, r))) for r in RUOLI}}

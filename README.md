@@ -1,6 +1,11 @@
-# AIrchivist
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/marchio/pressmark-logotipo-scuro.svg">
+    <img src="assets/marchio/pressmark-logotipo-chiaro.svg" alt="Pressmark" width="360">
+  </picture>
+</h1>
 
-AIrchivist finds **every** occurrence of a person or an organisation (party, state, newspaper) in a large corpus of
+Pressmark finds **every** occurrence of a person or an organisation (party, state, newspaper) in a large corpus of
 primary sources. It answers with the original passages, a translation and a precise reference. The search itself
 (pattern extraction tolerant of OCR errors, indexing, citations, page layout of the answer) runs locally in Python.
 Language models do only one job: they read the passages to decide whether each one is relevant, translate it and
@@ -8,7 +13,7 @@ summarise. The models can be free ones, reached through [FreeLLMAPI](https://git
 Ollama or any OpenAI-compatible service. You ask questions from the engine's own browser interface (`python scripts/app.py`: project and model menus, guided
 search, import, history) or from a chat client connected to the engine's MCP server.
 
-AIrchivist was built for a PhD project on dissident communism between Beijing and Tirana, using Chinese sources first
+Pressmark was built for a PhD project on dissident communism between Beijing and Tirana, using Chinese sources first
 and Albanian and Italian sources after them. It is designed so that it can be adapted to other research projects.
 It runs on Windows, macOS and Linux.
 
@@ -57,11 +62,11 @@ Install requirements system-wide, never inside the project folder.
 
 ### Windows, without a terminal
 
-`AIrchivist-<version>-setup.exe` installs the program for the current user, without administrator rights, in
-`%LOCALAPPDATA%\Programs\AIrchivist`, with everything it needs (Python, PyMuPDF, its own window, Tesseract with the
-OCR languages). Open it from the Start menu, "AIrchivist": the "Preparazione" (setup) window guides you through
-project, model, first sources and the chat connection. Your choices are kept in `%APPDATA%\AIrchivist` and your
-projects in `Documents\AIrchivist`: updating or uninstalling the program does not touch them. Requires 64-bit
+`Pressmark-<version>-setup.exe`, downloaded from the [releases](https://github.com/AMI-AIM/Pressmark/releases/latest), installs the program for the current user, without administrator rights, in
+`%LOCALAPPDATA%\Programs\Pressmark`, with everything it needs (Python, PyMuPDF, its own window, Tesseract with the
+OCR languages). Open it from the Start menu, "Pressmark": the "Preparazione" (setup) window guides you through
+project, model, first sources and the chat connection. Your choices are kept in `%APPDATA%\Pressmark` and your
+projects in `Documents\Pressmark`: updating or uninstalling the program does not touch them. Requires 64-bit
 Windows 10 or 11.
 
 To build the installer from this repository (Python of the same version as the one to bundle, Tesseract installed,
@@ -77,8 +82,8 @@ and the installer.
 ### From the repository
 
 ```bash
-git clone <repository URL> AIrchivist
-cd AIrchivist
+git clone https://github.com/AMI-AIM/Pressmark.git
+cd Pressmark
 python scripts/installa.py inizia
 ```
 
@@ -109,7 +114,7 @@ python scripts/installa.py client --verifica
 ```
 
 `client <name>` prints the MCP server entry (Python interpreter, path of `scripts/mcp_server.py`, `PYTHONUTF8=1`) and
-the client's configuration file; with `--scrivi` it adds or updates only the AIrchivist entry in that file — a backup
+the client's configuration file; with `--scrivi` it adds or updates only the Pressmark entry in that file — a backup
 copy is made first and nothing is written until you confirm. Other values: `jan` (with `--scrivi`, run while Jan is closed: it
 also sets the tool timeout, smart routing, tool output size and web search in Jan's own files), `lmstudio` and `json` (the generic `mcpServers` block, no file). `client
 --verifica` starts the server the way the client would and checks the MCP handshake and the tool list. For clients
@@ -133,7 +138,7 @@ python scripts/progetto.py nuovo projects/albanian_press --nome "Albanian press 
 python scripts/progetto.py stato
 ```
 
-You choose the project in `scripts/config.ini` (`[progetto] cartella`) or with the `AIRCHIVIST_PROGETTO`
+You choose the project in `scripts/config.ini` (`[progetto] cartella`) or with the `PRESSMARK_PROGETTO`
 environment variable. To serve several projects, run one MCP server per project, each with its own value of that
 variable.
 
@@ -157,7 +162,7 @@ trials with external users. The repository contains only the engine. The author'
 profiles, chat rules) are not distributed. The tests use their own sample project in `tests/test_project/`.
 
 A fresh clone has no project yet. Create one with `python scripts/progetto.py nuovo projects/<name>`, then select
-it in `scripts/config.ini` (`[progetto] cartella = ../projects/<name>`) or with `AIRCHIVIST_PROGETTO`. The field
+it in `scripts/config.ini` (`[progetto] cartella = ../projects/<name>`) or with `PRESSMARK_PROGETTO`. The field
 descriptions for `series.ini` come from `scripts/series_template.ini`.
 
 ## Licence

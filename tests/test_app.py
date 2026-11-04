@@ -102,11 +102,11 @@ class Interfaccia(unittest.TestCase):
         (cls.p2 / "project.ini").write_text("[progetto]\nnome = Secondo progetto\n", encoding="utf-8")
         cls.profili = base / "models.ini"
         cls.testo_profili = (
-            f"[a]\nservizio = openai\nurl = {url}\nmodello = modello-a\nchiave_env = AIRCHIVIST_PROVA\n\n"
+            f"[a]\nservizio = openai\nurl = {url}\nmodello = modello-a\nchiave_env = PRESSMARK_PROVA\n\n"
             "[rotto]\nservizio = openai\nurl = http://127.0.0.1:9/v1\nmodello = assente\n"
-            "chiave_env = AIRCHIVIST_PROVA\n")
+            "chiave_env = PRESSMARK_PROVA\n")
         cls.config = base / "config.ini"
-        cls.env = mock.patch.dict(os.environ, {"AIRCHIVIST_PROVA": CHIAVE, VARIABILE: str(cls.p1)})
+        cls.env = mock.patch.dict(os.environ, {"PRESSMARK_PROVA": CHIAVE, VARIABILE: str(cls.p1)})
         cls.env.start()
         os.environ.pop(VARIABILE_FISSATI, None)
 
@@ -142,7 +142,7 @@ class Interfaccia(unittest.TestCase):
         corpo = None
         if dati is not None:
             corpo = json.dumps(dati).encode("utf-8")
-            h.update({"Content-Type": "application/json", "X-AIrchivist": "1"})
+            h.update({"Content-Type": "application/json", "X-Pressmark": "1"})
             h.update(intestazioni or {})
         c.request(metodo, percorso, body=corpo, headers=h)
         r = c.getresponse()
@@ -170,15 +170,24 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(self.richiesta("GET", "/?t=sbagliato", cookie=False)[0].status, 403)
         r, testo = self.richiesta("GET", "/")
         self.assertEqual(r.status, 200)
-        self.assertIn(b"AIrchivist", testo)
+        self.assertIn(b"Pressmark", testo)
 
     def test_host_e_post_controllati(self):
         r, _ = self.richiesta("GET", "/api/stato", intestazioni={"Host": "esempio.invalid"})
         self.assertEqual(r.status, 400)
-        r, _ = self.richiesta("POST", "/api/ricerca/ferma", {}, intestazioni={"X-AIrchivist": "0"})
+        r, _ = self.richiesta("POST", "/api/ricerca/ferma", {}, intestazioni={"X-Pressmark": "0"})
         self.assertEqual(r.status, 403)
         r, _ = self.richiesta("GET", "/../config.ini")
         self.assertEqual(r.status, 404)
+
+    def test_marchio(self):
+        # logotipo e favicon vengono da assets/marchio; fuori da quella cartella non si legge nulla
+        for nome in ("pressmark-favicon-chiaro.svg", "pressmark-logotipo-scuro.svg"):
+            r, testo = self.richiesta("GET", f"/marchio/{nome}")
+            self.assertEqual((r.status, r.getheader("Content-Type")), (200, "image/svg+xml"))
+            self.assertIn(b"<svg", testo)
+        self.assertEqual(self.richiesta("GET", "/marchio/../../scripts/config.ini")[0].status, 404)
+        self.assertEqual(self.richiesta("GET", "/marchio/assente.svg")[0].status, 404)
 
     # ------------------------------------------------------------ progetto
     def test_cambio_di_progetto(self):
@@ -233,12 +242,137 @@ class Interfaccia(unittest.TestCase):
         codice, r = self.post("/api/modello/usa", {"nome": "a"})
         self.assertTrue(r["cambiato"], r)
 
+    def test_modello_per_ruolo_e_fornitore(self):
+        url = f"http://127.0.0.1:{self.servizio.server_address[1]}/v1"
+        self.profili.write_text(self.testo_profili + f"\n[b]\nservizio = openai\nurl = {url}\nmodello = modello-a\n"
+                                "chiave_env = PRESSMARK_PROVA\n", encoding="utf-8")
+        m = self.get("/api/modelli")[1]
+        # i profili si raggruppano per fornitore: un indirizzo sconosciuto fa gruppo da sé, con il suo host
+        self.assertEqual({p["fornitore"]["id"] for p in m["profili"]}, {"openai:127.0.0.1"})
+        self.assertEqual(next(p for p in m["profili"] if p["nome"] == "a")["chiave_env"], "PRESSMARK_PROVA")
+        # un ruolo solo: gli altri restano sul profilo di prima
+        codice, r = self.post("/api/modello/usa", {"nome": "b", "ruoli": ["sintesi"]})
+        self.assertTrue(r["cambiato"], r)
+        self.assertEqual(self.get("/api/modelli")[1]["in_uso"],
+                         {"smistamento": "a", "analisi": "a", "sintesi": "b"})
+        # senza ruoli vale per tutti, e toglie la scelta per ruolo
+        codice, r = self.post("/api/modello/usa", {"nome": "b"})
+        self.assertTrue(r["cambiato"], r)
+        self.assertEqual(set(self.get("/api/modelli")[1]["in_uso"].values()), {"b"})
+        self.assertEqual(self.post("/api/modello/usa", {"nome": "a", "ruoli": "sintesi"})[0], 400)
+
+    def test_interruttori(self):
+        spegni = lambda tipo, nome: self.post("/api/interruttore", {"tipo": tipo, "nome": nome, "acceso": False})
+        accendi = lambda tipo, nome: self.post("/api/interruttore", {"tipo": tipo, "nome": nome, "acceso": True})
+        # ciò che è in uso non si spegne: il profilo, il suo fornitore, la sua chiave
+        self.assertEqual(spegni("profilo", "a")[0], 400)
+        self.assertEqual(spegni("fornitore", "openai:127.0.0.1")[0], 400)
+        self.assertEqual(spegni("chiave", "PRESSMARK_PROVA")[0], 400)
+        self.assertEqual(spegni("altro", "x")[0], 400)
+        self.assertEqual(spegni("profilo", "nessuno")[0], 400)
+        # un profilo spento resta nel file ma non si sceglie
+        codice, r = spegni("profilo", "rotto")
+        self.assertTrue(r["cambiato"], r)
+        p = {x["nome"]: x for x in self.get("/api/modelli")[1]["profili"]}
+        self.assertTrue(p["rotto"]["spento"] and p["rotto"]["bloccato"])
+        self.assertFalse(p["a"]["spento"] or p["a"]["bloccato"])
+        codice, r = self.post("/api/modello/usa", {"nome": "rotto"})
+        self.assertFalse(r["cambiato"])
+        self.assertIn("spento", " ".join(r["messaggi"]))
+        self.assertIn("profili = rotto", self.config.read_text(encoding="utf-8"))
+        # un fornitore spento non è attivo, anche con la chiave
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "k"}):
+            self.assertTrue(spegni("fornitore", "groq")[1]["cambiato"])
+            g = next(x for x in self.get("/api/fornitori")[1]["fornitori"] if x["id"] == "groq")
+            self.assertTrue(g["spento"])
+            self.assertFalse(g["attivo"] or g["pronto"])
+            self.assertFalse(spegni("fornitore", "groq")[1]["cambiato"])      # già spento: nessuna scrittura
+            accendi("fornitore", "groq")
+            self.assertTrue(next(x for x in self.get("/api/fornitori")[1]["fornitori"] if x["id"] == "groq")["attivo"])
+        accendi("profilo", "rotto")
+        testo = self.config.read_text(encoding="utf-8")
+        self.assertNotIn("\nprofili =", testo)                                # niente più spento: la voce sparisce
+        self.assertNotIn("\nfornitori =", testo)
+
+    def test_prova_rinomina_e_togli_un_profilo(self):
+        self.assertTrue(self.post("/api/modello/prova", {"nome": "a"})[1]["riuscita"])
+        self.assertFalse(self.post("/api/modello/prova", {"nome": "rotto"})[1]["riuscita"])
+        self.assertEqual(set(self.get("/api/modelli")[1]["in_uso"].values()), {"a"})     # la prova non sceglie
+        # il profilo in uso non si rinomina e non si toglie
+        self.assertEqual(self.post("/api/modello/rinomina", {"nome": "a", "nuovo": "b"})[0], 400)
+        self.assertEqual(self.post("/api/modello/togli", {"nome": "a"})[0], 400)
+        self.assertEqual(self.post("/api/modello/rinomina", {"nome": "rotto", "nuovo": "a"})[0], 400)   # esiste già
+        self.assertEqual(self.post("/api/modello/rinomina", {"nome": "rotto", "nuovo": "con spazi"})[0], 400)
+        codice, r = self.post("/api/modello/rinomina", {"nome": "rotto", "nuovo": "rotto-2"})
+        self.assertEqual(codice, 200, r)
+        testo = self.profili.read_text(encoding="utf-8")
+        self.assertIn("[rotto-2]\nservizio = openai\nurl = http://127.0.0.1:9/v1", testo)
+        self.assertNotIn("[rotto]", testo)
+        codice, r = self.post("/api/modello/togli", {"nome": "rotto-2"})
+        self.assertEqual(codice, 200, r)
+        self.assertEqual({p["nome"] for p in self.get("/api/modelli")[1]["profili"]}, {"a"})
+        self.assertTrue(list(self.profili.parent.glob("models.ini.pressmark-*.bak")))    # la copia prima
+        self.assertEqual(self.post("/api/modello/togli", {"nome": "rotto-2"})[0], 400)
+
+    def test_fornitori_e_chiave(self):
+        with mock.patch.dict(os.environ, {}):
+            for env in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "FREELLMAPI_KEY",
+                        "OPENAI_API_KEY", "MISTRAL_API_KEY", "XAI_API_KEY", "MINIMAX_API_KEY", "HF_TOKEN",
+                        "NVIDIA_API_KEY"):
+                os.environ.pop(env, None)
+            r = self.get("/api/fornitori?locali=1")[1]
+            f = {x["id"]: x for x in r["fornitori"]}
+            # senza ?locali=1 non si chiede nulla ai servizi sul computer: lo stato resta da sapere
+            senza = {x["id"]: x for x in self.get("/api/fornitori")[1]["fornitori"]}
+            self.assertIsNone(senza["openai:127.0.0.1"]["pronto"])
+            self.assertTrue(senza["groq"]["pronto"] is False and senza["anthropic"]["pronto"] is False)
+            # i fornitori noti ci sono anche senza profili; quello dei profili di prova fa gruppo da sé
+            self.assertLessEqual({"ollama", "anthropic", "groq", "google-gemini", "openrouter", "freellmapi", "openai",
+                                  "mistral", "xai", "minimax", "hugging-face", "nvidia-nim"}, set(f))
+            self.assertFalse(any(x["attivo"] for x in f.values() if x["chiave_env"].endswith(("_KEY", "_TOKEN"))
+                                 and x["id"] != "openai:127.0.0.1"))
+            locale = f["openai:127.0.0.1"]
+            self.assertEqual({p["nome"] for p in locale["profili"]}, {"a", "rotto"})
+            self.assertTrue(locale["attivo"] and locale["locale"])
+            # un servizio sul computer è «pronto» solo se risponde: quello di prova sì, e dice i suoi modelli
+            self.assertTrue(locale["raggiungibile"] and locale["pronto"])
+            self.assertEqual(locale["installati"], ["modello-a"])
+            self.assertTrue(locale["url"].startswith("http://127.0.0.1:"))
+            self.assertIsNone(f["groq"]["raggiungibile"])                  # online: non si chiede
+            self.assertTrue(f["ollama"]["attivo"])                        # non serve una chiave
+            self.assertFalse(f["groq"]["attivo"] or f["groq"]["locale"])
+            self.assertEqual(f["groq"]["chiave_env"], "GROQ_API_KEY")
+            self.assertEqual(set(r["in_uso"].values()), {"a"})
+            # una chiave rifiutata dal servizio non si salva
+            with mock.patch.object(A.installa, "modelli_servizio", return_value=None) as prova:
+                codice, s = self.post("/api/chiave", {"fornitore": "groq", "chiave": "sbagliata"})
+            self.assertEqual(codice, 200, s)
+            self.assertFalse(s["salvata"])
+            self.assertEqual(prova.call_args[0], ("https://api.groq.com/openai/v1", "sbagliata"))
+            self.assertNotIn("GROQ_API_KEY", os.environ)
+            with mock.patch.object(A.installa, "modelli_servizio", return_value=["qwen"]):
+                codice, s = self.post("/api/chiave", {"fornitore": "groq", "chiave": " buona "})
+            self.assertTrue(s["salvata"] and s["provata"], s)
+            self.assertEqual(os.environ["GROQ_API_KEY"], "buona")
+            self.assertTrue(next(x for x in self.get("/api/fornitori")[1]["fornitori"] if x["id"] == "groq")["attivo"])
+            # Anthropic non elenca i modelli, Hugging Face li elenca anche con una chiave sbagliata: vale senza prova
+            codice, s = self.post("/api/chiave", {"fornitore": "anthropic", "chiave": "k"})
+            self.assertTrue(s["salvata"] and not s["provata"], s)
+            with mock.patch.object(A.installa, "modelli_servizio") as prova:
+                codice, s = self.post("/api/chiave", {"fornitore": "hugging-face", "chiave": "hf_x"})
+            self.assertTrue(s["salvata"] and not s["provata"], s)
+            prova.assert_not_called()
+            self.assertEqual(os.environ["HF_TOKEN"], "hf_x")
+            self.assertEqual(self.post("/api/chiave", {"fornitore": "ollama", "chiave": "k"})[0], 400)
+            self.assertEqual(self.post("/api/chiave", {"fornitore": "groq", "chiave": "  "})[0], 400)
+            self.assertEqual(self.post("/api/chiave", {"fornitore": "nessuno", "chiave": "k"})[0], 400)
+
     def test_aggiungi_modello(self):
         url = f"http://127.0.0.1:{self.servizio.server_address[1]}/v1"
         codice, r = self.post("/api/modello/elenco", {"servizio": "openai", "url": url, "chiave": CHIAVE})
         self.assertEqual(r["modelli"], ["modello-a"])
         codice, r = self.post("/api/modello/nuovo", {"servizio": "openai", "url": url, "modello": "modello-a",
-                                                     "chiave_env": "AIRCHIVIST_PROVA", "nome": "nuovo-a",
+                                                     "chiave_env": "PRESSMARK_PROVA", "nome": "nuovo-a",
                                                      "usa": False})
         self.assertEqual(codice, 200, r)
         self.assertTrue(r["riuscita"], r)
@@ -249,7 +383,7 @@ class Interfaccia(unittest.TestCase):
         # aggiunto e scelto: una sola prova di collegamento (prima una per «aggiungi» e una per «usa»)
         with mock.patch.object(A.installa, "prova_profilo", wraps=A.installa.prova_profilo) as prova:
             codice, r = self.post("/api/modello/nuovo", {"servizio": "openai", "url": url, "modello": "modello-a",
-                                                         "chiave_env": "AIRCHIVIST_PROVA", "nome": "nuovo-b"})
+                                                         "chiave_env": "PRESSMARK_PROVA", "nome": "nuovo-b"})
         self.assertTrue(r["cambiato"], r)
         self.assertEqual(prova.call_count, 1)
         self.assertEqual(set(self.get("/api/modelli")[1]["in_uso"].values()), {"nuovo-b"})
@@ -470,6 +604,30 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(self.richiesta("GET", "/fonte/pagina?file=" + quote(rel) + "&pdf=1",
                                         cookie=False)[0].status, 403)
 
+    def test_fili_e_corpo_del_documento(self):
+        filo = {"titolo": "Chi era Berlinguer?", "entita": "Enrico Berlinguer",
+                "messaggi": [{"tipo": "utente", "testo": "Chi era Berlinguer?"}]}
+        codice, r = self.post("/api/filo", {"filo": filo})
+        self.assertEqual(codice, 200, r)
+        ident = r["id"]
+        filo.update(id=ident, messaggi=filo["messaggi"] + [{"tipo": "conversazione", "voce": {"testo": "Un segretario."}}])
+        self.assertEqual(self.post("/api/filo", {"filo": filo})[1]["id"], ident)       # stesso filo, riscritto
+        codice, letto = self.get("/api/filo?id=" + ident)
+        self.assertEqual((codice, len(letto["messaggi"]), letto["entita"]), (200, 2, "Enrico Berlinguer"))
+        self.assertEqual([x["id"] for x in self.get("/api/fili")[1]["fili"]], [ident])
+        for male in ("../config", "x" * 16, ""):                                       # niente percorsi
+            self.assertEqual(self.get("/api/filo?id=" + quote(male))[0], 400, male)
+        self.assertEqual(self.post("/api/filo", {"filo": {"id": "../../x", "messaggi": []}})[0], 400)
+        risposte = self.p1 / "results" / "answers"
+        risposte.mkdir(parents=True, exist_ok=True)
+        (risposte / "prova_corpo.md").write_text("# Prova\n\n## 7. Risposta finale\n\nTesto <b>sicuro</b>.\n",
+                                                 encoding="utf-8")
+        codice, r = self.get("/api/documento?risposta=prova_corpo.md")
+        self.assertEqual(codice, 200, r)
+        self.assertIn("<h2>Risposta finale</h2>", r["corpo"])
+        self.assertIn("&lt;b&gt;sicuro&lt;/b&gt;", r["corpo"])
+        self.assertNotIn("<body", r["corpo"])
+
     def test_passaggi_e_rimandi(self):
         risposte = self.p1 / "results" / "answers"
         risposte.mkdir(parents=True, exist_ok=True)
@@ -481,7 +639,7 @@ class Interfaccia(unittest.TestCase):
             "- [2] `riviste/renmin_ribao/1980-04-16.txt`, righe 9, 12\n", encoding="utf-8")
         codice, r = self.get("/api/passaggi?risposta=prova_rimandi.md")
         self.assertEqual(codice, 200, r)
-        self.assertEqual(r["rimandi"]["1"], {"file": "riviste/renmin_ribao/1980-04-15.txt", "riga": 9,
+        self.assertEqual(r["rimandi"]["1"], {"file": "riviste/renmin_ribao/1980-04-15.txt", "riga": 9, "righe": [9],
                                              "riferimento": "*Renmin Ribao*. 1980. 15 aprile 1980.", "pagina": "1"})
         self.assertEqual((r["rimandi"]["2"]["riga"], r["rimandi"]["2"]["pagina"]), (9, ""))
         self.assertEqual([(p["n"], p["riga"]) for p in r["passaggi"]], [("1", "9"), ("2", "9")])
@@ -590,7 +748,7 @@ class Interfaccia(unittest.TestCase):
             codice, c = self.get("/api/client?nome=jan")
             self.assertEqual(codice, 200, c)
             self.assertFalse(c["gia"])
-            self.assertTrue(any("airchivist" in m for m in c["modifiche"]), c)
+            self.assertTrue(any("pressmark" in m for m in c["modifiche"]), c)
             self.assertIn("mcp_server.py", c["avvia"])
             self.assertEqual(json.loads(f.read_text(encoding="utf-8")),     # l'anteprima non scrive
                              {"mcpServers": {"altro": {"command": "x", "args": []}}})
@@ -599,8 +757,8 @@ class Interfaccia(unittest.TestCase):
             self.assertTrue(r["scritto"] and r["prova"])
             doc = json.loads(f.read_text(encoding="utf-8"))
             self.assertEqual(doc["mcpServers"]["altro"], {"command": "x", "args": []})
-            self.assertTrue(doc["mcpServers"]["airchivist"]["active"])
-            self.assertTrue(list(f.parent.glob("mcp_config.json.airchivist-*.bak")))
+            self.assertTrue(doc["mcpServers"]["pressmark"]["active"])
+            self.assertTrue(list(f.parent.glob("mcp_config.json.pressmark-*.bak")))
             self.assertTrue(self.get("/api/client?nome=jan")[1]["gia"])
             avvio = self.get("/api/avvio")[1]
             self.assertTrue(next(p for p in avvio["passi"] if p["id"] == "chat")["fatto"])
@@ -618,6 +776,55 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(codice, 400)
         self.assertIn("aperto", r["errore"])
         self.assertFalse(g.exists())
+
+    def test_cartella_delle_lingue_propria(self):
+        # Tesseract in una cartella che chiede l'amministratore: le lingue si copiano in una cartella dell'utente
+        import importa
+        base = Path(self.tmp.name)
+        sistema = base / "tessdata_sistema"
+        (sistema / "configs").mkdir(parents=True, exist_ok=True)
+        for c in ("eng", "osd"):
+            (sistema / f"{c}.traineddata").write_bytes(b"x" * 20000)
+        (sistema / "configs" / "tsv").write_text("tessedit_create_tsv 1", encoding="utf-8")
+        (sistema / "ScrollView.jar").write_bytes(b"jar")
+        utente = base / "utente"
+
+        def installate(exe, modelli=None):
+            return {f.stem for f in Path(modelli or sistema).glob("*.traineddata")}
+
+        def cartella(cfg, exe=None):
+            return importa.cartella_modelli(cfg) or sistema
+        with mock.patch.object(importa, "cerca_tesseract", return_value="tesseract.exe"), \
+                mock.patch.object(importa, "lingue_installate", installate), \
+                mock.patch.object(importa, "cartella_lingue", cartella), \
+                mock.patch.object(importa, "scrivibile", lambda c: Path(c) != sistema), \
+                mock.patch.object(importa, "lingue_delle_serie", return_value=set()), \
+                mock.patch.object(A.installa.posizioni, "cartella_sistema", return_value=utente):
+            s = self.get("/api/lingue")[1]
+            self.assertFalse(s["scrivibile"] or s["propria"])
+            self.assertEqual(s["cartella_utente"], str(utente / "tessdata"))
+            self.assertIn("por", s["proposte"])                          # tutte le lingue di tessdata_best
+            self.assertNotIn("eng", s["proposte"])
+            codice, r = self.post("/api/lingue/cartella", {})
+            self.assertEqual(codice, 200, r)
+            dest = utente / "tessdata"
+            self.assertEqual(sorted(f.name for f in dest.glob("*.traineddata")), ["eng.traineddata", "osd.traineddata"])
+            self.assertTrue((dest / "configs" / "tsv").is_file())
+            self.assertFalse((dest / "ScrollView.jar").exists())
+            self.assertIn(f"modelli = {dest}", self.config.read_text(encoding="utf-8"))
+            self.assertTrue(r["scrivibile"] and r["propria"])
+            self.assertEqual(r["cartella"], str(dest))
+            self.assertEqual(self.post("/api/lingue/cartella", {})[0], 400)     # già scrivibile: niente da fare
+
+    def test_nomi_delle_lingue(self):
+        # ogni codice che l'interfaccia propone o che le serie possono chiedere ha il nome per esteso
+        import importa
+        codici = set(importa.LINGUE_OCR.values()) | set(importa.ALTRE_LINGUE) | {"osd"}
+        self.assertEqual(codici - set(importa.NOMI_LINGUE), set())
+        self.assertEqual(importa.NOMI_LINGUE["sqi"], "Albanese")
+        self.assertTrue(all(importa.CODICE_LINGUA.match(c) for c in importa.NOMI_LINGUE))
+        with mock.patch.object(importa, "cerca_tesseract", return_value=None):
+            self.assertEqual(self.get("/api/lingue")[1]["nomi"]["ita"], "Italiano")
 
     def test_lingue_ocr(self):
         """Lo stato delle lingue; lo scaricamento solo se la cartella dei modelli è scrivibile, e la lingua deve

@@ -131,7 +131,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     except AttributeError:
         pass
-    import mcp_server as server
+    import strumenti as server
     from llm import leggi_config, percorso
     cfg = leggi_config()
     url = cfg.get("router", "url").rstrip("/") + "/chat/completions"

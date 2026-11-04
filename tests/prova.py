@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent / "test_project"
-VARIABILE = "AIRCHIVIST_PROGETTO"
+VARIABILE = "PRESSMARK_PROGETTO"
 _precedente = None
 
 

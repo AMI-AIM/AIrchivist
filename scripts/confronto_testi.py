@@ -32,7 +32,40 @@ def senza_punteggiatura(testo):
 
 
 def distanza(a, b):
-    """Distanza di Levenshtein (sostituzioni, inserimenti, cancellazioni)."""
+    """Distanza di Levenshtein (sostituzioni, inserimenti, cancellazioni), con l'algoritmo a vettori di bit di Myers
+    (1999) nella forma di Hyyrö (2003): una colonna della tabella è un intero di Python con un bit per carattere di b,
+    e ogni carattere di a costa poche operazioni su quell'intero. Stesso risultato della tabella completa, ma una
+    pagina di 3000 caratteri si confronta in centesimi di secondo invece che in decine di secondi (G5: era la parte
+    più lenta dell'importazione dei documenti brevi)."""
+    if len(a) < len(b):
+        a, b = b, a
+    m = len(b)
+    if not m:
+        return len(a)
+    uguali = {}
+    for i, c in enumerate(b):
+        uguali[c] = uguali.get(c, 0) | (1 << i)
+    tutti, alto = (1 << m) - 1, 1 << (m - 1)
+    pv, mv, d = tutti, 0, m
+    for c in a:
+        eq = uguali.get(c, 0)
+        xv = eq | mv
+        xh = ((((eq & pv) + pv) & tutti) ^ pv) | eq
+        ph = (mv | ~(xh | pv)) & tutti
+        mh = pv & xh
+        if ph & alto:
+            d += 1
+        elif mh & alto:
+            d -= 1
+        ph = ((ph << 1) | 1) & tutti
+        mh = (mh << 1) & tutti
+        pv = (mh | ~(xv | ph)) & tutti
+        mv = ph & xv
+    return d
+
+
+def distanza_tabella(a, b):
+    """Distanza di Levenshtein con la tabella completa: lenta, serve da riferimento nei test."""
     if len(a) < len(b):
         a, b = b, a
     prec = list(range(len(b) + 1))

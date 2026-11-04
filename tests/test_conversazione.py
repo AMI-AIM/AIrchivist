@@ -92,7 +92,7 @@ class Servizio(BaseHTTPRequestHandler):
 
 
 class ServerFinto:
-    """Il minimo del server MCP che la conversazione usa."""
+    """Il minimo degli strumenti del motore che la conversazione usa."""
     STRUMENTI = {n: None for n in ("guida", "schede", "passaggi_archivio", "ricerca", "importa", "modello", "serie")}
 
     def __init__(self):
@@ -105,12 +105,10 @@ class ServerFinto:
     def istruzioni(self):
         return "Regole del server."
 
-    def gestisci(self, msg):
-        p = msg["params"]
-        self.chiamate.append((p["name"], p["arguments"]))
-        out = RISULTATO if p["name"] == "passaggi_archivio" else {"stato": "in corso", "finito": False}
-        return {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": json.dumps(
-            out, ensure_ascii=False)}]}}
+    def chiama(self, nome, argomenti):
+        self.chiamate.append((nome, argomenti))
+        out = RISULTATO if nome == "passaggi_archivio" else {"stato": "in corso", "finito": False}
+        return json.dumps(out, ensure_ascii=False), False
 
 
 class Verifica(unittest.TestCase):
@@ -188,12 +186,12 @@ class Conversazione(unittest.TestCase):
         shutil.copytree(PROVA, progetto)
         profili = base / "models.ini"
         profili.write_text("".join(f"[{m}]\nservizio = openai\nurl = {url}\nmodello = modello-{m}\n"
-                                   "chiave_env = AIRCHIVIST_PROVA\n\n" for m in ("strumenti", "testo", "rotto", "grande")),
+                                   "chiave_env = PRESSMARK_PROVA\n\n" for m in ("strumenti", "testo", "rotto", "grande")),
                            encoding="utf-8")
         cls.config = base / "config.ini"
         cls.config.write_text(f"[progetto]\ncartella = {progetto.as_posix()}\n\n[modello]\n"
                               f"file_profili = {profili.as_posix()}\nprofilo = strumenti\n", encoding="utf-8")
-        cls.env = mock.patch.dict(os.environ, {"AIRCHIVIST_PROVA": "chiave", VARIABILE: str(progetto)})
+        cls.env = mock.patch.dict(os.environ, {"PRESSMARK_PROVA": "chiave", VARIABILE: str(progetto)})
         cls.env.start()
 
     @classmethod
@@ -249,8 +247,7 @@ class Conversazione(unittest.TestCase):
 
     def test_richiesta_troppo_grande_risultati_accorciati(self):
         lungo = dict(RISULTATO, nota="x" * 9000)
-        with mock.patch.object(ServerFinto, "gestisci", lambda s, m: {"result": {"content": [
-                {"text": json.dumps(lungo, ensure_ascii=False)}]}}):
+        with mock.patch.object(ServerFinto, "chiama", lambda s, n, a: (json.dumps(lungo, ensure_ascii=False), False)):
             voce = self.conv("grande").invia("Domanda")
         self.assertTrue(voce["testo"].startswith("Ho letto"))
         self.assertLessEqual(int(voce["testo"].split()[2]), 2000)

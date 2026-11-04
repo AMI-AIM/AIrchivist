@@ -20,14 +20,15 @@ import webbrowser
 from pathlib import Path
 
 STILE = """
-:root { --testo: #1d1d1f; --tenue: #5f6368; --bordo: #d9d9de; --fondo: #ffffff; --citazione: #f6f6f8;
-        --accento: #8a1c1c; }
+:root { --testo: #1f1f1c; --tenue: #66655f; --bordo: #d9d6cc; --fondo: #ffffff; --citazione: #f7f6f2;
+        --accento: #8a3b12; }
 @media (prefers-color-scheme: dark) {
-  :root { --testo: #e8e8ea; --tenue: #a0a4ab; --bordo: #3a3a40; --fondo: #18181b; --citazione: #232327;
-          --accento: #e07a7a; } }
+  :root { --testo: #ecebe6; --tenue: #a8a69e; --bordo: #3c3b36; --fondo: #1b1b19; --citazione: #252522;
+          --accento: #e08a5a; } }
 html { background: var(--fondo); color: var(--testo); }
 body { font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif; line-height: 1.55; max-width: 46rem;
-       margin: 2rem auto; padding: 0 1rem; font-size: 1.05rem; }
+       margin: 2rem auto; padding: 0 1rem; font-size: 1.05rem; overflow-wrap: break-word; }
+code { overflow-wrap: anywhere; }
 h1 { font-size: 1.7rem; margin-bottom: .3rem; }
 h2 { font-size: 1.3rem; margin-top: 2.2rem; border-bottom: 1px solid var(--bordo); padding-bottom: .2rem; }
 h3 { font-size: 1.05rem; margin-top: 1.6rem; }
@@ -73,9 +74,26 @@ def celle(riga):
     return [c.strip() for c in riga.strip().strip("|").split("|")]
 
 
-def md_a_html(testo, titolo=""):
-    """Documento HTML completo dal Markdown della risposta."""
+# nel documento la risposta viene prima delle prove: queste sezioni salgono in testa, nell'ordine; le altre
+# (documenti, passaggi, dati, inferenze, dati tecnici) seguono come sono. risposta.md non cambia.
+IN_EVIDENZA = ("Risposta finale", "Limiti", "Grado di copertura")
+
+
+def in_evidenza(testo):
+    """Il Markdown con le sezioni IN_EVIDENZA subito dopo il titolo e la domanda."""
     righe = testo.replace("\r\n", "\n").split("\n")
+    inizi = [k for k, r in enumerate(righe) if r.startswith("## ")]
+    if not inizi:
+        return "\n".join(righe)
+    sezioni = [righe[a:b] for a, b in zip(inizi, inizi[1:] + [len(righe)])]
+    nome = lambda s: re.sub(r"^##\s+(\d+\.\s+)?", "", s[0])
+    prima = [s for chiave in IN_EVIDENZA for s in sezioni if nome(s).startswith(chiave)]
+    return "\n".join(righe[:inizi[0]] + [r for s in prima + [s for s in sezioni if s not in prima] for r in s])
+
+
+def md_a_html(testo, titolo=""):
+    """Documento HTML completo dal Markdown della risposta (con la risposta in testa: in_evidenza)."""
+    righe = in_evidenza(testo).split("\n")
     # i passaggi della sezione 2 («### [n] ...») sono le ancore dei rimandi [n]
     ancore = {m.group(1) for r in righe for m in [re.match(r"###\s+\[(\d+)\]", r)] if m}
     corpo, i = [], 0
@@ -98,7 +116,8 @@ def md_a_html(testo, titolo=""):
             n = len(m.group(1))
             ref = re.match(r"\[(\d+)\]", m.group(2))
             ident = f' id="doc-{ref.group(1)}"' if n == 3 and ref else ""
-            corpo.append(f"<h{n}{ident}>{inline(m.group(2), ancore)}</h{n}>")
+            voce = re.sub(r"^\d+\.\s+", "", m.group(2)) if n == 2 else m.group(2)   # fuori ordine, i numeri confondono
+            corpo.append(f"<h{n}{ident}>{inline(voce, ancore)}</h{n}>")
             titolo = titolo or (re.sub(r"[*`]", "", m.group(2)) if n == 1 else "")
             i += 1
             continue

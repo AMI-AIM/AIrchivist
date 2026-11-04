@@ -99,10 +99,10 @@ class CambioDiModello(unittest.TestCase):
         (cls.radice / "glossary" / "entities.ini").write_text(SCHEDA, encoding="utf-8")
         cls.profili = base / "models.ini"
         cls.profili.write_text("".join(f"[{n}]\nservizio = openai\nurl = {url}\nmodello = modello-{n}\n"
-                                       f"chiave_env = AIRCHIVIST_PROVA\n\n" for n in ("a", "b")), encoding="utf-8")
+                                       f"chiave_env = PRESSMARK_PROVA\n\n" for n in ("a", "b")), encoding="utf-8")
         cls.config = base / "config.ini"
         cls.env = {k: v for k, v in os.environ.items() if k != VARIABILE_FISSATI}
-        cls.env.update({VARIABILE: str(cls.radice), "PYTHONIOENCODING": "utf-8", "AIRCHIVIST_PROVA": CHIAVE})
+        cls.env.update({VARIABILE: str(cls.radice), "PYTHONIOENCODING": "utf-8", "PRESSMARK_PROVA": CHIAVE})
         cls.cart = cls.radice / "results" / "searches" / "enrico_berlinguer"
 
     @classmethod
@@ -155,7 +155,7 @@ class CambioDiModello(unittest.TestCase):
         limiti = risposta[risposta.index("## 5."):risposta.index("## 6.")]
         self.assertIn("letti dal modello modello-a: non misurato su queste fonti", limiti)
         documento = (self.cart / "risposta.html").read_text(encoding="utf-8")     # lavoro 31
-        self.assertIn("<h2>5. Limiti e problemi interpretativi</h2>", documento)
+        self.assertIn("<h2>Limiti e problemi interpretativi</h2>", documento)   # nel documento senza numeri
         self.assertIn("Berlinguer a Pechino.", documento)
 
         # 3. ricerca nuova: usa «b»; i passaggi già letti non si rileggono, il modello scrive solo la sintesi

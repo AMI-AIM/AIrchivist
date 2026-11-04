@@ -1,4 +1,4 @@
-# AIrchivist: quickstart
+# Pressmark: quickstart
 
 From installation to your first answer in about 15 minutes of active work, on Windows, macOS or Linux. You need:
 - a few documents of your own: PDFs (with text or scanned), page scans or `.txt` files. Two or three PDFs are
@@ -23,12 +23,12 @@ page tells you what each one means.
 On macOS and Linux the command may be `python3` rather than `python`: use that in the commands below. After an
 installation, close and reopen the terminal. Everything is installed system-wide, never inside the engine folder.
 
-## 2. Download AIrchivist
+## 2. Download Pressmark
 
 With git:
 ```
-git clone <repository URL> AIrchivist
-cd AIrchivist/scripts
+git clone https://github.com/AMI-AIM/Pressmark.git
+cd Pressmark/scripts
 ```
 Or download the repository as a `.zip` archive, extract it wherever you like and open a terminal in its `scripts`
 folder. Every command on this page is run from there.
@@ -91,11 +91,11 @@ Your browser opens. In the right column type the name of the person or body and 
 there is no card yet, "Cerca le forme nelle fonti" (search the forms in the sources) shows the attested forms of
 the name, with counts and examples; tick the right ones and press "Crea la scheda e avvia la ricerca" (create the
 card and start the search). Follow the progress; at the end the answer document opens on the left. The menus at
-the top switch project ("Progetto") and model ("Modello"); "Importa" also does step 4 from here.
+the top switch project ("Progetto") and model ("Modello"); the "Importazioni" tab also does step 4 from here.
 
 ### From the chat
 
-Restart the client if it was open. Check that the "airchivist" server is switched on in the client's MCP settings
+Restart the client if it was open. Check that the "pressmark" server is switched on in the client's MCP settings
 and that the chat model can use tools (in Jan: **Tools** enabled on the model, **Web Search** off). Then write, for
 example:
 

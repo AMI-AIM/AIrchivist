@@ -1,4 +1,4 @@
-# Problemi frequenti
+# Pressmark: problemi frequenti
 
 Casi incontrati nelle prove reali del sistema, con la soluzione. Il primo controllo, per quasi tutto, è:
 
@@ -66,7 +66,12 @@ cartella `scripts` del motore; su macOS e Linux il comando può chiamarsi `pytho
 
 ## Chat (Jan, Claude Desktop, LM Studio)
 
-- **Il server di AIrchivist non compare o è spento**: riavvia il client dopo `installa.py client <nome>
+- **Hai configurato il programma quando si chiamava AIrchivist**: la voce `airchivist` nel client resta com'è e
+  `installa.py client <nome> --scrivi` la aggiorna invece di aggiungerne una seconda. La variabile d'ambiente
+  `AIRCHIVIST_PROGETTO` va rinominata in `PRESSMARK_PROGETTO` dove l'hai impostata (anche nelle voci del client):
+  il nome vecchio non si legge più. Una copia installata continua a usare `%APPDATA%\AIrchivist` finché non c'è
+  una cartella `%APPDATA%\Pressmark`.
+- **Il server di Pressmark non compare o è spento**: riavvia il client dopo `installa.py client <nome>
   --scrivi`. In Jan la voce scritta a programma aperto si perde (Jan riscrive i suoi file quando si chiude):
   chiudi Jan, rilancia il comando, riapri Jan. Controlla poi il collegamento con
   `python installa.py client --verifica`.

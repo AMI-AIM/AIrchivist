@@ -44,16 +44,16 @@ class CreazioneDallaChat(unittest.TestCase):
         (radice / "glossary").mkdir()
         (radice / "glossary" / "entities.ini").write_text("", encoding="utf-8")
         (radice / "glossary" / "series.ini").write_text("", encoding="utf-8")
-        self._env = os.environ.get("AIRCHIVIST_PROGETTO")
-        os.environ["AIRCHIVIST_PROGETTO"] = str(radice)
-        import mcp_server
-        self.M = mcp_server
+        self._env = os.environ.get("PRESSMARK_PROGETTO")
+        os.environ["PRESSMARK_PROGETTO"] = str(radice)
+        import strumenti
+        self.M = strumenti
 
     def tearDown(self):
         if self._env is None:
-            os.environ.pop("AIRCHIVIST_PROGETTO", None)
+            os.environ.pop("PRESSMARK_PROGETTO", None)
         else:
-            os.environ["AIRCHIVIST_PROGETTO"] = self._env
+            os.environ["PRESSMARK_PROGETTO"] = self._env
         self._tmp.cleanup()
 
     def test_avviso_alla_creazione(self):

@@ -16,7 +16,7 @@ cartella di progetto (di solito in projects/, accanto al motore e fuori da git):
                             references/, past_sessions/, trials/, evaluation/
     system/                 index/sources.sqlite, jobs/, import_jobs/, cache/, backups/ (rigenerabili o temporanei)
 
-Quale progetto: la variabile d'ambiente AIRCHIVIST_PROGETTO, altrimenti config.ini, sezione [progetto], voce
+Quale progetto: la variabile d'ambiente PRESSMARK_PROGETTO, altrimenti config.ini, sezione [progetto], voce
 «cartella» (relativa alla cartella scripts o assoluta). Con un progetto scelto, i percorsi della sezione [percorsi]
 di config.ini non valgono: contano quelli predefiniti dentro la cartella del progetto e quelli di project.ini
 (relativi alla cartella del progetto). Senza progetto scelto valgono solo i percorsi scritti in [percorsi] (le
@@ -41,7 +41,7 @@ from pathlib import Path
 from posizioni import descrizione as posizioni, file_config, file_letti
 
 CARTELLA = Path(__file__).resolve().parent
-VARIABILE = "AIRCHIVIST_PROGETTO"
+VARIABILE = "PRESSMARK_PROGETTO"
 # percorsi di progetto e loro posizione predefinita dentro la cartella del progetto
 PERCORSI = {
     "dati": "data",
@@ -197,10 +197,18 @@ def cmd_nuovo(args, stampa=print):
         f"[progetto]\nnome = {args.nome or radice.name}\ndescrizione = {args.descrizione or ''}\n"
         f"creato_il = {dt.date.today().isoformat()}\n", encoding="utf-8")
     stampa(f"Progetto creato in {radice}.\nPer usarlo: in {file_config()}, sezione [progetto], cartella = {radice}\n"
-           f"oppure, solo per il terminale aperto: "
-           f"{f'set {VARIABILE}={radice}' if os.name == 'nt' else f'export {VARIABILE}={radice}'}\n"
+           f"oppure, solo per il terminale aperto: {comando_variabile(radice)}\n"
            f"Poi importa le fonti: python importa.py proponi <cartella dei documenti> (docs/quickstart.it.md).")
     return 0
+
+
+def comando_variabile(radice):
+    """Il comando che sceglie il progetto per il terminale aperto. Su Windows le forme di PowerShell e del Prompt dei
+    comandi (E1: «set …» in PowerShell non imposta la variabile), perché il terminale in uso non si riconosce con
+    sicurezza."""
+    if os.name != "nt":
+        return f'export {VARIABILE}="{radice}"'
+    return f'$env:{VARIABILE} = "{radice}"   (PowerShell)   oppure   set "{VARIABILE}={radice}"   (Prompt dei comandi)'
 
 
 def cmd_stato(args):

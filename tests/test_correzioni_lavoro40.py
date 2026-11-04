@@ -154,8 +154,8 @@ class TempiDellaLettura(unittest.TestCase):
 
     def test_contatori_delle_chiamate(self):
         m = L.LLM.__new__(L.LLM)
-        m.backend, m.pausa, m._ultima = "openai", 0, 0.0
-        m._openai = lambda s, u, sc: "ok"
+        m.backend, m.pausa, m._ultima, m.max_token = "openai", 0, 0.0, 100
+        m._openai = lambda s, u, sc, max_token: "ok"
         self.assertEqual(m._chiama("s", "u", None), "ok")
         self.assertEqual(m.richieste, 1)
         self.assertGreaterEqual(m.secondi_modello, 0)

@@ -1,7 +1,14 @@
-# AIrchivist — ricerca nelle fonti
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/marchio/pressmark-logotipo-scuro.svg">
+    <img src="assets/marchio/pressmark-logotipo-chiaro.svg" alt="Pressmark" width="360">
+  </picture>
+</h1>
 
-Sistema per trovare **tutte** le occorrenze di una persona o di un ente (partito, Stato, testata) in un ampio
-corpus di fonti primarie e rispondere con i passaggi originali, la traduzione e il riferimento esatto, con
+<p align="center">Ricerca nelle fonti primarie</p>
+
+Pressmark è un'applicazione per trovare **tutte** le occorrenze di una persona o di un ente (partito, Stato,
+testata) in un ampio corpus di fonti primarie e rispondere con i passaggi originali, la traduzione e il riferimento esatto, con
 citazioni Chicago note-bibliografia fino alla pagina. La ricerca gira in Python sul tuo computer; i modelli linguistici
 (gratuiti, locali o a pagamento, a tua scelta) leggono solo i passaggi. Le domande si fanno da un client di chat
 collegato al server MCP del motore (Jan, Claude Desktop, LM Studio) o da riga di comando. Funziona su Windows,
@@ -24,10 +31,10 @@ In inglese: [`README.md`](README.md), [`docs/quickstart.md`](docs/quickstart.md)
 
 ### Su Windows, senza terminale
 
-`AIrchivist-<versione>-setup.exe` installa il programma per il solo utente, senza diritti di amministratore, in
-`%LOCALAPPDATA%\Programs\AIrchivist`, con tutto ciò che serve (Python, PyMuPDF, la finestra propria, Tesseract
-con le lingue OCR). Si apre dal menu Start, «AIrchivist»: la finestra «Preparazione» guida progetto, modello, prime
-fonti e collegamento alla chat. Le scelte stanno in `%APPDATA%\AIrchivist`, i progetti in `Documenti\AIrchivist`:
+`Pressmark-<versione>-setup.exe`, da scaricare dalle [release](https://github.com/AMI-AIM/Pressmark/releases/latest), installa il programma per il solo utente, senza diritti di amministratore, in
+`%LOCALAPPDATA%\Programs\Pressmark`, con tutto ciò che serve (Python, PyMuPDF, la finestra propria, Tesseract
+con le lingue OCR). Si apre dal menu Start, «Pressmark»: la finestra «Preparazione» guida progetto, modello, prime
+fonti e collegamento alla chat. Le scelte stanno in `%APPDATA%\Pressmark`, i progetti in `Documenti\Pressmark`:
 aggiornare o disinstallare il programma non li tocca. Serve Windows 10 o 11 a 64 bit.
 
 Per costruire l'installatore da questo repository (Python della stessa versione di quello da includere, Tesseract
@@ -88,8 +95,9 @@ Il repository contiene il motore:
 | Cartella | Contenuto |
 |---|---|
 | `scripts` | programmi, `config.ini` (profilo di modello in uso, parametri, progetto in uso), `models_template.ini` (esempi di profili di modello) e `series_template.ini` (modello per i progetti nuovi) |
+| `assets/marchio` | logotipo e favicon di Pressmark, in versione chiara e scura (SVG) |
 | `tests` | test automatici e progetto di prova (`tests/test_project`) |
-| `docs` | primi passi, guida d'uso, problemi frequenti (in italiano e in inglese); documenti di progetto: stato, progettazione, piano di lavoro, schede delle entità |
+| `docs` | primi passi, guida d'uso, problemi frequenti (in italiano e in inglese) |
 | `projects` | i progetti di ricerca, fuori dal controllo di versione |
 
 Ogni progetto di ricerca (`projects/<nome>`) ha la stessa struttura:

@@ -2,17 +2,18 @@
 """
 Costruzione del programma installabile per Windows (lavoro 39, fase 3).
 
-Prepara in confezione/uscita/AIrchivist la cartella che l'installatore copia sul computer del ricercatore, e
+Prepara in confezione/uscita/Pressmark la cartella che l'installatore copia sul computer del ricercatore, e
 l'installatore stesso se Inno Setup è presente:
 
-  AIrchivist/
+  Pressmark/
     python/           Python «embeddable» ufficiale (python.org), con PyMuPDF e pywebview in Lib/site-packages
     scripts/          il motore (i file sotto git), config.ini senza scelte personali, installazione.ini
+    assets/marchio/   logotipo e favicon (SVG, per l'interfaccia) e pressmark.ico (collegamenti, installatore)
     tesseract/        Tesseract (copiato da un'installazione esistente) con le lingue scelte
     docs/             guide per gli utenti, LICENSE, TERZE_PARTI.txt
 
 installazione.ini mette il motore nel modo installato (posizioni.py): configurazione e profili nella cartella dei
-dati dell'utente (%APPDATA%\\AIrchivist), progetti in Documenti\\AIrchivist. Il programma non scrive mai nella
+dati dell'utente (%APPDATA%\\Pressmark), progetti in Documenti\\Pressmark. Il programma non scrive mai nella
 propria cartella, salvo le lingue OCR scaricate dall'interfaccia (tesseract/tessdata).
 
 Requisiti per costruire (solo su questo computer, non per chi installa): Python della stessa versione minore del
@@ -46,9 +47,9 @@ URL_PYTHON = "https://www.python.org/ftp/python/{v}/python-{v}-embed-amd64.zip"
 TESSDATA_SEMPRE = ("osd", "eng")                  # orientamento della pagina e inglese, sempre
 DOCUMENTI = ("quickstart.it.md", "quickstart.md", "user_guide.it.md", "user_guide.md", "troubleshooting.it.md",
              "troubleshooting.md")
-TERZE_PARTI = """Componenti di terze parti inclusi in AIrchivist per Windows
+TERZE_PARTI = """Componenti di terze parti inclusi in Pressmark per Windows
 
-AIrchivist è distribuito con licenza GNU AGPL-3.0 (LICENSE). Il programma include:
+Pressmark è distribuito con licenza GNU AGPL-3.0 (LICENSE). Il programma include:
 
 - Python {python} (python.org, distribuzione «embeddable»): Python Software Foundation License
   (python/LICENSE.txt).
@@ -145,9 +146,9 @@ def config_pulito(testo):
     return "\n".join(fuori) + "\n"
 
 
-INSTALLAZIONE_INI = """# Questo file mette AIrchivist nel modo «installato» (scripts/posizioni.py): la cartella del programma non si
-# modifica, le scelte dell'utente vanno in %APPDATA%\\AIrchivist (config.ini, models.ini), i progetti nuovi in
-# Documenti\\AIrchivist. Voci facoltative:
+INSTALLAZIONE_INI = """# Questo file mette Pressmark nel modo «installato» (scripts/posizioni.py): la cartella del programma non si
+# modifica, le scelte dell'utente vanno in %APPDATA%\\Pressmark (config.ini, models.ini), i progetti nuovi in
+# Documenti\\Pressmark. Voci facoltative:
 #   dati = <cartella>       altrove i dati dell'utente (relativa alla cartella del programma: copia portatile)
 #   progetti = <cartella>   altrove i progetti nuovi
 [installazione]
@@ -165,6 +166,36 @@ def copia_motore(dest, versione):
         else:
             shutil.copy2(f, d)
     (dest / "installazione.ini").write_text(INSTALLAZIONE_INI.format(versione=versione), encoding="utf-8")
+
+
+MARCHIO = RADICE / "assets" / "marchio"
+LATI_ICONA = (16, 24, 32, 48, 64, 256)
+
+
+def icona_ico(svg, lati=LATI_ICONA):
+    """Il favicon SVG come file .ico (una PNG per ogni lato, come accetta Windows da Vista), disegnato con PyMuPDF."""
+    import struct
+    import fitz
+    doc = fitz.open(stream=svg.read_bytes(), filetype="svg")
+    pagina = doc[0]
+    immagini = []
+    for lato in lati:
+        scala = lato / pagina.rect.width
+        immagini.append(pagina.get_pixmap(matrix=fitz.Matrix(scala, scala), alpha=True).tobytes("png"))
+    testa = struct.pack("<HHH", 0, 1, len(immagini))
+    voci, dati, posizione = b"", b"", 6 + 16 * len(immagini)
+    for lato, png in zip(lati, immagini):
+        voci += struct.pack("<BBBBHHII", lato % 256, lato % 256, 0, 0, 1, 32, len(png), posizione + len(dati))
+        dati += png
+    return testa + voci + dati
+
+
+def copia_marchio(dest):
+    """Logotipo e favicon (serviti dall'interfaccia come /marchio/...) e pressmark.ico per i collegamenti."""
+    dest.mkdir(parents=True, exist_ok=True)
+    for f in sorted(MARCHIO.glob("*.svg")):
+        shutil.copy2(f, dest / f.name)
+    (dest / "pressmark.ico").write_bytes(icona_ico(MARCHIO / "pressmark-favicon-chiaro.svg"))
 
 
 # ---------------------------------------------------------------- Tesseract
@@ -207,9 +238,9 @@ def copia_documenti(dest, testo_terze_parti):
 
 def prova_cartella(prog, dati_prova):
     """Il Python incluso avvia il motore nel modo installato, trova le librerie e il proprio Tesseract.
-    Le scritture della prova vanno in una cartella a parte (AIRCHIVIST_DATI), non nella cartella dell'utente."""
-    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON") and k != "AIRCHIVIST_PROGETTO"}
-    env["AIRCHIVIST_DATI"] = str(dati_prova)
+    Le scritture della prova vanno in una cartella a parte (PRESSMARK_DATI), non nella cartella dell'utente."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON") and k != "PRESSMARK_PROGETTO"}
+    env["PRESSMARK_DATI"] = str(dati_prova)
     codice = ("import sys, posizioni, importa, installa, pymupdf, webview, sqlite3; "
               "from progetto import leggi_config; "
               "e = installa.Esito(); installa.controlla_sqlite(e); "
@@ -242,12 +273,12 @@ def cerca_iscc():
 
 def costruisci_installatore(iscc, uscita, versione):
     numerica = versione.split("+")[0]
-    cmd = [iscc, f"/DVersione={versione}", f"/DVersioneNumerica={numerica}", f"/DCartella={uscita / 'AIrchivist'}",
-           f"/O{uscita}", str(CONFEZIONE / "airchivist.iss")]
+    cmd = [iscc, f"/DVersione={versione}", f"/DVersioneNumerica={numerica}", f"/DCartella={uscita / 'Pressmark'}",
+           f"/O{uscita}", str(CONFEZIONE / "pressmark.iss")]
     r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     if r.returncode:
         raise SystemExit("Inno Setup non è riuscito:\n" + (r.stdout + r.stderr)[-3000:])
-    return uscita / f"AIrchivist-{numerica}-setup.exe"
+    return uscita / f"Pressmark-{numerica}-setup.exe"
 
 
 def main(argv=None):
@@ -266,10 +297,10 @@ def main(argv=None):
         raise SystemExit(f"Esegui lo script con Python {'.'.join(args.python.split('.')[:2])}: pip scarica le "
                          "librerie per la versione del Python incluso, e le prova con la stessa.")
     uscita = Path(args.uscita).resolve()
-    prog = uscita / "AIrchivist"
+    prog = uscita / "Pressmark"
     cache = CONFEZIONE / "cache"
     versione = versione_programma()
-    stampa(f"AIrchivist {versione}: costruzione in {prog}")
+    stampa(f"Pressmark {versione}: costruzione in {prog}")
     if prog.exists():
         shutil.rmtree(prog)
     prog.mkdir(parents=True)
@@ -281,6 +312,7 @@ def main(argv=None):
     stampa("   " + ", ".join(pacchetti))
     stampa("3. Motore")
     copia_motore(prog / "scripts", versione)
+    copia_marchio(prog / "assets" / "marchio")
     stampa("4. Tesseract")
     if args.tesseract:
         origine = Path(args.tesseract)

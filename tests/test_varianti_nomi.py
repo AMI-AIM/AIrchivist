@@ -18,6 +18,16 @@ class Indizi(unittest.TestCase):
         self.assertEqual(V.indizi_tradotti(["Communist Party of Austria (Marxist-Leninist)"]), ["奥地利", "奥共"])
         self.assertEqual(V.indizi_tradotti(["comunismo dissidente"]), [])
 
+    def test_nomi_composti_interi(self):
+        # D1 (3/11/2026): con l'indizio «Nuova Unità» arrivavano 新西兰 e 新西兰共产党
+        for indizio in ("Nuova Unità", "Nueva Era", "Repubblica Popolare", "Stati generali", "Gran Consiglio"):
+            with self.subTest(indizio=indizio):
+                self.assertEqual(V.indizi_tradotti([indizio]), [])
+        self.assertEqual(V.indizi_tradotti(["Germania Est"]), ["德国", "德共"])          # non la Germania Ovest
+        self.assertEqual(V.indizi_tradotti(["Nuova Zelanda"]), ["新西兰", "新西兰共产党"])
+        self.assertEqual(V.indizi_tradotti(["Stati Uniti"]), ["美国", "美共"])
+        self.assertEqual(V.indizi_tradotti(["Pays-Bas"]), ["荷兰", "荷共"])
+
 
 class Trascrizioni(unittest.TestCase):
     CASI = {          # nome -> forma attestata nelle fonti o confermata in una scheda

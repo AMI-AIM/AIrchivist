@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Conversazione sulle fonti (lavoro 38): una conversazione libera con il modello scelto, che usa gli strumenti del
-motore (gli stessi del server MCP, con le stesse istruzioni) e non legge le fonti da sé. È un'aggiunta al percorso
+motore (strumenti.py, gli stessi del server MCP, con le stesse istruzioni) e non legge le fonti da sé. È un'aggiunta al percorso
 guidato dell'interfaccia, non la sua alternativa: i modelli deboli inventano riferimenti quando ricostruiscono una
 risposta, perciò ogni citazione della risposta si controlla sui risultati degli strumenti della conversazione.
 
@@ -10,7 +10,7 @@ Servizi: compatibili OpenAI (anche FreeLLMAPI), API di Anthropic, Ollama. Prima 
 uno strumento finto dice se il modello sa usare gli strumenti; se no, la conversazione resta disattivata con la
 spiegazione e resta il percorso guidato.
 
-Strumenti: tutti quelli del server MCP tranne guida (le istruzioni arrivano come messaggio di sistema), modello,
+Strumenti: tutti quelli di strumenti.py tranne guida (le istruzioni arrivano come messaggio di sistema), modello,
 importa e serie, che nell'interfaccia hanno i loro menu e la scheda «Importazioni». ricerca (azione attendi) aspetta
 pochi secondi: la ricerca avviata da qui si segue nel riquadro della ricerca. Con sola_lettura gli strumenti che
 scrivono restituiscono una risposta simulata (prove dei modelli: nulla entra nell'archivio delle letture).
@@ -53,7 +53,7 @@ LIMITE_RISULTATO = 6000      # caratteri di un risultato della domanda in corso,
                              # perché troppo grande (poi la metà, poi un quarto)
 DOMANDA_PROVA = "Che cosa dicono le fonti di Enrico Berlinguer? Mostrami i passaggi già letti, con i riferimenti."
 
-AGGIUNTA = """Questa conversazione si svolge nell'interfaccia di AIrchivist, accanto al percorso guidato della \
+AGGIUNTA = """Questa conversazione si svolge nell'interfaccia di Pressmark, accanto al percorso guidato della \
 ricerca. Una ricerca avviata da qui (ricerca, azione avvia) si segue nel riquadro della ricerca dell'interfaccia: \
 dopo l'avvio chiama attendi una volta sola; se non è finita, di' all'utente che la risposta comparirà in quel \
 riquadro e che poi può chiederti di leggerla (risposte, azione leggi). Importazioni, serie e modelli si gestiscono \
@@ -83,10 +83,10 @@ def _facoltativi_nulli(schema):
     return dict(schema, properties=proprieta)
 
 
-def strumenti(server):
-    """Gli strumenti del server MCP disponibili nella conversazione: {nome, descrizione, schema}."""
+def strumenti(motore):
+    """Gli strumenti del motore disponibili nella conversazione: {nome, descrizione, schema}."""
     return [{"nome": t["name"], "descrizione": t["description"], "schema": _facoltativi_nulli(t["inputSchema"])}
-            for t in server.elenco_strumenti() if t["name"] not in ESCLUSI]
+            for t in motore.elenco_strumenti() if t["name"] not in ESCLUSI]
 
 
 def _argomenti(v):
@@ -108,13 +108,13 @@ class Conversazione:
     """Storia della conversazione nel formato OpenAI (senza il messaggio di sistema), convertita per Anthropic e
     Ollama a ogni richiesta; storia visibile (domande, risposte con la verifica delle citazioni) in self.storia."""
 
-    def __init__(self, cfg, server, nome_profilo=None, sola_lettura=False, ruolo="sintesi"):
+    def __init__(self, cfg, motore, nome_profilo=None, sola_lettura=False, ruolo="sintesi"):
         self.llm = LLM(cfg, ruolo, nome_profilo)
         self.max_token = min(self.llm.max_token, MAX_TOKEN)
-        self.server = server
+        self.motore = motore             # strumenti.py, o un sostituto nei test
         self.sola_lettura = sola_lettura
-        self.strumenti = strumenti(server)
-        self.sistema = server.istruzioni() + "\n\n" + AGGIUNTA
+        self.strumenti = strumenti(motore)
+        self.sistema = motore.istruzioni() + "\n\n" + AGGIUNTA
         self.messaggi = []
         self.risultati = []          # testi restituiti dagli strumenti in tutta la conversazione
         self.storia = []
@@ -237,8 +237,8 @@ class Conversazione:
 
     # ------------------------------------------------------------ strumenti
     def esegui(self, nome, argomenti):
-        """Testo del risultato di uno strumento, come lo restituisce il server MCP (accorciato entro il limite)."""
-        if nome in ESCLUSI or nome not in self.server.STRUMENTI:
+        """Testo del risultato di uno strumento, come lo riceve anche un client MCP (accorciato entro il limite)."""
+        if nome in ESCLUSI or nome not in self.motore.STRUMENTI:
             return json.dumps({"errore": f"Strumento non disponibile in questa conversazione: {nome}."},
                               ensure_ascii=False)
         # parametri lasciati vuoti: alcuni modelli mandano null, altri la parola «null» come testo (llama-3.3-70b)
@@ -254,17 +254,16 @@ class Conversazione:
             except (TypeError, ValueError):
                 secondi = ATTESA_RICERCA
             argomenti = dict(argomenti, secondi=max(1, min(secondi, ATTESA_RICERCA)))
-        r = self.server.gestisci({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                                  "params": {"name": nome, "arguments": argomenti}})
-        if "error" in r:
-            return json.dumps({"errore": r["error"]["message"]}, ensure_ascii=False)
-        return r["result"]["content"][0]["text"]
+        try:
+            return self.motore.chiama(nome, argomenti)[0]
+        except ValueError as e:                  # strumento sconosciuto
+            return json.dumps({"errore": str(e)}, ensure_ascii=False)
 
     def _accorcia(self, testo, limite, nota):
-        """Il risultato entro `limite` caratteri: JSON ancora valido con l'accorciamento del server MCP, se c'è."""
+        """Il risultato entro `limite` caratteri: JSON ancora valido con l'accorciamento del motore, se c'è."""
         if len(testo) <= limite:
             return testo
-        adatta = getattr(self.server, "adatta", None)
+        adatta = getattr(self.motore, "adatta", None)
         try:
             dati = json.loads(testo)
             if adatta and isinstance(dati, dict):
@@ -519,11 +518,9 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8")
     except AttributeError:
         pass
-    _uscita = sys.stdout
-    import mcp_server as server                 # sposta stdout su stderr per il protocollo: qui non serve
-    sys.stdout = _uscita
+    import strumenti as motore
     from llm import leggi_config, percorso
-    server.CONFIG = args.config
+    motore.CONFIG = args.config
     cfg = leggi_config(args.config)
     dest = percorso(cfg, "risultati") / "trials" / "conversazione"
     dest.mkdir(parents=True, exist_ok=True)
@@ -537,7 +534,7 @@ def main(argv=None):
         t0 = time.time()
         dati = {"profilo": nome}
         try:
-            c = Conversazione(cfg, server, nome, sola_lettura=True)
+            c = Conversazione(cfg, motore, nome, sola_lettura=True)
             dati["prova_strumenti"] = c.prova_strumenti()
             if dati["prova_strumenti"]["sa_usare_strumenti"]:
                 dati["risposta"] = c.invia(args.domanda)

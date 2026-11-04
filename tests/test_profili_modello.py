@@ -18,6 +18,9 @@ from unittest import mock
 MOTORE = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(MOTORE))
 import installa as I  # noqa: E402
+
+# la voce «altro servizio compatibile OpenAI» viene dopo i servizi noti
+ALTRO = str(len(I.SERVIZI_CHIAVE) + 1)
 import llm as L  # noqa: E402
 from progetto import VARIABILE, leggi_config  # noqa: E402
 
@@ -79,14 +82,14 @@ class Base(unittest.TestCase):
         self.scrivi_config("profilo = buono\n")
         self.profili.write_text(
             "# profili di prova\n"
-            f"[buono]\nservizio = openai\nurl = {self.url}/v1\nmodello = finto-1\nchiave_env = AIRCHIVIST_PROVA\n"
+            f"[buono]\nservizio = openai\nurl = {self.url}/v1\nmodello = finto-1\nchiave_env = PRESSMARK_PROVA\n"
             "max_token = 1000\n\n"
             "# commento del profilo seguente\n"
-            f"[secondo]\nservizio = openai\nurl = {self.url}/v1\nmodello = finto-2\nchiave_env = AIRCHIVIST_PROVA\n"
+            f"[secondo]\nservizio = openai\nurl = {self.url}/v1\nmodello = finto-2\nchiave_env = PRESSMARK_PROVA\n"
             "max_token_sintesi = 9000\n\n"
-            f"[rotto]\nservizio = openai\nurl = {self.url}/rotto/v1\nmodello = assente\nchiave_env = AIRCHIVIST_PROVA\n\n"
+            f"[rotto]\nservizio = openai\nurl = {self.url}/rotto/v1\nmodello = assente\nchiave_env = PRESSMARK_PROVA\n\n"
             "[spento]\nservizio = ollama\nurl = http://127.0.0.1:9\nmodello = qwen3.5:9b\n", encoding="utf-8")
-        self.env = mock.patch.dict(os.environ, {"AIRCHIVIST_PROVA": CHIAVE})
+        self.env = mock.patch.dict(os.environ, {"PRESSMARK_PROVA": CHIAVE})
         self.env.start()
         os.environ.pop(VARIABILE, None)
         self.patch_config = mock.patch.object(I, "FILE_CONFIG", self.config)
@@ -140,7 +143,7 @@ class Lettura(Base):
         self.assertIn("installa.py modello", str(e.exception))
 
     def test_configurazione_precedente(self):
-        self.scrivi_config(f"backend = router\n[router]\nurl = {self.url}/v1\nchiave_env = AIRCHIVIST_PROVA\n"
+        self.scrivi_config(f"backend = router\n[router]\nurl = {self.url}/v1\nchiave_env = PRESSMARK_PROVA\n"
                            "modello_smistamento = a\nmodello_analisi = b\nmodello_sintesi = b\n"
                            "modelli_ammessi = finto\n")
         llm = L.LLM(self.cfg(), "smistamento")
@@ -175,7 +178,7 @@ class Usa(Base):
         self.assertFalse((self.progetto / "system" / "model_changes.csv").exists())
 
     def test_chiave_rifiutata(self):
-        os.environ["AIRCHIVIST_PROVA"] = "sbagliata"
+        os.environ["PRESSMARK_PROVA"] = "sbagliata"
         self.assertEqual(self.esegui("usa", "secondo"), 1)
         self.assertIn("rifiuta la chiave", self.uscita())
 
@@ -208,27 +211,27 @@ class Usa(Base):
 class Nuovo(Base):
     def test_procedura_guidata(self):
         salvate = {}
-        os.environ.pop("AIRCHIVIST_NUOVA", None)
-        risposte = ["2", "4", f"{self.url}/v1", "AIRCHIVIST_NUOVA", "finto-3", "", "s", "s"]
+        os.environ.pop("PRESSMARK_NUOVA", None)
+        risposte = ["2", ALTRO, f"{self.url}/v1", "PRESSMARK_NUOVA", "finto-3", "", "s", "s"]
         codice = self.esegui("nuovo", chiedi=risposte, segreto=lambda d: CHIAVE,
                              salva=lambda n, v, s: salvate.update({n: v}))
         self.assertEqual(codice, 0, self.uscita())
-        self.assertEqual(salvate, {"AIRCHIVIST_NUOVA": CHIAVE})
+        self.assertEqual(salvate, {"PRESSMARK_NUOVA": CHIAVE})
         profili = L.leggi_profili(self.cfg())
-        self.assertEqual(profili["locale-finto-3"]["chiave_env"], "AIRCHIVIST_NUOVA")
+        self.assertEqual(profili["locale-finto-3"]["chiave_env"], "PRESSMARK_NUOVA")
         self.assertNotIn(CHIAVE, self.profili.read_text(encoding="utf-8"))
         self.assertEqual(L.profili_attivi(self.cfg())["analisi"], "locale-finto-3")
 
     def test_servizio_noto_chiave_prima_e_modelli_dal_servizio(self):
         # il modello proposto dal codice non c'è più nel servizio: si sceglie da quelli che il servizio elenca
-        noto = [("Finto", f"{self.url}/v1", "AIRCHIVIST_NOTO", "sparito", "0", "https://esempio/chiavi")]
-        os.environ.pop("AIRCHIVIST_NOTO", None)
+        noto = [("Finto", f"{self.url}/v1", "PRESSMARK_NOTO", "sparito", "0", "https://esempio/chiavi")]
+        os.environ.pop("PRESSMARK_NOTO", None)
         salvate = {}
         with mock.patch.object(I, "SERVIZI_CHIAVE", noto):
             codice = self.esegui("nuovo", chiedi=["2", "1", "s", "1", "", "s"], segreto=lambda d: CHIAVE,
                                  salva=lambda n, v, s: salvate.update({n: v}))
         self.assertEqual(codice, 0, self.uscita())
-        self.assertEqual(salvate, {"AIRCHIVIST_NOTO": CHIAVE})
+        self.assertEqual(salvate, {"PRESSMARK_NOTO": CHIAVE})
         self.assertNotIn("sparito", self.uscita())
         self.assertIn("finto-1", self.uscita())
         nome = L.profili_attivi(self.cfg())["analisi"]
@@ -245,7 +248,7 @@ class Nuovo(Base):
         self.assertFalse(I.NON_TESTUALI.search("qwen/qwen3.8-27b"))
 
     def test_procedura_con_collegamento_fallito(self):
-        risposte = ["2", "4", f"{self.url}/rotto/v1", "AIRCHIVIST_PROVA", "assente", "prova-rotta"]
+        risposte = ["2", ALTRO, f"{self.url}/rotto/v1", "PRESSMARK_PROVA", "assente", "prova-rotta"]
         self.assertEqual(self.esegui("nuovo", chiedi=risposte), 1)
         self.assertIn("prova-rotta", L.leggi_profili(self.cfg()))       # resta salvato, da correggere
         self.assertEqual(L.profili_attivi(self.cfg())["analisi"], "buono")
@@ -262,14 +265,14 @@ class Togli(Base):
         self.assertNotIn("[secondo]", testo)
         self.assertNotIn("commento del profilo seguente", testo)
         self.assertIn("[rotto]", testo)
-        self.assertTrue(list(self.tmp.glob("models.ini.airchivist-*.bak")))
+        self.assertTrue(list(self.tmp.glob("models.ini.pressmark-*.bak")))
 
 
 class Converti(Base):
     def test_conversione(self):
         self.profili.unlink()
         self.scrivi_config(f"backend = router\ntimeout = 300\n\n[router]\n# FreeLLMAPI\nurl = {self.url}/v1\n"
-                           "chiave_env = AIRCHIVIST_PROVA\nmodello_smistamento = auto:ricerca\n"
+                           "chiave_env = PRESSMARK_PROVA\nmodello_smistamento = auto:ricerca\n"
                            "modello_analisi = auto:ricerca\nmodello_sintesi = auto:ricerca\n"
                            "modelli_ammessi = finto\npausa_secondi = 2\n\n"
                            "[ollama]\nurl = http://localhost:11434\nmodello_smistamento = qwen3.5:4b\n"
@@ -283,7 +286,7 @@ class Converti(Base):
         for voce in ("url", "modello", "chiave", "ammessi", "pausa", "max_token", "timeout", "sezione"):
             self.assertEqual(getattr(prima, voce), getattr(dopo, voce), voce)
         self.assertIn("# FreeLLMAPI", self.config.read_text(encoding="utf-8"))
-        self.assertTrue(list(self.tmp.glob("config.ini.airchivist-*.bak")))
+        self.assertTrue(list(self.tmp.glob("config.ini.pressmark-*.bak")))
         self.righe.clear()
         self.assertEqual(self.esegui("converti", si=True), 0)            # già fatta: niente da fare
         self.assertIn("niente da convertire", self.uscita())
@@ -302,9 +305,9 @@ class StrumentoMcp(Base):
     """Strumento «modello» del server MCP e opzioni dello strumento «ricerca»."""
     def setUp(self):
         super().setUp()
-        import mcp_server
-        self.M = mcp_server
-        self.patch_mcp = mock.patch.object(mcp_server, "CONFIG", str(self.config))
+        import strumenti
+        self.M = strumenti
+        self.patch_mcp = mock.patch.object(strumenti, "CONFIG", str(self.config))
         self.patch_mcp.start()
 
     def tearDown(self):
@@ -372,6 +375,20 @@ class MisurePerProfilo(Base):
         with self.assertRaises(SystemExit):
             V.elenco_modelli(dict_ns(args, profili="inesistente"), self.cfg())
 
+    def test_fornitore_dal_protocollo_o_dall_indirizzo(self):
+        f = I.fornitore
+        self.assertEqual(f({"servizio": "ollama", "url": "http://localhost:11434"})["id"], "ollama")
+        self.assertEqual(f({"servizio": "anthropic"})["servizio_id"], "anthropic")
+        self.assertEqual(f({"servizio": "router", "url": "http://127.0.0.1:31415/v1"})["id"], "freellmapi")
+        # stesso protocollo «openai», fornitori diversi: decide l'indirizzo
+        groq = f({"servizio": "openai", "url": "https://api.groq.com/openai/v1"})
+        self.assertEqual((groq["nome"], groq["servizio_id"]), ("Groq", "chiave:Groq"))
+        self.assertTrue(groq["dove_chiave"])
+        self.assertEqual(f({"servizio": "openai", "url": "https://openrouter.ai/api/v1"})["nome"], "OpenRouter")
+        self.assertEqual(f({"servizio": "openai", "url": "https://integrate.api.nvidia.com/v1"})["id"], "nvidia-nim")
+        altro = f({"servizio": "openai", "url": "http://192.168.1.5:1234/v1"})
+        self.assertEqual((altro["id"], altro["nome"], altro["servizio_id"]), ("openai:192.168.1.5", "192.168.1.5", "openai"))
+
     def test_stato_della_misura(self):
         from sintesi import profili_misurati
         d = self.progetto / "results" / "evaluation" / "rif"
@@ -408,7 +425,7 @@ class ProvaDeiModelli(Base):
         from valuta import config_per_modello
         self.profili.write_text(self.profili.read_text(encoding="utf-8") +
                                 f"\n[router]\nservizio = router\nurl = {self.url}/v1\nmodello = auto:x\n"
-                                "chiave_env = AIRCHIVIST_PROVA\nmodelli_ammessi = altro\n", encoding="utf-8")
+                                "chiave_env = PRESSMARK_PROVA\nmodelli_ammessi = altro\n", encoding="utf-8")
         dest = self.tmp / "prova" / "config_prova.ini"
         dest.parent.mkdir()
         config_per_modello(self.config, "finto-9", dest)

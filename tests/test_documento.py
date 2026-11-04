@@ -67,6 +67,8 @@ Franz Strobl dirige *Rote Fahne* [1] e nel 1967 è citato dalla stampa cinese [2
 
 
 def testo_md(t):
+    # il documento mette risposta, limiti e copertura in testa e toglie i numeri delle sezioni
+    t = re.sub(r"^(##\s+)\d+\.\s+", r"\1", D.in_evidenza(t), flags=re.MULTILINE)
     t = re.sub(r"<!--.*?-->", " ", t, flags=re.DOTALL)
     righe = []
     for r in t.split("\n"):
@@ -102,6 +104,12 @@ class Documento(unittest.TestCase):
     def test_stesso_testo(self):
         self.assertEqual(testo_html(self.html), testo_md(RISPOSTA))
 
+    def test_risposta_in_testa(self):
+        titoli = re.findall(r"<h2>(.*?)</h2>", self.html)
+        self.assertEqual(titoli, ["Risposta finale", "Limiti e problemi interpretativi", "Documenti rilevanti",
+                                  "Passaggi rilevanti", "Dati espliciti"])
+        self.assertLess(self.html.index("<h1>"), self.html.index("<h2>Risposta finale</h2>"))
+
     def test_struttura(self):
         h = self.html
         self.assertTrue(h.startswith("<!doctype html>"))
@@ -135,7 +143,7 @@ class Documento(unittest.TestCase):
 
 class Consegna(unittest.TestCase):
     def test_riassunto_e_percorso(self):
-        import mcp_server as M
+        import strumenti as M
         f = Path(tempfile.mkdtemp()) / "risposta.md"
         lunga = RISPOSTA.replace("Franz Strobl dirige", "Franz Strobl dirige " + "molto " * 600)
         f.write_text(lunga, encoding="utf-8")

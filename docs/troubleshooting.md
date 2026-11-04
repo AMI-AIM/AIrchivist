@@ -1,4 +1,4 @@
-# Troubleshooting
+# Pressmark: troubleshooting
 
 Problems met in real trials of the system, with their solution. For almost everything, the first check is:
 
@@ -66,7 +66,12 @@ quoted Italian text below is what you will see.
 
 ## Chat (Jan, Claude Desktop, LM Studio)
 
-- **The AIrchivist server does not appear or is off**: restart the client after `installa.py client <name>
+- **You set up the program when it was called AIrchivist**: an entry named `airchivist` in the client stays as it
+  is, and `installa.py client <name> --scrivi` updates it instead of adding a second one. Rename the environment
+  variable `AIRCHIVIST_PROGETTO` to `PRESSMARK_PROGETTO` wherever you set it (in the client's entries too): the old
+  name is no longer read. An installed copy keeps using `%APPDATA%\AIrchivist` while no `%APPDATA%\Pressmark`
+  folder exists.
+- **The Pressmark server does not appear or is off**: restart the client after `installa.py client <name>
   --scrivi`. In Jan an entry written while the program is open is lost (Jan rewrites its files when it closes):
   close Jan, rerun the command, reopen Jan. Then check the connection with `python installa.py client --verifica`.
 - **The client cannot find `python`**: the server entry's command must be the full path of the interpreter;

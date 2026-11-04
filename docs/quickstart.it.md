@@ -1,4 +1,4 @@
-# AIrchivist: primi passi
+# Pressmark: primi passi
 
 Dall'installazione alla prima risposta in circa 15 minuti di lavoro attivo, su Windows, macOS o Linux. Servono:
 - qualche documento tuo: PDF (con testo o scansionati), scansioni delle pagine o file `.txt`. Per la prima prova
@@ -22,12 +22,12 @@ La guida completa è in [`user_guide.it.md`](user_guide.it.md); se qualcosa non 
 Su macOS e Linux il comando può chiamarsi `python3` invece di `python`: usa quello nei comandi seguenti. Dopo
 un'installazione chiudi e riapri il terminale. Tutto si installa nel sistema, mai dentro la cartella del motore.
 
-## 2. Scarica AIrchivist
+## 2. Scarica Pressmark
 
 Con git:
 ```
-git clone <indirizzo del repository> AIrchivist
-cd AIrchivist/scripts
+git clone https://github.com/AMI-AIM/Pressmark.git
+cd Pressmark/scripts
 ```
 Oppure scarica l'archivio `.zip` del repository, estrailo dove vuoi e apri un terminale nella sua cartella
 `scripts`. Tutti i comandi di questa pagina si danno da lì.
@@ -85,11 +85,11 @@ python app.py
 Si apre il browser. Nella colonna destra scrivi il nome della persona o dell'ente e premi «Continua»: se non c'è
 ancora una scheda, «Cerca le forme nelle fonti» mostra le forme del nome attestate, con conteggi ed esempi; spunta
 quelle giuste e premi «Crea la scheda e avvia la ricerca». Segui l'avanzamento; alla fine il documento della
-risposta si apre a sinistra. I menu in alto cambiano progetto e modello; «Importa» fa anche il passo 4 da qui.
+risposta si apre a sinistra. I menu in alto cambiano progetto e modello; la scheda «Importazioni» fa anche il passo 4 da qui.
 
 ### Dalla chat
 
-Riavvia il client se era aperto. Controlla che il server «airchivist» risulti acceso nelle impostazioni MCP del
+Riavvia il client se era aperto. Controlla che il server «pressmark» risulti acceso nelle impostazioni MCP del
 client e che il modello della chat sappia usare gli strumenti (in Jan: **Tools** attivo sul modello, **Web Search**
 spento). Poi scrivi, per esempio:
 

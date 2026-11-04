@@ -21,17 +21,22 @@ Se si interrompe (quote, rete) e la si rilancia, riprende con gli stessi profili
 cambiata; --usa-modello-attuale la fa proseguire con quelli scelti adesso.
 
 Se l'entità non esiste, viene aggiunta a entities.ini una scheda da completare con le varianti del nome.
+
+Registro (lavoro 40, C3): tutto ciò che la ricerca stampa, compresi i passi di estrazione, lettura e risposta, va
+anche in registro.txt della sua cartella, riga per riga con l'ora, scritto subito; a ogni fase la sua durata.
 """
 import argparse
 import configparser
+import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 try:                                   # messaggi a schermo nell'ordine giusto anche con i sottoprocessi
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(line_buffering=True, errors="replace")
 except AttributeError:
     pass
 sys.path.insert(0, str(CARTELLA))
@@ -122,7 +127,7 @@ MARCATORE_SINTESI = "<!-- sintesi: non generata -->"
 
 def fissa_profili(cart, cfg, usa_attuale=False):
     """Profili di modello della ricerca, in <cartella>/modelli.json, indicati ai sottoprocessi con
-    AIRCHIVIST_PROFILI_RICERCA. Una ricerca interrotta (stato «in corso») riprende con i profili con cui era
+    PRESSMARK_PROFILI_RICERCA. Una ricerca interrotta (stato «in corso») riprende con i profili con cui era
     partita; una ricerca nuova, o con usa_attuale, usa quelli scelti adesso. Restituisce {ruolo: nome}."""
     import datetime as dt
     import json
@@ -167,12 +172,43 @@ def chiudi_profili(cart):
     f.write_text(json.dumps(dati, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+class Registro:
+    """Copia di ciò che la ricerca stampa in registro.txt della sua cartella, con l'ora a ogni riga (C3)."""
+    def __init__(self, f, uscita):
+        self.f, self.uscita, self.a_capo = open(f, "a", encoding="utf-8"), uscita, True
+
+    def write(self, s):
+        self.uscita.write(s)
+        for pezzo in s.splitlines(True):
+            if self.a_capo:
+                self.f.write(time.strftime("%d/%m %H:%M:%S "))
+            self.f.write(pezzo)
+            self.a_capo = pezzo.endswith("\n")
+        self.flush()
+        return len(s)
+
+    def flush(self):
+        self.uscita.flush()
+        self.f.flush()
+
+    def __getattr__(self, nome):
+        return getattr(self.uscita, nome)
+
+
 def esegui(*argomenti):
     # -u: con l'uscita in una pipe (ricerche avviate da lavori.py) le righe «[n/m]» devono arrivare subito,
-    # altrimenti l'avanzamento resta fermo per tutta la lettura dei passaggi
-    r = subprocess.run([sys.executable, "-u", *map(str, argomenti)], cwd=CARTELLA)
-    if r.returncode != 0:
-        sys.exit(r.returncode)
+    # altrimenti l'avanzamento resta fermo per tutta la lettura dei passaggi. L'uscita del passo passa di qui per
+    # finire anche nel registro della ricerca.
+    t0 = time.time()
+    p = subprocess.Popen([sys.executable, "-u", *map(str, argomenti)], cwd=CARTELLA, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
+                         env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    for riga in p.stdout:
+        sys.stdout.write(riga)
+    codice = p.wait()
+    print(f"   durata: {(time.time() - t0) / 60:.1f} min" + (f" (uscita con codice {codice})" if codice else ""))
+    if codice != 0:
+        sys.exit(codice)
 
 
 def main():
@@ -242,6 +278,9 @@ def main():
     with open(ini, "w", encoding="utf-8") as f:
         singola.write(f)
 
+    sys.stdout = Registro(cart / "registro.txt", sys.stdout)
+    print(f"--- ricerca «{args.nome}»" + (f": {args.domanda}" if args.domanda else "")
+          + f" (registro: {cart / 'registro.txt'})")
     finestra = cfg.get("estrazione", "finestra", fallback="400")
     print("== 1/3 Estrazione")
     from indice import percorso_indice
@@ -256,8 +295,10 @@ def main():
         filtra_passaggi(cart, args.dal, args.al, [x for x in (args.fonti or "").split(";") if x.strip()])
     if args.evoluzione and len(nomi) > 1:
         riduci_passaggi(cart, nomi, int(finestra), args.collegate_fino_a)
-    if args.rifai and (cart / "classificati.jsonl").exists():
-        (cart / "classificati.jsonl").unlink()
+    if args.rifai:
+        for nome in ("classificati.jsonl", "smistamento.jsonl"):
+            if (cart / nome).exists():
+                (cart / nome).unlink()
     extra = ["--config", args.config] if args.config else []
     fissa_profili(cart, cfg, args.usa_modello_attuale or args.rifai or bool(args.rileggi_modello))
     print("== 2/3 Smistamento e analisi dei passaggi")

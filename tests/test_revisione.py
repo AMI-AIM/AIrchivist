@@ -2,7 +2,7 @@
 Test dell'importazione guidata con tabella di revisione (lavoro 29: revisione.py, importa.py proponi | applica |
 rivedi) su un corpus di prova misto generato al momento: fascicoli di un periodico con la data nel nome (testo
 nativo), un fascicolo in scansione senza testo, un articolo nativo con etichette di pagina e metadati, un volume
-con i numeri di pagina stampati, un file di testo. Progetto temporaneo (AIRCHIVIST_PROGETTO), nessun OCR.
+con i numeri di pagina stampati, un file di testo. Progetto temporaneo (PRESSMARK_PROGETTO), nessun OCR.
 """
 import argparse
 import csv

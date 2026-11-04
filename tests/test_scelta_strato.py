@@ -117,5 +117,22 @@ class Pdf(unittest.TestCase):
         self.assertEqual((rap["metodo"], rap["scelte_strato"], ocr.letture), ("testo del PDF", [], 0))
 
 
+class Distanza(unittest.TestCase):
+    """G5: la distanza a vettori di bit dà lo stesso risultato della tabella completa, in molto meno tempo."""
+    def test_come_la_tabella(self):
+        import random
+        import time
+        import confronto_testi as C
+        caso = random.Random(40)
+        for _ in range(2000):
+            a, b = ("".join(caso.choice("abë ç") for _ in range(caso.randint(0, 30))) for _ in range(2))
+            self.assertEqual(C.distanza(a, b), C.distanza_tabella(a, b), (a, b))
+        self.assertEqual(C.distanza("Dinuçi", "Dinucci"), 2)
+        pagina = "".join(caso.choice("abcdefghijklmnopqrstuvwxyzë ") for _ in range(3000))
+        t0 = time.time()
+        self.assertEqual(C.distanza(pagina, pagina[:1500] + "x" + pagina[1501:]), 1)
+        self.assertLess(time.time() - t0, 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()

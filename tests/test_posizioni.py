@@ -1,7 +1,7 @@
 """
 Test delle posizioni dei file dell'utente (posizioni.py, applicazione installabile, fase 1):
 - modo sviluppo: configurazione e profili in scripts, progetti in projects/, come sempre;
-- modo installato (AIRCHIVIST_DATI o installazione.ini): le scelte dell'utente nel suo config.ini, letto sopra i
+- modo installato (PRESSMARK_DATI o installazione.ini): le scelte dell'utente nel suo config.ini, letto sopra i
   valori predefiniti del programma, che non si modificano mai; models.ini e progetti nuovi fuori dal programma;
 - un file indicato a mano (prove, --config) si legge da solo anche da installato;
 - l'interfaccia, da installato, scrive il progetto scelto nella cartella dell'utente.
@@ -116,13 +116,13 @@ class Posizioni(unittest.TestCase):
         self.assertIn("mio", llm.leggi_profili(P.leggi_config()))
 
     def test_marcatore_dell_installatore(self):
-        """installazione.ini senza voci: cartella del sistema e Documenti/AIrchivist; con le voci: dove indicate
+        """installazione.ini senza voci: cartella del sistema e Documenti/Pressmark; con le voci: dove indicate
         (relative alla cartella del programma, per la copia portatile)."""
         self.marcatore.write_text("[installazione]\n", encoding="utf-8")
         with mock.patch.object(Q, "documenti", return_value=self.tmp / "Documenti"):
             self.assertTrue(Q.installato())
             self.assertEqual(Q.cartella_dati(), Q.cartella_sistema())
-            self.assertEqual(Q.cartella_progetti(), self.tmp / "Documenti" / "AIrchivist")
+            self.assertEqual(Q.cartella_progetti(), self.tmp / "Documenti" / "Pressmark")
         self.marcatore.write_text("[installazione]\ndati = dati\nprogetti = %s\n" % (self.tmp / "Ricerche"),
                                   encoding="utf-8")
         self.assertEqual(Q.cartella_dati(), (Q.CARTELLA.parent / "dati").resolve())
@@ -133,21 +133,33 @@ class Posizioni(unittest.TestCase):
     def test_cartella_del_sistema(self):
         casa = Path.home()
         with mock.patch.dict(os.environ, {"APPDATA": str(self.tmp / "Roaming")}):
-            self.assertEqual(Q.cartella_sistema("win32"), self.tmp / "Roaming" / "AIrchivist")
-        self.assertEqual(Q.cartella_sistema("darwin"), casa / "Library" / "Application Support" / "AIrchivist")
+            self.assertEqual(Q.cartella_sistema("win32"), self.tmp / "Roaming" / "Pressmark")
+        self.assertEqual(Q.cartella_sistema("darwin"), casa / "Library" / "Application Support" / "Pressmark")
         with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.tmp / "cfg")}):
-            self.assertEqual(Q.cartella_sistema("linux"), self.tmp / "cfg" / "airchivist")
+            self.assertEqual(Q.cartella_sistema("linux"), self.tmp / "cfg" / "pressmark")
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("XDG_CONFIG_HOME", None)
-            self.assertEqual(Q.cartella_sistema("linux"), casa / ".config" / "airchivist")
+            self.assertEqual(Q.cartella_sistema("linux"), casa / ".config" / "pressmark")
         self.assertTrue(Q.documenti().is_absolute())
+
+    def test_cartella_col_nome_di_prima(self):
+        roaming = self.tmp / "Roaming"
+        (roaming / "AIrchivist").mkdir(parents=True)
+        with mock.patch.dict(os.environ, {"APPDATA": str(roaming)}):
+            self.assertEqual(Q.cartella_sistema("win32"), roaming / "AIrchivist")   # c'è solo quella di prima
+            (roaming / "Pressmark").mkdir()
+            self.assertEqual(Q.cartella_sistema("win32"), roaming / "Pressmark")    # la nuova prevale
+        cfg = self.tmp / "cfg"
+        (cfg / "airchivist").mkdir(parents=True)
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg)}):
+            self.assertEqual(Q.cartella_sistema("linux"), cfg / "airchivist")
 
     def test_interfaccia_da_installato(self):
         """L'interfaccia apre la configurazione dell'utente, propone i progetti nella sua cartella e vi scrive la
         scelta del progetto, lasciando intatto il config.ini del programma."""
         import app as A
         dati = self.installa_in()
-        progetti = self.tmp / "Documenti" / "AIrchivist"
+        progetti = self.tmp / "Documenti" / "Pressmark"
         progetto = progetti / "Prima"
         P.cmd_nuovo(mock.Mock(cartella=str(progetto), nome="Prima", descrizione=""), stampa=lambda t: None)
         vecchio = I.FILE_CONFIG

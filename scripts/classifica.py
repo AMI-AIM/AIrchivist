@@ -2,7 +2,11 @@
 """
 FASE 2 - Lettura dei passaggi con un modello, in due passaggi:
   1. smistamento: pertinente / no / incerto, più passaggi per richiesta ([estrazione] lotto_smistamento)
-  2. analisi dei pertinenti: tipo di menzione, traduzione, sintesi, un passaggio per richiesta
+  2. analisi dei pertinenti: tipo di menzione, traduzione, sintesi, più passaggi della stessa entità per richiesta
+     ([estrazione] lotto_analisi e lotto_analisi_caratteri; lavoro 40, G2)
+Le richieste partono in parallelo, quante ne dice il profilo del modello («paralleli», G3); le letture si scrivono
+una alla volta. Gli esiti dello smistamento restano in smistamento.jsonl finché il passaggio non è letto per intero:
+un'interruzione durante l'analisi non fa ripetere lo smistamento.
 Per risparmiare richieste:
   - i passaggi già letti in qualsiasi ricerca precedente vengono presi dall'archivio unico (archivio.py);
   - se il passaggio contiene una forma inequivocabile del nome (es. 雅克·格里巴, "Jacques Grippa",
@@ -25,12 +29,18 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import closing
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:                    # C3: anche con l'uscita in un file o in una pipe l'avanzamento si vede riga per riga
+    sys.stdout.reconfigure(line_buffering=True)
+except AttributeError:
+    pass
 from estrai_occorrenze import carica_entita, is_cjk
 from glossario import blocco, carica_glossario
-from llm import ErroreModello, ModelloNonAmmesso
+from llm import ErroreModello, ModelloNonAmmesso, ServizioFermo, avviso
 from archivio import append_jsonl, apri, escluso, letto_da, modelli_lettori, provenienza
 
 
@@ -153,6 +163,15 @@ SCHEMA_ANALISI = {
     },
     "required": ["tipo_menzione", "traduzione_it", "sintesi_it", "nuove_varianti", "altri_nominati",
                  "ruolo_entita", "tono", "evento"],
+}
+
+SCHEMA_ANALISI_LOTTO = {
+    "type": "object",
+    "properties": {"risultati": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"n": {"type": "integer"}, **SCHEMA_ANALISI["properties"]},
+        "required": ["n"] + SCHEMA_ANALISI["required"]}}},
+    "required": ["risultati"],
 }
 
 SISTEMA = ("Sei un assistente di ricerca storica. Lavori solo sul testo che ti viene dato, "
@@ -316,16 +335,42 @@ FRASE DA TRADURRE:
 {frase}
 
 Compiti:
-1. "tipo_menzione": uno tra {', '.join(TIPI)}.
+{COMPITI_ANALISI}
+
+Rispondi con JSON."""
+
+
+def prompt_analisi_lotto(gruppo, scheda, frasi, n=0, glossario=None):
+    """Analisi di più passaggi della stessa entità con una sola richiesta (G2): stessi compiti dell'analisi di un
+    passaggio, una voce per passaggio. I passaggi dello stesso documento stanno nello stesso lotto (la lettura va
+    in ordine di file): il modello li legge insieme, ma ciò che scrive di un passaggio deve risultare da quello."""
+    testi = [ritaglia(rec, n) for rec in gruppo]
+    blocchi = "\n\n".join(
+        f"[{k}] Fonte: {rec.get('citazione') or rec['fonte']} (data: {rec.get('data') or 's.d.'})\n{avviso_nota(rec)}"
+        f"PASSAGGIO (le occorrenze sono tra ⟦ e ⟧):\n{testo}\n\nFRASE DA TRADURRE:\n{frase}"
+        for k, (rec, testo, frase) in enumerate(zip(gruppo, testi, frasi), 1))
+    return f"""{blocco(glossario or [], "".join(testi) + "".join(frasi))}Entità cercata: {gruppo[0]['entita']}
+Note: {scheda['note'] or '-'}
+
+Seguono {len(gruppo)} passaggi numerati, ciascuno con la sua fonte e la sua FRASE DA TRADURRE. Analizza ogni passaggio per conto suo: ciò che scrivi di un passaggio deve risultare da quel passaggio, anche quando più passaggi vengono dallo stesso documento.
+
+{blocchi}
+
+Compiti, per OGNI passaggio:
+{COMPITI_ANALISI}
+
+Rispondi con JSON: {{"risultati": [{{"n": 1, "tipo_menzione": "...", "traduzione_it": "...", "sintesi_it": "...", "nuove_varianti": [], "altri_nominati": [], "ruolo_entita": "", "tono": "...", "evento": "..."}}, ...]}}
+con una voce per ciascuno dei {len(gruppo)} passaggi, nello stesso ordine."""
+
+
+COMPITI_ANALISI = f"""1. "tipo_menzione": uno tra {', '.join(TIPI)}.
 2. "traduzione_it": traduzione italiana fedele della FRASE DA TRADURRE (non del passaggio intero). Per persone, partiti e testate usa i nomi del GLOSSARIO, se presenti. {REGOLA_DECLINAZIONI} Se un termine è incerto, segnalalo tra parentesi quadre.
 3. "sintesi_it": 1-3 frasi su ciò che il passaggio dice ESPLICITAMENTE dell'entità (chi, cosa, quando): ciò che fa, dice o riferisce. {REGOLA_DISCORSO} {REGOLA_ANNO} Nessuna informazione esterna.
 4. "nuove_varianti": altre forme del nome dell'entità presenti nel passaggio e non già note (lista vuota se nessuna).
 5. "altri_nominati": altre persone e organizzazioni nominate nel passaggio accanto all'entità, ciascuna con il ruolo o il rapporto con l'entità come risulta dal testo. Se la stessa organizzazione compare più volte con firmatari o dirigenti diversi, riporta ogni voce separatamente.
 6. "ruolo_entita": titolo, carica o qualifica che il passaggio attribuisce all'entità (es. "segretario del Comitato centrale", "organo del partito"); stringa vuota se non indicato.
 7. "tono": come la fonte presenta l'entità: "elogiativo", "neutro", "critico" oppure "non determinabile".
-8. "evento": in poche parole, l'evento o l'occasione a cui il passaggio si riferisce, con la data se indicata.
-
-Rispondi con JSON."""
+8. "evento": in poche parole, l'evento o l'occasione a cui il passaggio si riferisce, con la data se indicata."""
 
 
 def prompt_lotto(gruppo, scheda, n=0):
@@ -371,9 +416,9 @@ def smista_lotto(gruppo, scheda, llm_s, n=0):
                     esiti[gruppo[k - 1]["id"]] = (voce["pertinente"], voce.get("motivazione", ""),
                                                   llm_s.ultimo_modello)
         except ErroreModello as e:
-            if isinstance(e, ModelloNonAmmesso):
+            if isinstance(e, (ModelloNonAmmesso, ServizioFermo)):
                 raise
-            print(f"    smistamento a lotti non riuscito ({str(e)[:80]}): procedo uno per uno")
+            avviso(f"    smistamento a lotti non riuscito ({str(e)[:80]}): procedo uno per uno")
     for rec in gruppo:
         if rec["id"] not in esiti:
             esiti[rec["id"]] = smista_uno(rec, scheda, llm_s, n)
@@ -383,10 +428,8 @@ def smista_lotto(gruppo, scheda, llm_s, n=0):
 def analizza(rec, scheda, esito, llm_a, n=0, glossario=None):
     """Completa la lettura di un passaggio già smistato: esito = (pertinente, motivazione, modello)."""
     t0 = time.time()
-    pert, motivazione, mod_s = esito
-    a = {"pertinente": pert, "motivazione": motivazione, "tipo_menzione": "",
-         "citazione_testuale": "", "traduzione_it": "", "sintesi_it": "", "nuove_varianti": [],
-         "pagina": pagina(rec), "modello_smistamento": mod_s}
+    pert = esito[0]
+    a = lettura_iniziale(rec, esito)
     if pert in ("sì", "incerto") and e_sommario(rec):
         a.update({"tipo_menzione": "elenco", "citazione_testuale": frase_chiave(rec),
                   "traduzione_it": "(voce di sommario o di elenco: non tradotta)",
@@ -398,28 +441,136 @@ def analizza(rec, scheda, esito, llm_a, n=0, glossario=None):
     elif pert in ("sì", "incerto"):
         frase = frase_chiave(rec)
         r = llm_a.json(SISTEMA, prompt_analisi(rec, scheda, frase, 2 * n if n else 0, glossario), SCHEMA_ANALISI)
-        a.update({
-            "tipo_menzione": r.get("tipo_menzione", "altro"),
-            "citazione_testuale": frase,
-            "traduzione_it": r.get("traduzione_it", ""),
-            "sintesi_it": r.get("sintesi_it", ""),
-            "nuove_varianti": [v for v in (r.get("nuove_varianti") or [])
-                               if isinstance(v, str) and v and v not in scheda["varianti"]],
-            "altri_nominati": [x for x in (r.get("altri_nominati") or [])
-                               if isinstance(x, dict) and x.get("nome")],
-            "ruolo_entita": (r.get("ruolo_entita") or "").strip(),
-            "tono": r.get("tono") if r.get("tono") in TONI else "non determinabile",
-            "evento": (r.get("evento") or "").strip(),
-            "modello_analisi": llm_a.ultimo_modello,
-        })
-    a["citazione_verificata"] = verifica(rec, a) if pert != "no" else False
+        risposta_analisi(a, r, frase, scheda, llm_a.ultimo_modello)
+    return chiudi_analisi(rec, a, t0)
+
+
+def lettura_iniziale(rec, esito):
+    pert, motivazione, mod_s = esito
+    return {"pertinente": pert, "motivazione": motivazione, "tipo_menzione": "",
+            "citazione_testuale": "", "traduzione_it": "", "sintesi_it": "", "nuove_varianti": [],
+            "pagina": pagina(rec), "modello_smistamento": mod_s}
+
+
+def risposta_analisi(a, r, frase, scheda, modello):
+    """La risposta del modello all'analisi di un passaggio (r) nella lettura a."""
+    a.update({
+        "tipo_menzione": r.get("tipo_menzione", "altro"),
+        "citazione_testuale": frase,
+        "traduzione_it": r.get("traduzione_it", ""),
+        "sintesi_it": r.get("sintesi_it", ""),
+        "nuove_varianti": [v for v in (r.get("nuove_varianti") or [])
+                           if isinstance(v, str) and v and v not in scheda["varianti"]],
+        "altri_nominati": [x for x in (r.get("altri_nominati") or [])
+                           if isinstance(x, dict) and x.get("nome")],
+        "ruolo_entita": (r.get("ruolo_entita") or "").strip(),
+        "tono": r.get("tono") if r.get("tono") in TONI else "non determinabile",
+        "evento": (r.get("evento") or "").strip(),
+        "modello_analisi": modello,
+    })
+
+
+def chiudi_analisi(rec, a, t0, secondi=None):
+    a["citazione_verificata"] = verifica(rec, a) if a["pertinente"] != "no" else False
     a["provenienza"] = provenienza(a)
-    a["secondi"] = round(time.time() - t0, 1)
+    a["secondi"] = round(time.time() - t0 if secondi is None else secondi, 1)
     return a
 
 
-PERMANENTE = re.compile(r"errore (401|403|404)|non ammess|Manca la chiave|Manca 'modello|Backend sconosciuto",
-                        re.IGNORECASE)
+def serve_analisi(rec, esito):
+    """Vero se la lettura del passaggio richiede l'analisi del modello (pertinente o incerto, non un sommario)."""
+    return esito[0] in ("sì", "incerto") and not e_sommario(rec)
+
+
+def lotti_analisi(da_analizzare, lotto, caratteri, n=0):
+    """Gruppi per l'analisi a lotti (G2): passaggi della stessa entità, nell'ordine di lettura (così i passaggi
+    dello stesso documento stanno insieme), al più «lotto» per gruppo e al più «caratteri» di testo inviato."""
+    gruppi = []
+    for rec in da_analizzare:
+        lungo = len(ritaglia(rec, n)) + len(frase_chiave(rec))
+        g = gruppi[-1] if gruppi else None
+        if (g and len(g["passaggi"]) < lotto and g["passaggi"][0]["entita"] == rec["entita"]
+                and g["caratteri"] + lungo <= caratteri):
+            g["passaggi"].append(rec)
+            g["caratteri"] += lungo
+        else:
+            gruppi.append({"passaggi": [rec], "caratteri": lungo})
+    return [g["passaggi"] for g in gruppi]
+
+
+def analizza_lotto(gruppo, schede, esiti, llm_a, n=0, glossario=None):
+    """Analisi di un gruppo di passaggi già smistati con una sola richiesta (G2). Restituisce (letture, errori):
+    {id: lettura} e [(passaggio, ErroreModello)]. I passaggi a cui la risposta del lotto non dà una voce completa
+    si analizzano uno per uno; un lotto che non riesce (JSON troncato, forma inattesa) anche."""
+    if len(gruppo) == 1:
+        try:
+            return {gruppo[0]["id"]: analizza(gruppo[0], schede[gruppo[0]["entita"]], esiti[gruppo[0]["id"]], llm_a,
+                                              n, glossario)}, []
+        except ErroreModello as e:
+            if isinstance(e, (ModelloNonAmmesso, ServizioFermo)):
+                raise
+            return {}, [(gruppo[0], e)]
+    t0 = time.time()
+    scheda = schede[gruppo[0]["entita"]]
+    frasi = [frase_chiave(rec) for rec in gruppo]
+    letture = {}
+    try:
+        # una risposta per passaggio: la lunghezza massima cresce con il lotto, fino a 8000 token (molti servizi
+        # gratuiti non ne danno di più); una sola richiesta: se il lotto non riesce si legge uno per uno
+        r = llm_a.json(SISTEMA, prompt_analisi_lotto(gruppo, scheda, frasi, 2 * n if n else 0, glossario),
+                       SCHEMA_ANALISI_LOTTO, tentativi_forma=1,
+                       max_token=max(llm_a.max_token, min(llm_a.max_token * len(gruppo), 8000)))
+        modello, secondi = llm_a.ultimo_modello, (time.time() - t0) / len(gruppo)
+        for voce in r.get("risultati") or []:
+            try:
+                k = int(voce.get("n"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if not (1 <= k <= len(gruppo)) or gruppo[k - 1]["id"] in letture:
+                continue
+            if not all(isinstance(voce.get(c), str) and voce[c].strip() for c in ("traduzione_it", "sintesi_it")):
+                continue
+            rec = gruppo[k - 1]
+            a = lettura_iniziale(rec, esiti[rec["id"]])
+            risposta_analisi(a, voce, frasi[k - 1], scheda, modello)
+            a["lotto"] = len(gruppo)
+            letture[rec["id"]] = chiudi_analisi(rec, a, t0, secondi)
+    except ErroreModello as e:
+        if isinstance(e, (ModelloNonAmmesso, ServizioFermo)):
+            raise
+        avviso(f"    analisi a lotti non riuscita ({str(e)[:80]}): procedo uno per uno")
+    errori = []
+    mancanti = [rec for rec in gruppo if rec["id"] not in letture]
+    if mancanti and len(mancanti) < len(gruppo):
+        avviso(f"    analisi a lotti: {len(mancanti)} passaggi su {len(gruppo)} senza risposta completa, li leggo uno per uno")
+    for rec in mancanti:
+        try:
+            letture[rec["id"]] = analizza(rec, schede[rec["entita"]], esiti[rec["id"]], llm_a, n, glossario)
+        except ErroreModello as e:
+            if isinstance(e, (ModelloNonAmmesso, ServizioFermo)):
+                raise
+            errori.append((rec, e))
+    return letture, errori
+
+
+def in_parallelo(lavori, funzione, quanti):
+    """(lavoro, risultato, errore) di ogni lavoro, man mano che finiscono, con al più «quanti» richieste in corso
+    (G3). Le letture si scrivono nel thread di chi legge, una alla volta. Se chi legge smette (interruzione), i
+    lavori non ancora partiti si annullano e si aspetta solo la fine di quelli in corso."""
+    ex = ThreadPoolExecutor(max_workers=max(1, quanti))
+    try:
+        futuri = {ex.submit(funzione, l): l for l in lavori}
+        for f in as_completed(futuri):
+            try:
+                yield futuri[f], f.result(), None
+            except ErroreModello as e:
+                yield futuri[f], None, e
+    finally:
+        ex.shutdown(wait=True, cancel_futures=True)
+
+
+PERMANENTE = re.compile(r"errore (401|403|404)|non ammess|Manca la chiave|Manca 'modello|Backend sconosciuto|"
+                        r"rifiuta la chiave|non trova il modello", re.IGNORECASE)
 
 
 def scrivi_non_letti(cart, n):
@@ -546,15 +697,16 @@ def scrivi_rapporto(classificati, path):
     Path(path).write_text("\n".join(out), encoding="utf-8")
 
 
-def stima(da_fare, n, llm, sicuri=0, lotto=1, sommari=0):
-    """Stima approssimativa di richieste e token, per sapere in anticipo quanto durerà."""
+def stima(da_fare, n, llm, sicuri=0, lotto=1, sommari=0, lotto_analisi=1):
+    """Stima approssimativa di richieste e token, per sapere in anticipo quanto durerà. sicuri: passaggi che non
+    passano dallo smistamento (forma inequivocabile, già pertinenti, smistati in un lancio precedente)."""
     if not da_fare:
         return
     da_smistare = len(da_fare) - sicuri
     tok = sum(len(ritaglia(p, n)) for p in da_fare) * 0.9 + 450 * -(-da_smistare // max(1, lotto))  # smistamento
     analisi = max(0, int(sicuri + 0.5 * da_smistare) - sommari)                 # circa metà pertinenti
     tok += analisi * 1500
-    richieste = -(-da_smistare // max(1, lotto)) + analisi
+    richieste = -(-da_smistare // max(1, lotto)) + -(-analisi // max(1, lotto_analisi))
     msg = f"Stima approssimativa: {richieste} richieste e {int(tok / 1000)} mila token"
     if llm.backend == "openai" and "groq" in getattr(llm, "url", ""):
         msg += f"; con il piano gratuito di Groq (circa 200 mila token al giorno) servono circa {max(1, round(tok / 200000))} giorni"
@@ -682,8 +834,11 @@ def main():
         if da_fare:
             try:
                 llm_s, llm_a = LLM(cfg, "smistamento"), LLM(cfg, "analisi")
-                llm_s.controlla()
-                llm_a.controlla()
+                # C1: una richiesta vera, non solo l'elenco dei modelli: un router può rispondere a /models e non
+                # ancora alle richieste. Entro 40 s si sa se il servizio legge.
+                llm_s.prova(secondi=40)
+                if llm_a.profilo != llm_s.profilo:
+                    llm_a.prova(secondi=40)
             except ErroreModello as e:
                 print(f"ERRORE: {e}")
                 scrivi_non_letti(cart, len(da_fare))
@@ -713,13 +868,31 @@ def main():
                 return False
             amb = ambigue.get(p["entita"], set())
             return any(forma_sicura(v) and normalizza(v) not in amb for v in p.get("varianti_trovate") or [])
-        n_sicuri = sum(1 for p in da_fare if sicuro(p))
+        # esiti dello smistamento già noti: pertinenti di una lettura precedente, smistati in un lancio interrotto
+        # prima dell'analisi (smistamento.jsonl), forme inequivocabili del nome
+        f_smist = cart / "smistamento.jsonl"
+        ids_da_fare = {p["id"] for p in da_fare}
+        esiti = {} if args.rileggi_modello else {r["id"]: tuple(r["esito"]) for r in carica_jsonl(f_smist)
+                                                 if r.get("id") in ids_da_fare}
+        n_ripresi = len(esiti)
+        n_sicuri = 0
+        for p in da_fare:
+            if p["id"] in gia_pertinenti:
+                esiti[p["id"]] = ("sì", gia_pertinenti[p["id"]], "lettura precedente")
+            elif p["id"] not in esiti and sicuro(p):
+                forma = next(v for v in p["varianti_trovate"] if forma_sicura(v))
+                esiti[p["id"]] = ("sì", f"forma inequivocabile del nome: {forma}", "regola (forma inequivocabile)")
+                n_sicuri += 1
         n_sommari = sum(1 for p in da_fare if e_sommario(p))
+        lotto_an = 1 if args.solo_smistamento else max(1, cfg.getint("estrazione", "lotto_analisi", fallback=3))
+        car_an = cfg.getint("estrazione", "lotto_analisi_caratteri", fallback=6000)
         print(f"Passaggi da leggere con il modello: {len(da_fare)} (già fatti: {len(fatti)}); "
-              f"con forma inequivocabile del nome: {n_sicuri}; voci di sommario: {n_sommari}; "
-              f"smistamento a lotti di {lotto}")
+              f"con forma inequivocabile del nome: {n_sicuri}; voci di sommario: {n_sommari}"
+              + (f"; già smistati in un lancio precedente: {n_ripresi}" if n_ripresi else "")
+              + f"; smistamento a lotti di {lotto}, analisi a lotti di {lotto_an}"
+              + (f", {llm_s.paralleli} richieste alla volta" if llm_s and llm_s.paralleli > 1 else ""))
         if llm_s:
-            stima(da_fare, n_mod, llm_s, n_sicuri, lotto, n_sommari)
+            stima(da_fare, n_mod, llm_s, len(esiti), lotto, n_sommari, lotto_an)
         t_inizio = time.time()
         errori_di_fila, ultimo_errore, fatti_ora, interrotto = 0, "", 0, False
 
@@ -733,6 +906,10 @@ def main():
                       "salvato con quel modello.")
                 permanente = True
                 return True
+            if isinstance(e, ServizioFermo):
+                print("Interrompo: il servizio non risponde. Rilancia lo stesso comando più tardi: la ricerca "
+                      "riprende da dove era arrivata.")
+                return True
             if PERMANENTE.search(str(e)):
                 permanente = True
             if errori_di_fila >= 3 or re.search(r"errore (401|403|404)", str(e)):
@@ -741,56 +918,81 @@ def main():
                 return True
             return False
 
-        i = 0
-        while i < len(da_fare) and not interrotto:
-            p = da_fare[i]
-            if p["id"] in gia_pertinenti:
-                gruppo = [p]
-                esiti = {p["id"]: ("sì", gia_pertinenti[p["id"]], "lettura precedente")}
-                i += 1
-            elif sicuro(p):
-                gruppo = [p]
-                forma = next(v for v in p["varianti_trovate"] if forma_sicura(v))
-                esiti = {p["id"]: ("sì", f"forma inequivocabile del nome: {forma}", "regola (forma inequivocabile)")}
-                i += 1
+        def salva(q, a):
+            nonlocal fatti_ora
+            if q["id"] in decisione_prec:
+                a["provenienza"]["decisione"] = decisione_prec[q["id"]]
+            rec = dict(q, analisi=a)
+            # append_jsonl: blocco inter-processo + fsync a ogni lettura. Il costo è trascurabile
+            # rispetto ai secondi della chiamata al modello, e una riga corrotta o persa vale quanto
+            # la quota API spesa per quella lettura.
+            append_jsonl(p_out, [riga_json(rec)])
+            fatti[q["id"]] = rec
+            if arch is not None and not args.solo_smistamento:
+                arch.aggiungi(q, a, origine=cart.name)
+            fatti_ora += 1
+            media = (time.time() - t_inizio) / fatti_ora
+            resto_min = media * (len(da_fare) - fatti_ora) / 60
+            mod = a.get("modello_analisi") or a.get("modello_smistamento", "")
+            print(f"  [{fatti_ora}/{len(da_fare)}] {q['data']} {q['file']} -> {a['pertinente']} "
+                  f"({a['secondi']}s, {mod}, fine stimata tra {resto_min:.0f} min)")
+
+        # 1. smistamento a lotti, più richieste alla volta; gli esiti si salvano subito in smistamento.jsonl
+        gruppi_s = []
+        for p in (p for p in da_fare if p["id"] not in esiti):
+            if gruppi_s and len(gruppi_s[-1]) < lotto and gruppi_s[-1][0]["entita"] == p["entita"]:
+                gruppi_s[-1].append(p)
             else:
-                gruppo, j = [p], i + 1
-                while (j < len(da_fare) and len(gruppo) < lotto and not sicuro(da_fare[j])
-                       and da_fare[j]["id"] not in gia_pertinenti and da_fare[j]["entita"] == p["entita"]):
-                    gruppo.append(da_fare[j])
-                    j += 1
-                i = j
-                try:
-                    esiti = smista_lotto(gruppo, schede[p["entita"]], llm_s, n_mod)
-                except ErroreModello as e:
-                    interrotto = errore(e, p)
-                    continue
-            for q in gruppo:
-                try:
-                    a = analizza(q, schede[q["entita"]], esiti[q["id"]],
-                                 None if args.solo_smistamento else llm_a, n_mod, glossario)
-                except ErroreModello as e:
-                    interrotto = errore(e, q)
+                gruppi_s.append([p])
+        if gruppi_s:
+            print(f"Smistamento: {sum(map(len, gruppi_s))} passaggi in {len(gruppi_s)} richieste")
+            with closing(in_parallelo(gruppi_s, lambda g: smista_lotto(g, schede[g[0]["entita"]], llm_s, n_mod),
+                                      llm_s.paralleli)) as risultati:
+                for k, (g, es, e) in enumerate(risultati, 1):
+                    if e:
+                        if errore(e, g[0]):
+                            interrotto = True
+                            break
+                        continue
+                    errori_di_fila = 0
+                    esiti.update(es)
+                    append_jsonl(f_smist, [riga_json({"id": i, "esito": list(v)}) for i, v in es.items()])
+                    conta = Counter(v[0] for v in es.values())
+                    print(f"  smistamento {k}/{len(gruppi_s)}: {conta.get('sì', 0)} pertinenti, "
+                          f"{conta.get('incerto', 0)} incerti, {conta.get('no', 0)} non pertinenti")
+
+        # 2. passaggi che non servono al modello: non pertinenti, voci di sommario, solo smistamento
+        analisi_ids = set()
+        for q in da_fare:
+            if q["id"] not in esiti:
+                continue
+            if not args.solo_smistamento and serve_analisi(q, esiti[q["id"]]):
+                analisi_ids.add(q["id"])
+            else:
+                salva(q, analizza(q, schede[q["entita"]], esiti[q["id"]], None, n_mod, glossario))
+
+        # 3. analisi a lotti dei pertinenti e degli incerti, più richieste alla volta
+        if analisi_ids and not interrotto:
+            gruppi_a = lotti_analisi([q for q in da_fare if q["id"] in analisi_ids], lotto_an, car_an,
+                                     2 * n_mod if n_mod else 0)
+            print(f"Analisi: {len(analisi_ids)} passaggi in {len(gruppi_a)} richieste")
+            with closing(in_parallelo(gruppi_a, lambda g: analizza_lotto(g, schede, esiti, llm_a, n_mod, glossario),
+                                      llm_a.paralleli)) as risultati:
+                for g, r, e in risultati:
+                    if e:
+                        if errore(e, g[0]):
+                            interrotto = True
+                            break
+                        continue
+                    letture, errori = r
+                    for q in g:
+                        if q["id"] in letture:
+                            errori_di_fila = 0
+                            salva(q, letture[q["id"]])
+                    for q, e2 in errori:
+                        interrotto = errore(e2, q) or interrotto
                     if interrotto:
                         break
-                    continue
-                errori_di_fila = 0
-                if q["id"] in decisione_prec:
-                    a["provenienza"]["decisione"] = decisione_prec[q["id"]]
-                rec = dict(q, analisi=a)
-                # append_jsonl: blocco inter-processo + fsync a ogni lettura. Il costo è trascurabile
-                # rispetto ai secondi della chiamata al modello, e una riga corrotta o persa vale quanto
-                # la quota API spesa per quella lettura.
-                append_jsonl(p_out, [riga_json(rec)])
-                fatti[q["id"]] = rec
-                if arch is not None and not args.solo_smistamento:
-                    arch.aggiungi(q, a, origine=cart.name)
-                fatti_ora += 1
-                media = (time.time() - t_inizio) / fatti_ora
-                resto_min = media * (len(da_fare) - fatti_ora) / 60
-                mod = a.get("modello_analisi") or a.get("modello_smistamento", "")
-                print(f"  [{fatti_ora}/{len(da_fare)}] {q['data']} {q['file']} -> {a['pertinente']} "
-                      f"({a['secondi']}s, {mod}, fine stimata tra {resto_min:.0f} min)")
 
     # passaggi contenuti in un altro passaggio: stessa valutazione di quello, senza nuova analisi
     for p in passaggi:

@@ -1,6 +1,6 @@
 """
 Test del server MCP generico (mcp_server.py, istruzioni.py): il server avviato davvero in stdio su un progetto
-nuovo (variabile AIRCHIVIST_PROGETTO), con le istruzioni composte dai profili e da istruzioni.md, il prompt
+nuovo (variabile PRESSMARK_PROGETTO), con le istruzioni composte dai profili e da istruzioni.md, il prompt
 «istruzioni», i 14 strumenti e i nomi di prima accettati come alias.
 """
 import argparse
@@ -33,7 +33,7 @@ class ServerMcp(unittest.TestCase):
                                                           "Cita sempre la Gazzetta per prima.\n", encoding="utf-8")
         (radice / "project.ini").write_text("[progetto]\nnome = Stampa di prova\ndescrizione = Solo un test.\n"
                                             "[mcp]\nlingua = inglese\nattesa_massima = 20\n", encoding="utf-8")
-        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", AIRCHIVIST_PROGETTO=str(radice))
+        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PRESSMARK_PROGETTO=str(radice))
         messaggi = [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}},
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -121,8 +121,8 @@ class ServerMcp(unittest.TestCase):
 class Lunghezza(unittest.TestCase):
     """Risultati entro il limite del client (Jan taglia a 8000 caratteri): si accorciano le parti lunghe."""
     def setUp(self):
-        import mcp_server
-        self.M = mcp_server
+        import strumenti
+        self.M = strumenti
 
     def test_corto_invariato(self):
         out = {"finito": True, "risposta": "breve"}

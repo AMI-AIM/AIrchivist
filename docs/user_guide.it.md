@@ -1,4 +1,4 @@
-# Ricerca nelle fonti: istruzioni
+# Pressmark: guida d'uso
 
 Per cominciare in pochi minuti: [`quickstart.it.md`](quickstart.it.md). Se qualcosa non va:
 [`troubleshooting.it.md`](troubleshooting.it.md). In inglese: [`user_guide.md`](user_guide.md).
@@ -21,16 +21,19 @@ invece di `python`. I percorsi sono scritti con `/`, che vale anche su Windows.
 ## Organizzazione delle cartelle
 
 ```
-AIrchivist/                 il repository (il motore: si può pubblicare)
+Pressmark/                  il repository (il motore: si può pubblicare)
   README.it.md, README.md   presentazione (in italiano e in inglese)
   LICENSE, requirements.txt licenza (AGPL-3.0) e librerie facoltative
-  docs/                     documentazione: primi passi, questa guida, problemi frequenti, documenti di progetto
+  assets/marchio/           logotipo e favicon di Pressmark, versione chiara e scura (SVG)
+  docs/                     documentazione: primi passi, questa guida, problemi frequenti
   tests/                    test automatici (python -m unittest discover -s tests); test_project/: progetto di prova
   scripts/
     installa.py             avvio guidato, librerie, controllo dell'ambiente, profili dei modelli, client di chat
     app.py, interfaccia/    l'interfaccia nel browser (server locale e pagina)
     conversazione.py        la conversazione sulle fonti dell'interfaccia e la verifica delle sue citazioni
-    mcp_server.py           il server che collega la chat al motore; istruzioni.py: le regole che consegna
+    strumenti.py            gli strumenti del motore (interfaccia, conversazione, server MCP); istruzioni.py:
+                            le regole per il modello della chat
+    mcp_server.py           il server MCP facoltativo, per usare gli strumenti da un client di chat esterno
     ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
     glossario.py, archivio.py, schede.py, varianti.py, llm.py   le parti del motore
@@ -183,7 +186,7 @@ se sono misurati su queste fonti.
 **Configurazione precedente.** Se in `[modello]` non c'è nessun profilo scelto, vale ancora la configurazione di
 prima: voce `backend` e sezioni `[anthropic]`, `[openai]`, `[router]`, `[ollama]` di `config.ini`.
 `python installa.py modello converti` la trasforma in profili: mostra che cosa farà, chiede conferma, salva una
-copia di `config.ini` e di `models.ini` (`<file>.airchivist-<data>.bak`) e sceglie il profilo che corrisponde al
+copia di `config.ini` e di `models.ini` (`<file>.pressmark-<data>.bak`) e sceglie il profilo che corrisponde al
 `backend` di prima.
 
 ### FreeLLMAPI (i modelli gratuiti in catena)
@@ -237,7 +240,7 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
   si può solo con il Tesseract incluso nel programma installato; con un Tesseract installato nel sistema (in
   Program Files) il pannello spiega come aggiungerle con il suo installatore. Da riga di comando:
   `installa.py lingue` (stato) e `installa.py lingue sqi chi_sim` (scaricamento). Se alle scansioni di una tabella
-  di importazione manca la lingua, lo dice già «Controlla senza scrivere».
+  di importazione manca la lingua, lo dice già «Prova senza scrivere».
 - **Menu «Progetto»**: i progetti della cartella `projects`; la scelta vale anche per la chat e la riga di comando
   (si scrive in `config.ini`, sezione `[progetto]`). «Nuovo progetto…» ne crea uno. Mentre una ricerca del progetto
   è in corso il cambio è bloccato.
@@ -259,15 +262,20 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
   Una ricerca avviata da qui si segue nel riquadro della ricerca. Con i piani gratuiti (per esempio Groq, 8000 token
   al minuto) una domanda può richiedere qualche attesa; se la richiesta è troppo grande per il servizio, il sistema
   accorcia i risultati degli strumenti e riprova.
-- **Importa**: la cartella dei documenti, «Proponi» (scrive la tabella di revisione, da correggere in Excel o
-  LibreOffice), poi «Controlla» e «Importa» (vedi «Importare nuove fonti»).
-- **Storico**: le risposte e le ricerche precedenti del progetto.
-- **Fonte**: la pagina di un documento, con la riga del passaggio evidenziata; si sfoglia per pagina stampata
-  (marcatori `[[p. N]]`) o, nei file senza marcatori, a blocchi di righe. Se l'originale è un PDF in `sources/` e
-  PyMuPDF è installato, «Pagina dell'originale» mostra anche l'immagine della pagina. Si apre dal pulsante «Apri la
-  fonte» accanto a ogni passaggio del documento della risposta, o dalla scheda «Passaggi».
-- **Passaggi**: i passaggi del documento aperto; per una ricerca quelli letti, con data, pertinenza, modello che li
-  ha letti e traduzione, filtrabili; un clic apre la fonte.
+- **Importazioni**: la cartella dei documenti (scritta o scelta con «Sfoglia…»), «Proponi i metadati» (scrive la
+  tabella di revisione, da correggere qui o in Excel o LibreOffice), poi «Prova senza scrivere» e «Importa»
+  (vedi «Importare nuove fonti»). Con «Sostituisci i documenti già importati» il sistema chiede conferma.
+- **Storico**: le risposte e le ricerche precedenti del progetto, con domanda ed entità; aprendone una, la
+  colonna destra la riassume e «Cerca di nuovo» riprende la stessa ricerca.
+- **Fonte**: la pagina di un documento. Se l'originale è un PDF in `sources/` e PyMuPDF è installato, la vista
+  principale è l'immagine della pagina, con sopra la riga citata; il testo trascritto (con la riga evidenziata e la
+  scheda tecnica del file) si apre sotto. Si sfoglia per pagina stampata (marcatori `[[p. N]]`, anche con le frecce
+  sinistra e destra) o, nei file senza marcatori, a blocchi di righe. Si apre dal pulsante «Apri la fonte» accanto
+  a ogni citazione del documento della risposta (la pagina della citazione), o dalla scheda «Passaggi»;
+  «Torna al documento» riporta da dove si è partiti.
+- **Passaggi**: i passaggi del documento aperto; per una ricerca quelli letti, raggruppati per documento, con
+  pagina, pertinenza, traduzione e modello che li ha letti, filtrabili (anche «Solo pertinenti»); un clic apre la
+  fonte.
 - **Glossario**: schede delle entità e profili delle serie del progetto, in sola lettura.
 
 Il server ascolta solo sul tuo computer (`127.0.0.1`) e accetta solo il browser aperto con il collegamento della
@@ -281,9 +289,9 @@ python installa.py client --verifica
 ```
 
 `client <nome>` (`jan`, `claude`, `lmstudio`) trova il file di configurazione del client sul sistema in uso,
-mostra che cosa cambierà e, con `--scrivi`, aggiunge o aggiorna solo la voce di AIrchivist (comando: il percorso
+mostra che cosa cambierà e, con `--scrivi`, aggiunge o aggiorna solo la voce di Pressmark (comando: il percorso
 completo dell'interprete Python; argomento: `scripts/mcp_server.py`; variabile `PYTHONUTF8=1`), dopo una copia di
-sicurezza (`<file>.airchivist-<data>.bak`) e la tua conferma. Le altre voci restano intatte. Senza `--scrivi`
+sicurezza (`<file>.pressmark-<data>.bak`) e la tua conferma. Le altre voci restano intatte. Senza `--scrivi`
 mostra solo che cosa scriverebbe. `client json` stampa il blocco `mcpServers` generico, da incollare in client
 diversi. `client --verifica` avvia il server come lo avvierebbe il client e controlla l'handshake MCP e l'elenco
 degli strumenti. Per i client che usano HTTP: `python mcp_server.py --http 8765`.
@@ -310,7 +318,7 @@ Dopo la scrittura riavvia il client. Claude Desktop esiste per Windows e macOS; 
    consegna il server (vedi «Istruzioni per l'IA della chat»): nelle istruzioni dell'assistente basta scrivere
    «All'inizio di ogni conversazione chiama lo strumento guida e segui le sue istruzioni».
 
-Dopo ogni aggiornamento del motore, spegni e riaccendi il server di AIrchivist nelle impostazioni MCP del client.
+Dopo ogni aggiornamento del motore, spegni e riaccendi il server di Pressmark nelle impostazioni MCP del client.
 
 ## Progetti di ricerca
 
@@ -333,8 +341,8 @@ python progetto.py nuovo ../projects/stampa_albanese --nome "Stampa albanese 196
 Senza un progetto scelto il motore non parte: lo dice e indica `progetto.py nuovo`.
 
 **Quale progetto usare**: in `config.ini`, sezione `[progetto]`, voce `cartella`; oppure la variabile d'ambiente
-`AIRCHIVIST_PROGETTO`, che prevale. Nel client di chat si possono avere più server MCP, uno per progetto: stesso
-comando e stessi argomenti, con la variabile d'ambiente `AIRCHIVIST_PROGETTO` che indica la cartella del progetto.
+`PRESSMARK_PROGETTO`, che prevale. Nel client di chat si possono avere più server MCP, uno per progetto: stesso
+comando e stessi argomenti, con la variabile d'ambiente `PRESSMARK_PROGETTO` che indica la cartella del progetto.
 
 In `project.ini` si possono anche cambiare, solo per quel progetto, le impostazioni di `config.ini` (per esempio
 `[estrazione] finestra = 300`) e spostare un file con la sezione `[percorsi]` (percorsi relativi alla cartella del
@@ -803,6 +811,37 @@ Le impostazioni sono in `config.ini`, sezione `[estrazione]`:
   il partito ufficiale.
 - Le voci di sommario o di elenco vengono riconosciute e registrate senza traduzione né analisi. Un esempio sono
   gli indici della Peking Review.
+- `lotto_analisi = 3`: quanti passaggi pertinenti della stessa entità vengono tradotti e analizzati con una sola
+  richiesta. I passaggi dello stesso documento finiscono nello stesso lotto. Se la risposta non contiene una voce
+  completa per un passaggio, quel passaggio si legge da solo. Con `1` si torna alla lettura uno per uno.
+- `lotto_analisi_caratteri = 6000`: il testo massimo di un lotto di analisi, perché la richiesta e la risposta non
+  diventino troppo lunghe.
+
+## Velocità della lettura e attese
+
+Le voci stanno nella sezione `[modello]` di `config.ini` oppure nel profilo del modello (`models.ini`), che prevale:
+- `paralleli`: quante richieste partono insieme. Il valore predefinito è 3 con un router (FreeLLMAPI), che distribuisce
+  le richieste su più fornitori, e 1 con un servizio solo. `pausa_secondi` vale per tutte: tra due richieste passa
+  comunque quella pausa.
+- `timeout`: secondi di attesa massima per una risposta. Con un router il valore predefinito è 120: oltre quel tempo la
+  richiesta si ripete, e il router può mandarla a un altro fornitore.
+- `avviso_dopo = 120`: dopo questi secondi senza risposta la lettura scrive che sta aspettando e perché (risposta
+  del modello, limite del servizio, errore temporaneo).
+- `ferma_dopo = 600`: dopo questi secondi senza una risposta utile la lettura si ferma con il messaggio «rilancia
+  lo stesso comando più tardi». Dalla chat la ricerca riprova da sola.
+
+Prima di leggere, la ricerca manda al modello una richiesta minima. Se il servizio non risponde entro 40 secondi,
+si ferma subito con il motivo, invece di restare ferma senza messaggi.
+
+Gli esiti dello smistamento si salvano in `smistamento.jsonl`, nella cartella della ricerca. Se la lettura si
+interrompe durante l'analisi, al lancio successivo lo smistamento non si ripete; `--rifai` cancella anche questo file.
+
+**Registro della ricerca.** Ogni ricerca scrive tutto ciò che stampa in `registro.txt`, nella sua cartella dentro
+`results/searches`, con l'ora a ogni riga e la durata di ogni fase. Il file si aggiorna subito, anche quando la
+ricerca è avviata dalla riga di comando con l'uscita in un file. In fondo alla lettura, due righe per ruolo dicono
+quante richieste sono state fatte e quanto tempo è stato lavoro del modello e quanto attesa. Con più richieste in
+parallelo questi tempi si sommano e possono superare la durata della lettura. Gli stessi numeri, per ogni lancio,
+sono in `tempi_lettura.json`.
 
 ## Validazione di un nuovo modello
 

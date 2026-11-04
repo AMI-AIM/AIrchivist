@@ -26,7 +26,14 @@ __pycache__/
 *.bak[0-9]*
 .senza_archivio
 
+# Strumenti di sviluppo locali (assistente, verifiche di design, cache dei test)
+.claude/
+.impeccable/
+.pytest_cache/
+
+# Carattere usato per disegnare il marchio: i file SVG di assets/marchio non ne hanno bisogno
+assets/atwriter.ttf
+
 # Sistema
 Thumbs.db
 desktop.ini
-.claude/settings.local.json

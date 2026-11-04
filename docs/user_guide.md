@@ -1,4 +1,4 @@
-# Searching the sources: user guide
+# Pressmark: user guide
 
 To get started in a few minutes: [`quickstart.md`](quickstart.md). If something goes wrong:
 [`troubleshooting.md`](troubleshooting.md). In Italian: [`user_guide.it.md`](user_guide.it.md).
@@ -26,16 +26,19 @@ appears. The chat assistant can answer in another language (`[mcp] lingua` in `c
 ## Folder layout
 
 ```
-AIrchivist/                 the repository (the engine: it can be published)
+Pressmark/                  the repository (the engine: it can be published)
   README.it.md, README.md   overview (in Italian and English)
   LICENSE, requirements.txt licence (AGPL-3.0) and optional libraries
-  docs/                     documentation: quickstart, this guide, troubleshooting, project documents (Italian)
+  assets/marchio/           the Pressmark logotype and favicon, light and dark versions (SVG)
+  docs/                     documentation: quickstart, this guide, troubleshooting
   tests/                    automated tests (python -m unittest discover -s tests); test_project/: sample project
   scripts/
     installa.py             guided setup, libraries, environment check, model profiles, chat clients
     app.py, interfaccia/    the browser interface (local server and page)
     conversazione.py        the interface's conversation about the sources and the check of its citations
-    mcp_server.py           the server that connects the chat to the engine; istruzioni.py: the rules it sends
+    strumenti.py            the engine's tools (interface, conversation, MCP server); istruzioni.py: the
+                            rules for the chat model
+    mcp_server.py           the optional MCP server, to use the tools from an external chat client
     ricerca.py              the engine: extraction -> reading -> answer (started by the server)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
     glossario.py, archivio.py, schede.py, varianti.py, llm.py   the parts of the engine
@@ -191,7 +194,7 @@ passages and whether they have been measured on these sources.
 **Earlier configuration.** If no profile is selected in `[modello]`, the earlier configuration still applies: the
 `backend` key and the `[anthropic]`, `[openai]`, `[router]`, `[ollama]` sections of `config.ini`.
 `python installa.py modello converti` (convert) turns it into profiles: it shows what it will do, asks for
-confirmation, saves a copy of `config.ini` and `models.ini` (`<file>.airchivist-<date>.bak`) and selects the profile
+confirmation, saves a copy of `config.ini` and `models.ini` (`<file>.pressmark-<date>.bak`) and selects the profile
 matching the previous `backend`.
 
 ### FreeLLMAPI (free models in a chain)
@@ -246,7 +249,7 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
   `chi_tra`). Models come from tessdata_best and go into Tesseract's folder: this works only with the Tesseract
   bundled in the installed program; with a system-wide Tesseract (in Program Files) the panel explains how to add
   them with its installer. From the command line: `installa.py lingue` (status) and `installa.py lingue sqi
-  chi_sim` (download). If the scans in an import table lack their language, "Controlla senza scrivere" (check
+  chi_sim` (download). If the scans in an import table lack their language, "Prova senza scrivere" (try
   without writing) already says so.
 - **"Progetto" (project) menu**: the projects in the `projects` folder; the choice also applies to the chat and the
   command line (it is written to `config.ini`, section `[progetto]`). "Nuovo progetto…" creates one. While a search
@@ -269,15 +272,21 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
   started from here is followed in the search panel. With free plans (for example Groq, 8000 tokens per minute) a
   question may require some waiting; if the request is too large for the service, the system shortens the tool
   results and tries again.
-- **Importa** (import): the documents folder, "Proponi" (writes the review table, to be corrected in Excel or
-  LibreOffice), then "Controlla" (check) and "Importa" (see "Importing new sources").
-- **Storico** (history): the project's previous answers and searches.
-- **Fonte** (source): a page of a document, with the passage's line highlighted; you browse by printed page
-  (`[[p. N]]` markers) or, in files without markers, by blocks of lines. If the original is a PDF in `sources/` and
-  PyMuPDF is installed, "Pagina dell'originale" also shows the page image. It opens from the "Apri la fonte"
-  button next to each passage of the answer document, or from the Passaggi tab.
-- **Passaggi** (passages): the passages of the open document; for a search, those read, with date, relevance, the
-  model that read them and the translation, with a filter; a click opens the source.
+- **Importazioni** (imports): the documents folder (typed or chosen with "Sfoglia…"), "Proponi i metadati" (writes
+  the review table, to be corrected here or in Excel or LibreOffice), then "Prova senza scrivere" (try without
+  writing) and "Importa" (see "Importing new sources"). With "Sostituisci i documenti già importati" (replace
+  documents already imported) the system asks for confirmation.
+- **Storico** (history): the project's previous answers and searches, with question and entity; opening one, the
+  right column summarises it and "Cerca di nuovo" (search again) repeats the same search.
+- **Fonte** (source): a page of a document. If the original is a PDF in `sources/` and PyMuPDF is installed, the
+  main view is the page image, with the cited line above it; the transcribed text (with the line highlighted and
+  the file's technical record) opens below. You browse by printed page (`[[p. N]]` markers, also with the left
+  and right arrow keys) or, in files without markers, by blocks of lines. It opens from the "Apri la fonte"
+  button next to each citation of the answer document (the citation's own page), or from the Passaggi tab;
+  "Torna al documento" goes back to where you started.
+- **Passaggi** (passages): the passages of the open document; for a search, those read, grouped by document, with
+  page, relevance, translation and the model that read them, with a filter (also "Solo pertinenti", relevant
+  only); a click opens the source.
 - **Glossario** (glossary): the project's entity records and series profiles, read-only.
 
 The server listens only on your computer (`127.0.0.1`) and accepts only the browser opened with the session link.
@@ -291,9 +300,9 @@ python installa.py client --verifica
 ```
 
 `client <name>` (`jan`, `claude`, `lmstudio`) finds the client's configuration file on your system, shows what will
-change and, with `--scrivi` (write), adds or updates only the AIrchivist entry (command: the full path of the
+change and, with `--scrivi` (write), adds or updates only the Pressmark entry (command: the full path of the
 Python interpreter; argument: `scripts/mcp_server.py`; variable `PYTHONUTF8=1`), after a backup copy
-(`<file>.airchivist-<date>.bak`) and your confirmation. The other entries stay untouched. Without `--scrivi` it
+(`<file>.pressmark-<date>.bak`) and your confirmation. The other entries stay untouched. Without `--scrivi` it
 only shows what it would write. `client json` prints the generic `mcpServers` block, to paste into other clients.
 `client --verifica` (verify) starts the server the way the client would and checks the MCP handshake and the tool
 list. For clients that use HTTP: `python mcp_server.py --http 8765`.
@@ -320,7 +329,7 @@ Restart the client after writing. Claude Desktop exists for Windows and macOS; o
    translations) are sent by the server (see "Instructions for the chat AI"): in the assistant's instructions it is
    enough to write "At the start of every conversation call the guida tool and follow its instructions".
 
-After every engine update, switch the AIrchivist server off and on again in the client's MCP settings.
+After every engine update, switch the Pressmark server off and on again in the client's MCP settings.
 
 ## Research projects
 
@@ -343,8 +352,8 @@ python progetto.py nuovo ../projects/albanian_press --nome "Albanian press 1960-
 Without a selected project the engine does not start: it says so and points to `progetto.py nuovo`.
 
 **Which project to use**: in `config.ini`, section `[progetto]`, key `cartella` (folder); or the environment
-variable `AIRCHIVIST_PROGETTO`, which takes precedence. A chat client can have several MCP servers, one per project:
-same command and arguments, with the environment variable `AIRCHIVIST_PROGETTO` pointing to the project folder.
+variable `PRESSMARK_PROGETTO`, which takes precedence. A chat client can have several MCP servers, one per project:
+same command and arguments, with the environment variable `PRESSMARK_PROGETTO` pointing to the project folder.
 
 In `project.ini` you can also change, for that project only, the settings of `config.ini` (for example
 `[estrazione] finestra = 300`) and move a file with the `[percorsi]` (paths) section (paths relative to the project
@@ -821,6 +830,38 @@ The settings are in `config.ini`, section `[estrazione]` (extraction):
   official party.
 - Table-of-contents or list entries are recognised and recorded without translation or analysis. An example is the
   indexes of the Peking Review.
+- `lotto_analisi = 3` (analysis batch): how many relevant passages of the same entity are translated and analysed
+  with a single request. Passages of the same document go into the same batch. If the answer does not contain a
+  complete entry for a passage, that passage is read on its own. With `1` passages are read one by one again.
+- `lotto_analisi_caratteri = 6000`: the maximum text of an analysis batch, so that request and answer do not grow
+  too long.
+
+## Reading speed and waits
+
+The settings are in the `[modello]` section of `config.ini` or in the model profile (`models.ini`), which prevails:
+- `paralleli` (parallel): how many requests are sent at the same time. The default is 3 with a router (FreeLLMAPI),
+  which spreads requests over several providers, and 1 with a single service. `pausa_secondi` applies to all of
+  them: that pause always passes between two requests.
+- `timeout`: maximum seconds to wait for an answer. With a router the default is 120: after that the request is
+  repeated, and the router can send it to another provider.
+- `avviso_dopo = 120` (notice after): after these seconds without an answer the reading writes that it is waiting
+  and why (model answer, service limit, temporary error).
+- `ferma_dopo = 600` (stop after): after these seconds without a usable answer the reading stops with the message
+  "rilancia lo stesso comando più tardi" (run the same command again later). From the chat the search retries by
+  itself.
+
+Before reading, the search sends a minimal request to the model. If the service does not answer within 40 seconds,
+it stops at once with the reason, instead of waiting silently.
+
+The sorting results are saved in `smistamento.jsonl`, in the search folder. If the reading stops during the
+analysis, the next run does not repeat the sorting; `--rifai` also deletes this file.
+
+**Search log.** Every search writes everything it prints into `registro.txt`, in its folder under
+`results/searches`, with the time on each line and the duration of each phase. The file is updated at once, also
+when the search runs from the command line with its output in a file. At the end of the reading, two lines per role
+say how many requests were made and how much time was model work and how much waiting. With parallel requests these
+times add up and can exceed the duration of the reading. The same numbers, for each run, are in
+`tempi_lettura.json`.
 
 ## Validating a new model
 
