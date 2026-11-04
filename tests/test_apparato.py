@@ -1,5 +1,5 @@
 """
-Test dell'apparato editoriale (apparato.py, lavoro 40, A1): testatine e note dei curatori marcate all'importazione,
+Test dell'apparato editoriale (apparato.py): testatine e note dei curatori marcate all'importazione,
 escluse dai passaggi dell'estrazione e dalle righe dell'indice. Casi presi dalla prova del 3/11/2026 sulla raccolta
 Boçe-Bilbili (documenti AQSH pubblicati): la testatina «48 ARMANDO BOÇE, ARBËR BILBILI» prima del brano su un
 sospetto agente aveva fatto di Boçe il sospettato nella risposta.

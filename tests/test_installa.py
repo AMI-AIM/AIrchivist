@@ -98,7 +98,7 @@ class Client(unittest.TestCase):
         self.assertIn("timeout degli strumenti", testo)          # i campi non modificabili restano manuali
         self.assertIn("smart routing", testo)
 
-    # ------------------------------------------------- --scrivi (lavoro 27)
+    # ------------------------------------------------- --scrivi
     def scrivi(self, nome="claude", esistente=None, risposta="", voce=None):
         f = self.cartella / f"{nome}.json"
         if esistente is not None:
@@ -373,7 +373,7 @@ class AvvioGuidato(unittest.TestCase):
         doc = json.loads((self.client / "claude.json").read_text(encoding="utf-8"))
         self.assertIn(I.NOME_SERVER, doc["mcpServers"])
         self.assertIn("Pressmark è nella configurazione di Claude Desktop", testo)
-        self.assertIn("python importa.py proponi", testo)                  # comando che esiste (lavoro 29)
+        self.assertIn("python importa.py proponi", testo)                  # comando che esiste
         self.assertTrue(testo.rstrip().endswith("Tutto pronto."))
 
     def test_cartella_del_progetto_come_nome(self):

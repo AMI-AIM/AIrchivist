@@ -1,5 +1,5 @@
 """
-Test dei profili di modello (lavoro 26: llm.py, installa.py modello) con un servizio finto in locale: profilo
+Test dei profili di modello con un servizio finto in locale: profilo
 scelto per tutti i ruoli o per uno, configurazione precedente ancora valida, cambio riuscito e annotato, cambio
 rifiutato per collegamento fallito (resta il precedente), scelta nel project.ini, procedura guidata, togli,
 conversione della configurazione precedente, copia per le prove dei modelli (valuta.py). Nessun servizio vero.

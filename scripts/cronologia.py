@@ -18,7 +18,7 @@ from pathlib import Path
 
 import profili
 
-DATI = None          # cartella delle fonti (per le date interne dei passaggi estratti prima del lavoro 9)
+DATI = None          # cartella delle fonti (per ricavare la data interna dei passaggi che non la registrano)
 
 
 def periodico(c):

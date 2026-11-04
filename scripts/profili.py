@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Profili di serie (series.ini): lettura unica e regole che dipendono dalla serie (lavoro 12, fase 3).
+Profili di serie (series.ini): lettura unica e regole che dipendono dalla serie.
 Il motore resta generico: ciò che vale per una sola testata o raccolta sta nel suo profilo.
 
 Un file appartiene a un profilo per il nome della serie ([SERIES] dell'intestazione = nome della sezione),
 altrimenti per la cartella (campo «cartella»: il file sta in quella cartella dentro data, o più in profondità).
 
-Profilo minimo (lavoro 30): nome della sezione, tipo e lingua. Gli altri campi hanno un valore predefinito
+Profilo minimo: nome della sezione, tipo e lingua. Gli altri campi hanno un valore predefinito
 (completa): cartella dentro data dal tipo e dal nome, sigla dei file dalle iniziali del nome; la citazione Chicago
 si genera dal tipo (citazioni.py) se il profilo non ha il campo chicago.
 

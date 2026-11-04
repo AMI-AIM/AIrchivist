@@ -1,15 +1,15 @@
 """
-Test dell'interfaccia (app.py, lavoro 35), con il server HTTP vero in locale, due progetti temporanei e un servizio
+Test dell'interfaccia (app.py), con il server HTTP vero in locale, due progetti temporanei e un servizio
 dei modelli finto:
 - sicurezza: senza il token di sessione ogni richiesta è rifiutata; Host estraneo e POST senza intestazione no;
 - menu «Progetto»: elenco, cambio (scritto in config.ini), nuovo progetto, cambio bloccato da una ricerca in corso;
 - menu «Modello»: un profilo il cui collegamento fallisce non diventa quello in uso; uno che funziona sì;
 - percorso guidato: scheda trovata, ricerca avviata dall'interfaccia su un'entità già in archivio con lo stesso
   risultato della riga di comando; documento della risposta servito solo dalle cartelle del progetto;
-- importazione (lavoro 37): tabella di revisione letta e corretta dalla pagina solo nelle cartelle del progetto,
+- importazione: tabella di revisione letta e corretta dalla pagina solo nelle cartelle del progetto,
   righe che non coincidono rifiutate, file Excel mai riscritto (le correzioni vanno nel CSV accanto), stato del
   lavoro con avanzamento e tabella pronta;
-- conversazione (lavoro 38): disattivata, con la spiegazione, se il modello non sa usare gli strumenti.
+- conversazione: disattivata, con la spiegazione, se il modello non sa usare gli strumenti.
 """
 import http.client
 import json
@@ -432,7 +432,7 @@ class Interfaccia(unittest.TestCase):
         self.assertTrue(storico["risposte"])
         self.assertIn("enrico_berlinguer", [x["cartella"] for x in storico["ricerche"]])
 
-    # ------------------------------------------------------------ conversazione (lavoro 38)
+    # ------------------------------------------------------------ conversazione
     def test_conversazione_disattivata_se_il_modello_non_usa_strumenti(self):
         codice, r = self.get("/api/conversazione")
         self.assertEqual(codice, 200, r)
@@ -445,7 +445,7 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(self.post("/api/conversazione", {"testo": " "})[0], 400)
         self.assertFalse(self.post("/api/conversazione/nuova", {})[1]["attiva"])
 
-    # ------------------------------------------------------------ importazione (lavoro 37)
+    # ------------------------------------------------------------ importazione
     def audit(self):
         d = A.percorso(self.app.cfg(), "registro_modifiche").parent
         d.mkdir(parents=True, exist_ok=True)
@@ -562,7 +562,7 @@ class Interfaccia(unittest.TestCase):
         codice, r = self.post("/api/importa", {"azione": "stato"})
         self.assertEqual(codice, 400)
         self.assertEqual(self.post("/api/importa", {"azione": "proponi", "percorso": " "})[0], 400)
-    # ------------------------------------------------------------ fonte, passaggi, glossario (lavoro 36)
+    # ------------------------------------------------------------ fonte, passaggi, glossario
     def test_visore_della_fonte(self):
         rel = "volumi/prova_visore/documento.txt"
         f = self.p1 / "data" / rel
@@ -670,7 +670,7 @@ class Interfaccia(unittest.TestCase):
         self.assertTrue(r["serie"])
         self.assertTrue(all({"nome", "campi"} <= set(s) for s in r["serie"]))
 
-    # ------------------------------------------------------------ preparazione (lavoro 39)
+    # ------------------------------------------------------------ preparazione
     def client_finti(self):
         """I file dei client di chat in una cartella temporanea, mai quelli veri di questo computer."""
         base = self.p1.parent.parent / f"client_{self._testMethodName}"      # una cartella per test

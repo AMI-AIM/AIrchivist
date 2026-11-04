@@ -35,7 +35,7 @@ RIGHE_DI_BORDO = 2
 RIGHE_NUMERO_SOLO = 5
 MINIMO_CONFERME = 3
 MINIMO_TRATTO = 2            # pagine lette che confermano un tratto a scarto costante (da_tratti)
-PAGINE_INDIETRO = 1          # pagine prima della prima letta che ricevono il numero per continuità (B3)
+PAGINE_INDIETRO = 1          # pagine prima della prima letta che ricevono il numero per continuità
 ANNO_PROBABILE = 1000        # con meno di MINIMO_CONFERME letture, un numero da qui in su è più probabilmente un anno
 
 
@@ -92,14 +92,14 @@ def da_testo(testi):
     if conferme < MINIMO_CONFERME and altri and altri[0][1] == conferme:
         return da_tratti(candidati, len(testi), len(con_numero))
     n_pagine = len(testi)
-    # B3: i documenti brevi non arrivano a MINIMO_CONFERME pagine: ne bastano tante quante le loro pagine (al più 2),
+    # i documenti brevi non arrivano a MINIMO_CONFERME pagine: ne bastano tante quante le loro pagine (al più 2),
     # ma un numero di quattro cifre letto una o due volte è più probabilmente un anno («në mars të 1964.»)
     min_conferme = min(MINIMO_CONFERME, n_pagine, 2) if n_pagine <= 3 else MINIMO_CONFERME
     if conferme < min_conferme or conferme * 2 <= len(con_numero) or \
             (conferme < MINIMO_CONFERME and scarto + 1 >= ANNO_PROBABILE):
         return da_tratti(candidati, n_pagine, len(con_numero))
     lette = {k for k, c in candidati.items() if k + scarto in c}
-    # B3: la prima pagina di un documento spesso non ha la testatina: la numerazione vale anche per la pagina che
+    # la prima pagina di un documento spesso non ha la testatina: la numerazione vale anche per la pagina che
     # precede la prima letta (dedotta), non oltre (copertine e frontespizi non ricevono un numero)
     prima = max(1, min(lette) - PAGINE_INDIETRO)
     return {k: (str(k + scarto), k in lette) for k in range(prima, n_pagine + 1) if k + scarto >= 1}, scarto

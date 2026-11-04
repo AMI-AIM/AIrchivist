@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Conversazione sulle fonti (lavoro 38): una conversazione libera con il modello scelto, che usa gli strumenti del
+Conversazione sulle fonti: una conversazione libera con il modello scelto, che usa gli strumenti del
 motore (strumenti.py, gli stessi del server MCP, con le stesse istruzioni) e non legge le fonti da sé. È un'aggiunta al percorso
 guidato dell'interfaccia, non la sua alternativa: i modelli deboli inventano riferimenti quando ricostruiscono una
 risposta, perciò ogni citazione della risposta si controlla sui risultati degli strumenti della conversazione.

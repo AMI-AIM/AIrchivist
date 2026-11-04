@@ -12,9 +12,6 @@ scripts/models.ini
 # Marcatore del programma installato (lo mette l'installatore: scripts/posizioni.py)
 scripts/installazione.ini
 
-# Letteratura secondaria sul metodo (va spostata fuori dal repository)
-letteratura/
-
 # Costruzione del programma per Windows: file scaricati e risultato (confezione/costruisci.py)
 confezione/cache/
 confezione/uscita/

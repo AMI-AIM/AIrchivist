@@ -35,7 +35,7 @@ def distanza(a, b):
     """Distanza di Levenshtein (sostituzioni, inserimenti, cancellazioni), con l'algoritmo a vettori di bit di Myers
     (1999) nella forma di Hyyrö (2003): una colonna della tabella è un intero di Python con un bit per carattere di b,
     e ogni carattere di a costa poche operazioni su quell'intero. Stesso risultato della tabella completa, ma una
-    pagina di 3000 caratteri si confronta in centesimi di secondo invece che in decine di secondi (G5: era la parte
+    pagina di 3000 caratteri si confronta in centesimi di secondo invece che in decine di secondi (era la parte
     più lenta dell'importazione dei documenti brevi)."""
     if len(a) < len(b):
         a, b = b, a

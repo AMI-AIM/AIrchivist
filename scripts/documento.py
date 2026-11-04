@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-La risposta come documento (lavoro 31): accanto a risposta.md, un file HTML autonomo (uno solo, senza file
+La risposta come documento: accanto a risposta.md, un file HTML autonomo (uno solo, senza file
 esterni né caricamenti da internet) che si apre con il browser e si stampa. Stesso contenuto della risposta:
 sezioni, passaggi originali, «Traduzione:», citazioni, limiti, copertura; i rimandi [n] portano al passaggio.
 

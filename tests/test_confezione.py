@@ -1,5 +1,5 @@
 """
-Test della costruzione del programma per Windows (confezione/costruisci.py, lavoro 39, fase 3) e di ciò che il
+Test della costruzione del programma per Windows (confezione/costruisci.py) e di ciò che il
 motore fa diversamente quando è confezionato:
 - config.ini distribuito senza le scelte di chi costruisce (progetto, profili, percorsi di Tesseract), con il resto
   identico;
@@ -7,7 +7,7 @@ motore fa diversamente quando è confezionato:
 - il motore preferisce il Tesseract incluso accanto a scripts, ma una scelta in config.ini prevale;
 - le lingue OCR si scaricano da tessdata_best solo con un codice valido, senza lasciare file rotti, e il messaggio
   delle lingue mancanti rimanda all'interfaccia solo se la cartella dei modelli è scrivibile.
-La costruzione vera (download, Inno Setup) si prova a mano: stato_del_sistema.md.
+La costruzione vera (download, Inno Setup) si prova a mano.
 """
 import configparser
 import io

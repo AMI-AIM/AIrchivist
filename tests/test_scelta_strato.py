@@ -118,7 +118,7 @@ class Pdf(unittest.TestCase):
 
 
 class Distanza(unittest.TestCase):
-    """G5: la distanza a vettori di bit dà lo stesso risultato della tabella completa, in molto meno tempo."""
+    """La distanza a vettori di bit dà lo stesso risultato della tabella completa, in molto meno tempo."""
     def test_come_la_tabella(self):
         import random
         import time

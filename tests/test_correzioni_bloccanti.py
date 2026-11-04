@@ -1,6 +1,6 @@
 """
-Test dei tre difetti bloccanti trovati nella revisione del lavoro 40 (3/11/2026):
-  - revisione.py: la scelta della data in testa e in coda del documento (B2) non finiva mai (un ciclo aggiungeva
+Test dei tre difetti bloccanti trovati nella revisione del 3/11/2026:
+  - revisione.py: la scelta della data in testa e in coda del documento non finiva mai (un ciclo aggiungeva
     elementi alla lista che stava scorrendo): `importa.py proponi` si bloccava su ogni documento con la data nel testo;
   - llm.py: il timeout della richiesta era ridotto a 30 s (le risposte senza streaming arrivano tutte alla fine, e le
     letture durano spesso di più), e ogni URLError diventava TimeoutException, che prova() non spiegava;
@@ -108,7 +108,7 @@ class SoloRapporto(unittest.TestCase):
 
 
 class RispostaDaRichiedere(unittest.TestCase):
-    """C2: una risposta di forma inattesa si richiede nello stesso lancio."""
+    """Una risposta di forma inattesa si richiede nello stesso lancio."""
     def llm(self, risposte):
         x = L.LLM.__new__(L.LLM)
         x._chiama = lambda s, u, sc: risposte.pop(0)
@@ -139,7 +139,7 @@ class RispostaDaRichiedere(unittest.TestCase):
 
 
 class TempiDellaLettura(unittest.TestCase):
-    """G1: richieste, tempo del modello e tempo di attesa, per lancio."""
+    """Richieste, tempo del modello e tempo di attesa, per lancio."""
     def test_registro(self):
         import classifica as K
         m = L.LLM.__new__(L.LLM)
@@ -162,7 +162,7 @@ class TempiDellaLettura(unittest.TestCase):
 
 
 class CitazioneDaControllare(unittest.TestCase):
-    """A3: la frase intera, ma non il passaggio intero quando manca la punteggiatura."""
+    """La frase intera, ma non il passaggio intero quando manca la punteggiatura."""
     def test_frase_intera_e_limite(self):
         import classifica as K
         frase = "Dinuçi tha se dokumenti duhet të përmblidhet para se të transmetohet nga radio."
@@ -175,7 +175,7 @@ class CitazioneDaControllare(unittest.TestCase):
 
 
 class PagineDeiDocumentiBrevi(unittest.TestCase):
-    """B3: documenti di una o due pagine; un anno non è un numero di pagina; una sola pagina all'indietro."""
+    """Documenti di una o due pagine; un anno non è un numero di pagina; una sola pagina all'indietro."""
     def test_brevi_e_anni(self):
         import numerazione as N
         self.assertEqual(N.da_testo(["Marrëdhëniet socialist I 15\n\ntesto\n\nTiranë 1962"])[0], {1: ("15", True)})
@@ -190,7 +190,7 @@ class PagineDeiDocumentiBrevi(unittest.TestCase):
 
 
 class ProposteDellaProva(unittest.TestCase):
-    """Casi dei dieci documenti della prova (lavoro 40, sezione F della roadmap)."""
+    """Casi dei dieci documenti della prova."""
     def test_date_citate_di_copia_e_rumore(self):
         # «letrën e datës 4/8/62» è un'altra lettera: nessuna proposta
         date = R.date_proposte({"inizio": "Kemi marre letren e dates 4/8/62 neneshkruar nga tre shoke", "fine": ""})
@@ -214,7 +214,7 @@ class ProposteDellaProva(unittest.TestCase):
 
 
 class Raccolte(unittest.TestCase):
-    """B4: segnatura nell'intestazione e nella citazione; il volume senza titolo proprio è la serie."""
+    """Segnatura nell'intestazione e nella citazione; il volume senza titolo proprio è la serie."""
     def test_citazione(self):
         import citazioni as C
         meta = {"SERIES": "Marrëdhëniet", "TITLE": "Relacion", "AUTHOR": "Pani, Jordan", "DATE": "1964-07-04",

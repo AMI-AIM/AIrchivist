@@ -19,7 +19,7 @@ class Indizi(unittest.TestCase):
         self.assertEqual(V.indizi_tradotti(["comunismo dissidente"]), [])
 
     def test_nomi_composti_interi(self):
-        # D1 (3/11/2026): con l'indizio «Nuova Unità» arrivavano 新西兰 e 新西兰共产党
+        # 3/11/2026: con l'indizio «Nuova Unità» arrivavano 新西兰 e 新西兰共产党
         for indizio in ("Nuova Unità", "Nueva Era", "Repubblica Popolare", "Stati generali", "Gran Consiglio"):
             with self.subTest(indizio=indizio):
                 self.assertEqual(V.indizi_tradotti([indizio]), [])

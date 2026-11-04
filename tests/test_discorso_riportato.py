@@ -1,5 +1,5 @@
 """
-Test delle regole su chi dice che cosa (lavoro 40, A2) e sulle note dei curatori (A1) nei prompt della lettura
+Test delle regole su chi dice che cosa e sulle note dei curatori nei prompt della lettura
 (classifica.py) e della sintesi (sintesi.py). Caso reale della prova del 3/11/2026: in un rapporto della Legazione
 albanese a Roma Dinucci racconta la biografia di un comunista di Udine («Deri më 1952 ka qenë social demokrat»),
 e la risposta l'ha attribuita a Dinucci. Senza modelli: si controlla che cosa riceve il modello.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Prova dei motori OCR su campioni di scansioni (lavoro 11, fase 3): quale motore legge meglio una serie.
+Prova dei motori OCR su campioni di scansioni: quale motore legge meglio una serie.
 
 Ogni campione sta in results\\trials\\ocr\\<nome>\\ (fuori dall'archivio delle letture):
   pNNN.png                    la pagina resa come immagine (dalla scansione, alla risoluzione indicata)

@@ -3,8 +3,8 @@
 FASE 2 - Lettura dei passaggi con un modello, in due passaggi:
   1. smistamento: pertinente / no / incerto, più passaggi per richiesta ([estrazione] lotto_smistamento)
   2. analisi dei pertinenti: tipo di menzione, traduzione, sintesi, più passaggi della stessa entità per richiesta
-     ([estrazione] lotto_analisi e lotto_analisi_caratteri; lavoro 40, G2)
-Le richieste partono in parallelo, quante ne dice il profilo del modello («paralleli», G3); le letture si scrivono
+     ([estrazione] lotto_analisi e lotto_analisi_caratteri)
+Le richieste partono in parallelo, quante ne dice il profilo del modello («paralleli»); le letture si scrivono
 una alla volta. Gli esiti dello smistamento restano in smistamento.jsonl finché il passaggio non è letto per intero:
 un'interruzione durante l'analisi non fa ripetere lo smistamento.
 Per risparmiare richieste:
@@ -34,7 +34,7 @@ from contextlib import closing
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-try:                    # C3: anche con l'uscita in un file o in una pipe l'avanzamento si vede riga per riga
+try:                    # anche con l'uscita in un file o in una pipe l'avanzamento si vede riga per riga
     sys.stdout.reconfigure(line_buffering=True)
 except AttributeError:
     pass
@@ -193,13 +193,13 @@ def verifica(rec, analisi):
     return bool(cit) and normalizza(cit) in normalizza(rec["passaggio"])
 
 
-FRASE_MASSIMA = 600          # caratteri al più della citazione (A3: una frase intera, non il passaggio intero)
+FRASE_MASSIMA = 600          # caratteri al più della citazione (una frase intera, non il passaggio intero)
 
 
 def frase_chiave(rec):
     """Frase (o frasi adiacenti) che contiene la prima occorrenza.
     Testo esatto, senza i segni ⟦ ⟧ né i marcatori di pagina.
-    La citazione deve permettere il controllo (A3): si estende ai confini di frase
+    La citazione deve permettere il controllo: si estende ai confini di frase
     e include la frase che contiene la forma del nome. Non si tronca a lunghezza fissa.
     """
     # i marcatori diventano spazi della stessa lunghezza: le posizioni restano, e il punto di «p.» non
@@ -302,7 +302,7 @@ REGOLA_ANNO = ("Per le date: scrivi l'anno solo se il passaggio lo indica o se s
                "dell'anno seguente. Se non è certo, scrivi la data senza anno e aggiungi «(anno non indicato)».")
 
 
-# 3/11/2026 (lavoro 40, A2): in un rapporto della Legazione albanese Dinucci racconta la biografia di un comunista
+# 3/11/2026: in un rapporto della Legazione albanese Dinucci racconta la biografia di un comunista
 # di Udine («Deri më 1952 ka qenë social demokrat…», «tha Dinuçi»), e la lettura l'ha attribuita a Dinucci.
 REGOLA_DISCORSO = ("Chi dice che cosa: molti documenti riferiscono discorsi (un rapporto riporta ciò che una persona "
                    "ha detto, e quella persona può raccontare di altri). Attribuisci ogni fatto alla persona a cui il "
@@ -312,7 +312,7 @@ REGOLA_DISCORSO = ("Chi dice che cosa: molti documenti riferiscono discorsi (un 
                    "Se non è chiaro a chi si riferisce un fatto, dillo.")
 
 
-# 3/11/2026 (lavoro 40, A4): nella prova un nome comune («vajtje», andata) è stato letto come un altro («vajtim», lutto)
+# 3/11/2026: nella prova un nome comune («vajtje», andata) è stato letto come un altro («vajtim», lutto)
 # e la traduzione ha fatto morire una persona; i nomi declinati restavano declinati («Gripen» per Gripa). Gli esempi
 # del prompt sono volutamente diversi dal caso della prova, che serve da controllo.
 REGOLA_DECLINAZIONI = ("Nomi declinati: molte lingue (albanese, rumeno, lingue slave, greco…) declinano anche i nomi "
@@ -341,7 +341,7 @@ Rispondi con JSON."""
 
 
 def prompt_analisi_lotto(gruppo, scheda, frasi, n=0, glossario=None):
-    """Analisi di più passaggi della stessa entità con una sola richiesta (G2): stessi compiti dell'analisi di un
+    """Analisi di più passaggi della stessa entità con una sola richiesta: stessi compiti dell'analisi di un
     passaggio, una voce per passaggio. I passaggi dello stesso documento stanno nello stesso lotto (la lettura va
     in ordine di file): il modello li legge insieme, ma ciò che scrive di un passaggio deve risultare da quello."""
     testi = [ritaglia(rec, n) for rec in gruppo]
@@ -483,7 +483,7 @@ def serve_analisi(rec, esito):
 
 
 def lotti_analisi(da_analizzare, lotto, caratteri, n=0):
-    """Gruppi per l'analisi a lotti (G2): passaggi della stessa entità, nell'ordine di lettura (così i passaggi
+    """Gruppi per l'analisi a lotti: passaggi della stessa entità, nell'ordine di lettura (così i passaggi
     dello stesso documento stanno insieme), al più «lotto» per gruppo e al più «caratteri» di testo inviato."""
     gruppi = []
     for rec in da_analizzare:
@@ -499,7 +499,7 @@ def lotti_analisi(da_analizzare, lotto, caratteri, n=0):
 
 
 def analizza_lotto(gruppo, schede, esiti, llm_a, n=0, glossario=None):
-    """Analisi di un gruppo di passaggi già smistati con una sola richiesta (G2). Restituisce (letture, errori):
+    """Analisi di un gruppo di passaggi già smistati con una sola richiesta. Restituisce (letture, errori):
     {id: lettura} e [(passaggio, ErroreModello)]. I passaggi a cui la risposta del lotto non dà una voce completa
     si analizzano uno per uno; un lotto che non riesce (JSON troncato, forma inattesa) anche."""
     if len(gruppo) == 1:
@@ -554,8 +554,8 @@ def analizza_lotto(gruppo, schede, esiti, llm_a, n=0, glossario=None):
 
 
 def in_parallelo(lavori, funzione, quanti):
-    """(lavoro, risultato, errore) di ogni lavoro, man mano che finiscono, con al più «quanti» richieste in corso
-    (G3). Le letture si scrivono nel thread di chi legge, una alla volta. Se chi legge smette (interruzione), i
+    """(lavoro, risultato, errore) di ogni lavoro, man mano che finiscono, con al più «quanti» richieste in corso.
+    Le letture si scrivono nel thread di chi legge, una alla volta. Se chi legge smette (interruzione), i
     lavori non ancora partiti si annullano e si aspetta solo la fine di quelli in corso."""
     ex = ThreadPoolExecutor(max_workers=max(1, quanti))
     try:
@@ -583,7 +583,7 @@ def scrivi_non_letti(cart, n):
 
 
 def registro_lettura(cart, secondi, letti, modelli):
-    """Tempi della lettura (G1), in tempi_lettura.json della cartella della ricerca (una voce per lancio) e in due
+    """Tempi della lettura, in tempi_lettura.json della cartella della ricerca (una voce per lancio) e in due
     righe per il registro: quanta parte del tempo è lavoro del modello e quanta attesa del motore (pause, limiti del
     servizio, errori), quante richieste e quante risposte da richiedere di nuovo. modelli: {ruolo: LLM}."""
     ruoli = {r: {"richieste": m.richieste, "secondi_modello": round(m.secondi_modello, 1),
@@ -834,7 +834,7 @@ def main():
         if da_fare:
             try:
                 llm_s, llm_a = LLM(cfg, "smistamento"), LLM(cfg, "analisi")
-                # C1: una richiesta vera, non solo l'elenco dei modelli: un router può rispondere a /models e non
+                # una richiesta vera, non solo l'elenco dei modelli: un router può rispondere a /models e non
                 # ancora alle richieste. Entro 40 s si sa se il servizio legge.
                 llm_s.prova(secondi=40)
                 if llm_a.profilo != llm_s.profilo:

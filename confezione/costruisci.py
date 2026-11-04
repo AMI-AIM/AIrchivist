@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Costruzione del programma installabile per Windows (lavoro 39, fase 3).
+Costruzione del programma installabile per Windows.
 
 Prepara in confezione/uscita/Pressmark la cartella che l'installatore copia sul computer del ricercatore, e
 l'installatore stesso se Inno Setup è presente:

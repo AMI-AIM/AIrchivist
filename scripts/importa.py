@@ -69,7 +69,7 @@ CARTELLA = Path(__file__).resolve().parent
 sys.path.insert(0, str(CARTELLA))
 from estrai_occorrenze import (HDR, STATI_CAMPO, campi_spezzati, leggi_intestazione, stato_attivo,
                            stato_del_valore, nota_del_campo)   # noqa: E402
-import apparato   # noqa: E402   testatine e note dei curatori (lavoro 40, A1)
+import apparato   # noqa: E402   testatine e note dei curatori
 
 PDF = {".pdf"}
 IMMAGINI = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp", ".jp2"}
@@ -129,7 +129,7 @@ def leggi_serie():
 
 
 def aggiungi_serie(nome, tipo, lingua, cartella="", citazione="", sigla="", nota_limiti="", **fissi):
-    """Aggiunge una serie a series.ini (senza toccare le altre). Bastano nome, tipo e lingua (lavoro 30): cartella
+    """Aggiunge una serie a series.ini (senza toccare le altre). Bastano nome, tipo e lingua: cartella
     e sigla hanno un valore predefinito (profili.completa), la citazione si genera dal tipo. Restituisce un
     messaggio."""
     import profili
@@ -561,7 +561,7 @@ def decidi_strato(discordanza, confidenza):
 def scegli_strato(doc, ocr_fn, tmp, campione=PAGINE_CAMPIONE, stampa=print, ex=None, cache=None):
     """Per un PDF scansionato con strato di testo: (scelta, dettagli, letture del campione {pagina: (testo, conf)}).
     Un PDF senza scansioni ha testo nativo: si usa com'è (scelta 'strato', dettagli vuoti).
-    ex: le pagine del campione si leggono in parallelo, con i thread dell'OCR del documento (G5: nei documenti brevi
+    ex: le pagine del campione si leggono in parallelo, con i thread dell'OCR del documento (nei documenti brevi
     il campione era quasi tutto il documento, letto una pagina alla volta). cache: le letture del campione restano
     nella cache dell'importazione, come le altre pagine."""
     from confronto_testi import cer, lingua_da_ocr
@@ -981,7 +981,7 @@ def nome_file(scheda, serie, valori, origine):
     import profili
     if profili.datato(scheda):
         sigla = scheda.get("sigla") or re.sub(r"[^A-Z]", "", serie.upper())[:4] or "DOC"
-        # senza data ma con l'anno (B6): MP1962-..., non MPs.d.-...
+        # senza data ma con l'anno: MP1962-..., non MPs.d.-...
         anno = (valori.get("anno") or "").strip()
         base = sigla + (valori.get("data_iso") or (anno if re.fullmatch(r"\d{4}", anno) else "s.d."))
         if valori.get("numero") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", valori.get("data_iso") or ""):
@@ -1014,7 +1014,7 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("TITLE", valori.get("titolo", "")),
         ("PUBLISHER", valori.get("editore", "")),
         ("PUBLICATION_PLACE", valori.get("luogo", "")),
-        # segnatura d'archivio del documento (raccolte di documenti pubblicati, B4): entra nella citazione
+        # segnatura d'archivio del documento (raccolte di documenti pubblicati): entra nella citazione
         ("CALL_NUMBER", valori.get("segnatura", "")),
         ("LANG", scheda.get("lingua", "")),
         ("SOURCE_FILE", valori.get("originale", "")),
@@ -1029,7 +1029,7 @@ def intestazione(serie, scheda, valori, rapporto, origine, nome):
         ("OCR_CONFIDENCE", "" if rapporto["confidenza"] is None else str(rapporto["confidenza"])),
         ("FULL_CITATION", valori["citazione"]),
     ]
-    # ISSUE_STATUS/ISSUE_NOTE solo se il numero è stato dedotto dal nome del file (lavoro 8, punto 4);
+    # ISSUE_STATUS/ISSUE_NOTE solo se il numero è stato dedotto dal nome del file;
     # un campo senza _STATUS vale «verificato», quindi i campi dell'operatore non ricevono stati espliciti
     if valori.get("stato_numero"):
         righe += [("ISSUE_STATUS", valori["stato_numero"]), ("ISSUE_NOTE", valori.get("nota_numero", ""))]
@@ -1060,7 +1060,7 @@ def valori_documento(serie, scheda, args, riga_csv, origine, testo):
             data = data_da_testo(testo[:1500])
             if data:
                 provenienza = "letta nella prima pagina (OCR): da controllare"
-    # stato ricavato dal metodo di rilevamento (lavoro 8, punto 4): --data e il file dei metadati sono scelte
+    # stato ricavato dal metodo di rilevamento: --data e il file dei metadati sono scelte
     # dell'operatore -> campo verificato (senza _STATUS); gli altri metodi no
     if provenienza == "dal nome del file":
         stato = "dedotto"
@@ -1230,7 +1230,7 @@ def cmd_importa(args, stampa=print):
         raise SystemExit(f"La serie «{args.serie}» non è in series.ini. Serie presenti: "
                          + "; ".join(serie_ini.sections()))
     import profili
-    scheda = profili.completa(args.serie, dict(serie_ini[args.serie]))      # valori predefiniti (lavoro 30)
+    scheda = profili.completa(args.serie, dict(serie_ini[args.serie]))      # valori predefiniti
     from llm import percorso
     dati = percorso(cfg, "dati").resolve()
     dest = (dati / scheda.get("cartella", "altre_fonti")).resolve()
@@ -1399,7 +1399,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
     'cfg' è facoltativo (config.ini di default); la radice per il CSV di controllo è il genitore di 'dati'."""
     cfg = cfg or leggi_config()
     from llm import percorso
-    from citazioni import MARCATORE_PAGINA, marcatori_pagina   # validazione dei marcatori (lavoro 8)
+    from citazioni import MARCATORE_PAGINA, marcatori_pagina   # validazione dei marcatori
     dati = percorso(cfg, "dati").resolve()
     base = (dati / args.cartella).resolve() if args.cartella else dati
     righe, doc_id, migrazioni = [], {}, []
@@ -1434,7 +1434,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
             if meta["DOC_ID"] in doc_id:
                 righe.append((rel, "avviso", f"[DOC_ID] uguale a {doc_id[meta['DOC_ID']]}"))
             doc_id.setdefault(meta["DOC_ID"], rel)
-        # stati dei campi <CAMPO>_STATUS (lavoro 8): vocabolario chiuso; i valori storici sono tollerati come provenienza
+        # stati dei campi <CAMPO>_STATUS: vocabolario chiuso; i valori storici sono tollerati come provenienza
         for campo, valore in meta.items():
             if campo.endswith("_STATUS"):
                 s, noto = stato_del_valore(valore)
@@ -1450,7 +1450,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
             migrazioni.append((f, meta, t, pos, prefs))
         if stato_attivo(meta, "DATE") or meta.get("METADATA_SOURCE") == "filename+local_header":
             righe.append((rel, "avviso", f"data da controllare ({nota_del_campo(meta, 'DATE') or meta.get('DATE_STATUS', '')})"))
-        # marcatori di pagina (lavoro 8): ogni riga che inizia con [[ deve essere un marcatore riconosciuto;
+        # marcatori di pagina: ogni riga che inizia con [[ deve essere un marcatore riconosciuto;
         # le pagine numerate devono seguire l'ordine del documento
         for riga in t[pos:].splitlines():
             r = riga.strip()
@@ -1468,7 +1468,7 @@ def cmd_controlla(args, stampa=print, cfg=None):
             pass
         if args.lingua and not meta.get("LANG"):
             righe.append((rel, "avviso", "manca [LANG]"))
-    # --migra-stati (lavoro 8, punto 5): i valori storici di <CAMPO>_STATUS diventano lo stato del vocabolario
+    # --migra-stati: i valori storici di <CAMPO>_STATUS diventano lo stato del vocabolario
     # chiuso e la provenienza passa in <CAMPO>_NOTE; gli altri campi non vengono toccati
     if migrazioni:
         for f, meta, testo, pos, prefs in migrazioni:

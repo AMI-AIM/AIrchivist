@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Data interna dei documenti nelle raccolte (lavoro 9, fase 2).
+Data interna dei documenti nelle raccolte.
 
 La data del contenitore (intestazione del file) serve a citare; la data interna del documento che contiene il
 passaggio serve ad analizzare (cronologia, evoluzione). In una raccolta (中共中央文件选集, Selected Works, ...)
@@ -271,7 +271,7 @@ def _dati(dati):
 
 def per_passaggio(c, dati=None):
     """Data interna di un passaggio di passaggi.jsonl / classificati.jsonl: quella registrata all'estrazione,
-    altrimenti calcolata ora dal file (passaggi estratti prima del lavoro 9). None se non si deduce."""
+    altrimenti calcolata ora dal file (passaggi estratti senza la data interna). None se non si deduce."""
     if "data_interna" in c:
         return c["data_interna"]
     if not c.get("file") or "offset" not in c:

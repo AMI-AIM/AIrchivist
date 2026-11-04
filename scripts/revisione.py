@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Importazione guidata con tabella di revisione (lavoro 29, fase 7): serie e metadati diventano una tabella da
+Importazione guidata con tabella di revisione: serie e metadati diventano una tabella da
 controllare in Excel o LibreOffice, invece di concetti tecnici da scrivere a mano.
 
   python importa.py proponi <cartella o file> [--serie "..."]
@@ -306,7 +306,7 @@ def analizza(doc, ocr_disponibile):
         a["dubbi"].append("serve l'OCR, ma Tesseract non c'è: installalo prima di applicare la tabella")
     if a["qualita_ocr"].startswith("bassa"):
         a["dubbi"].append("scansione a bassa risoluzione: OCR probabilmente scadente")
-    # B4: estrae la segnatura d'archivio dalle ultime pagine (riga con AQSH, F., D., fl.)
+    # estrae la segnatura d'archivio dalle ultime pagine (riga con AQSH, F., D., fl.)
     m = SEGNATURA.search(a["fine"])
     if m:
         a["segnatura"] = m.group(0).strip(" []")
@@ -454,7 +454,7 @@ def proponi_serie(chiave, docs, esistenti, serie_forzata=""):
                     if lingua and p.get("lingua") and lingua != p.get("lingua") else [])}
     periodico = con_data >= max(1, len(docs) / 2) or (len(docs) > 1 and all(d["a"]["pagine_pdf"] < PAGINE_VOLUME
                                                                              for d in docs))
-    # B4: rileva se i documenti hanno segnature d'archivio (tipo "raccolta")
+    # rileva se i documenti hanno segnature d'archivio (tipo "raccolta")
     con_segnatura = sum(1 for d in docs if d["a"].get("segnatura"))
     # un documento solo è una raccolta se, oltre alla segnatura, ha i numeri di pagina stampati di un volume
     # (pagine non da 1): la scansione di un documento d'archivio ha la segnatura ma non quei numeri
@@ -529,7 +529,7 @@ DATA_DI_COPIA = re.compile(r"dakt|shtyp|kopj|typed|copia|copie|dattilo", re.IGNO
 def date_proposte(a):
     """Date candidate del documento, la più affidabile per prima: [(iso, forma, priorità, dove)]. Nei documenti
     d'archivio la data sta spesso in fondo, accanto alla firma, o in testa con il luogo; una data nel corpo del
-    testo cita di solito un altro documento (B2). Priorità: coda con luogo 4, coda 3, testa con luogo 2, testa 1.
+    testo cita di solito un altro documento. Priorità: coda con luogo 4, coda 3, testa con luogo 2, testa 1.
     Le righe con la data di scaricamento o di consultazione non contano."""
     import importa
 
@@ -591,7 +591,7 @@ def riga_documento(d, s, radice):
         stato_data, fonte_data = "dedotto", "dal nome del file"
         dubbi += [d["dubbio_nome"]] if d["dubbio_nome"] else []
     else:
-        # B2: cerca la data in testa E in coda del documento; preferisci data in calce (accanto a firma/luogo)
+        # cerca la data in testa E in coda del documento; preferisci data in calce (accanto a firma/luogo)
         # e date con luogo+data; elenca alternative in da_controllare
         candidati = date_proposte(a)
         if candidati and candidati[0][2] > 0:
@@ -618,7 +618,7 @@ def riga_documento(d, s, radice):
             autore = autore.title() if autore.isupper() else autore
         if not titolo:
             # la prima riga che non sia una testatina («16 I», «…socialist I 45», «ARMANDO BOÇE, ARBËR BILBILI»)
-            # né il numero del documento in una raccolta; altrimenti il nome del file (B1)
+            # né il numero del documento in una raccolta; altrimenti il nome del file
             titolo = titolo_dal_testo(a["inizio"])
             titolo = titolo.title() if titolo.isupper() else titolo
             if titolo:
@@ -979,7 +979,7 @@ def cmd_rivedi(args, stampa=print):
 def riscrivi_intestazione(f, nuovi, aggiorna_citazione=False, serie=None):
     """Cambia, aggiunge ("" o None toglie) campi dell'intestazione [CAMPO: valore] di un file, lasciando com'è il
     resto: testo, codifica (BOM), fine riga.
-    Se aggiorna_citazione è vero, rigenera FULL_CITATION dal profilo della serie (B5 del roadmap)."""
+    Se aggiorna_citazione è vero, rigenera FULL_CITATION dal profilo della serie."""
     dati = f.read_bytes()
     bom = dati.startswith(b"\xef\xbb\xbf")
     testo = dati.decode("utf-8-sig")
@@ -1007,7 +1007,7 @@ def riscrivi_intestazione(f, nuovi, aggiorna_citazione=False, serie=None):
     pos = next((i for i, r in enumerate(testata) if r.strip().upper().startswith("[FULL_CITATION:")), len(testata))
     testata[pos:pos] = [f"[{k}: {v}]" for k, v in resto.items() if v]
     
-    # B5: rigenera FULL_CITATION se richiesto, dall'intestazione come risulta dopo le correzioni (tutti i campi,
+    # rigenera FULL_CITATION se richiesto, dall'intestazione come risulta dopo le correzioni (tutti i campi,
     # non solo quelli cambiati) e dal profilo attuale della serie
     if aggiorna_citazione and serie:
         import profili

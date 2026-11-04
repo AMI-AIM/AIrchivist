@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Lettura delle esportazioni PAGE XML e ALTO XML (Transkribus, eScriptorium e altri strumenti) nel formato
-interno dell'importazione: pagine nell'ordine del file, righe, confidenza se disponibile (lavoro 10, fase 3).
+interno dell'importazione: pagine nell'ordine del file, righe, confidenza se disponibile.
 
 Il formato si riconosce dalla radice del file (PcGts = PAGE, alto = ALTO), per qualsiasi versione dello schema:
 i nomi degli elementi si leggono senza lo spazio dei nomi.

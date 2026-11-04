@@ -1,5 +1,5 @@
 """
-Test dell'importazione guidata con tabella di revisione (lavoro 29: revisione.py, importa.py proponi | applica |
+Test dell'importazione guidata con tabella di revisione (revisione.py, importa.py proponi | applica |
 rivedi) su un corpus di prova misto generato al momento: fascicoli di un periodico con la data nel nome (testo
 nativo), un fascicolo in scansione senza testo, un articolo nativo con etichette di pagina e metadati, un volume
 con i numeri di pagina stampati, un file di testo. Progetto temporaneo (PRESSMARK_PROGETTO), nessun OCR.
@@ -223,7 +223,7 @@ class Revisione(unittest.TestCase):
         meta = leggi_intestazione(dopo.decode("utf-8"))[0]
         self.assertEqual(meta["ISSUE"], "12")
         self.assertNotIn("DATE_STATUS", meta)
-        # B5: FULL_CITATION deve essere ricalcolata
+        # FULL_CITATION deve essere ricalcolata
         self.assertIn("FULL_CITATION", meta)
         self.assertIn("Zëri I Popullit", meta["FULL_CITATION"])
         self.assertIn("12 gennaio 1967", meta["FULL_CITATION"])          # ricomposta da tutti i campi, non solo dai cambiati
@@ -266,7 +266,7 @@ class Revisione(unittest.TestCase):
         self.assertEqual(file_dati.read_bytes(), prima)                          # niente scritto
 
     def test_full_citazione_aggiornata(self):
-        """B5: FULL_CITATION viene ricalcolata quando si modificano i metadati."""
+        """FULL_CITATION viene ricalcolata quando si modificano i metadati."""
         self.comando("proponi", self.corpus / "zeri_i_popullit")
         f, righe = self.tabella()
         for r in righe:
@@ -350,7 +350,7 @@ class Lingua(unittest.TestCase):
 
 
 class TestRaccolta(unittest.TestCase):
-    """B4: tipo serie 'raccolta' per documenti con segnature d'archivio pubblicate in un volume curato."""
+    """Tipo serie 'raccolta' per documenti con segnature d'archivio pubblicate in un volume curato."""
     
     def test_proposta_raccolta(self):
         """Proposta automatica del tipo 'raccolta' quando i documenti hanno segnature."""

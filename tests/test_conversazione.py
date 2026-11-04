@@ -1,5 +1,5 @@
 """
-Test della conversazione sulle fonti (conversazione.py, lavoro 38), con servizi finti in locale e un server degli
+Test della conversazione sulle fonti (conversazione.py), con servizi finti in locale e un server degli
 strumenti finto:
 - verifica delle citazioni: esatta, corrispondente (stesso titolo e numeri), non trovata, rimando di pagina isolato,
   due citazioni vicine non fuse in una;

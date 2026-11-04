@@ -1,10 +1,10 @@
 """
-Test per il punto C2 della roadmap: gestione errori di formato JSON inatteso.
+Test della gestione errori di formato JSON inatteso.
 
-C2 Osservato: Un modello ha risposto con un elenco JSON invece di un oggetto: il passaggio è saltato,
+Osservato: Un modello ha risposto con un elenco JSON invece di un oggetto: il passaggio è saltato,
 la ricerca è uscita con codice 3 e andava rilanciata a mano per un solo passaggio.
 
-C2 Obiettivo: Il passaggio si riprova nello stesso lancio (anche con un altro modello della catena)
+Obiettivo: Il passaggio si riprova nello stesso lancio (anche con un altro modello della catena)
 prima di lasciarlo; la ricerca si ferma solo se restano passaggi dopo i nuovi tentativi.
 """
 import sys
@@ -16,7 +16,7 @@ from llm import ErroreModello, come_oggetto
 
 
 class TestJsonFormato(unittest.TestCase):
-    """C2: test per la gestione del formato JSON inatteso."""
+    """Test per la gestione del formato JSON inatteso."""
 
     def test_come_oggetto_con_dizionario(self):
         """Un dizionario passato in viene restituito così com'è."""

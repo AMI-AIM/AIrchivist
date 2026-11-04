@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
-# Marcatore di pagina (sintassi fissata nel lavoro 8, fase 2): su una riga propria, prima del testo della pagina.
+# Marcatore di pagina: su una riga propria, prima del testo della pagina.
 #   [[p. 12]]             pagina numerata (N: cifre arabe o romane, maiuscolo e spaziatura liberi)
 #   [[pagina 12]]         forma estesa tollerata
 #   [[p. 12b]] / [[p. II]] prefissi/suffissi: es. «23b», pagine romane iniziali, intervallo «I-IV»
@@ -110,8 +110,8 @@ def contenitore(meta):
 
 
 def data_affidabile(meta):
-    """False se la data è dichiarata inattendibile (METADATA_SOURCE), da verificare o solo probabile (<CAMPO>_STATUS,
-    lavoro 8). Una data «dedotto» (dal nome del file, dai metadati, indicata all'importazione) si cita per intero:
+    """False se la data è dichiarata inattendibile (METADATA_SOURCE), da verificare o solo probabile (<CAMPO>_STATUS).
+    Una data «dedotto» (dal nome del file, dai metadati, indicata all'importazione) si cita per intero:
     prima la citazione di un quotidiano datato dal nome del file riportava solo l'anno."""
     from estrai_occorrenze import stato_attivo          # vocabolario degli stati: modulo unico (estrai_occorrenze)
     if meta.get("METADATA_SOURCE") in DATE_INATTENDIBILI:

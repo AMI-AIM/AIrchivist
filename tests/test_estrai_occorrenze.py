@@ -157,7 +157,7 @@ class Intestazione(unittest.TestCase):
 
 
 class StatiDeiCampi(unittest.TestCase):
-    """Vocabolario chiuso degli stati (lavoro 8): assenza di _STATUS = verificato, «verificato» esplicito
+    """Vocabolario chiuso degli stati: assenza di _STATUS = verificato, «verificato» esplicito
     equivale all'assenza, i valori storici sono tollerati e migrabili in DATE_NOTE."""
 
     def test_assenza_vale_verificato(self):
@@ -223,7 +223,7 @@ class StatiDeiCampi(unittest.TestCase):
         self.assertEqual(E.nota_del_campo({"DATE": "1966-07-15"}, "DATE"), "")
 
     def test_migrazione_dei_valori_storici(self):
-        # come 'importa.py controlla --migra-stati' (lavoro 8, punto 5): lo stato storico diventa quello del
+        # come 'importa.py controlla --migra-stati': lo stato storico diventa quello del
         # vocabolario chiuso e la provenienza passa in DATE_NOTE; i file già conformi non vengono toccati
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)

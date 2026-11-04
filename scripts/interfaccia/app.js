@@ -1,4 +1,4 @@
-// Interfaccia di Pressmark (lavoro 35; come client di chat dal lavoro 41): barra laterale, filo della ricerca con la
+// Interfaccia di Pressmark: barra laterale, filo della ricerca con la
 // casella in basso, pannello laterale per fonte, passaggi e glossario.
 // Tutto passa dalle API di app.py; i testi delle fonti si inseriscono sempre come testo, mai come HTML. L'unica
 // eccezione è il corpo del documento della risposta, scritto da documento.py con escape e ripulito in inserisciDocumento.
@@ -155,7 +155,7 @@ function tastiImpostazioni(e) {
   voci[Math.max(0, Math.min(voci.length - 1, j))].focus();
 }
 
-// ------------------------------------------------------------------ fonte, passaggi, glossario (lavoro 36)
+// ------------------------------------------------------------------ fonte, passaggi, glossario
 // i passaggi e i rimandi di un documento, una richiesta per documento (nel filo possono essercene più d'uno)
 async function datiPassaggi(doc = stato.doc) {
   if (!doc) return null;
@@ -1452,7 +1452,7 @@ async function aggiungiModello(evento) {
   }
 }
 
-// ------------------------------------------------------------------ impostazioni (lavoro 39, poi pagina)
+// ------------------------------------------------------------------ impostazioni
 // Una pagina con le sezioni a sinistra (generale, modelli, chat, lingue OCR, ambiente) e i fornitori dei modelli,
 // ognuno con la sua pagina. La «Preparazione» è il primo riquadro della sezione Generale.
 const SEGNI = { ok: "✓", manca: "✗", facoltativo: "–", info: "" };
@@ -2369,7 +2369,7 @@ function suggerimenti() {
   box.replaceChildren(...nomi.map((n) => pulsanteMsg(n, () => { $("testo").value = n; invia(); }, "chip")));
 }
 
-// ------------------------------------------------------------------ importazione (lavoro 37)
+// ------------------------------------------------------------------ importazione
 // Tutto nella scheda «Importazioni»: proposta, tabella di revisione modificabile qui (oltre che in Excel),
 // prova senza scrivere e importazione. I lavori sono processi indipendenti: la pagina ne segue l'avanzamento
 // e, se la chiudi, il lavoro continua (i file restano sul computer: basta il percorso).
@@ -2530,7 +2530,7 @@ async function salvaTabella() {
   }
 }
 
-// ------------------------------------------------------------------ conversazione sulle fonti (lavoro 38)
+// ------------------------------------------------------------------ conversazione sulle fonti
 // Il modello scelto usa gli strumenti del motore; il server confronta ogni citazione della risposta con i risultati
 // degli strumenti e ne dà la posizione nel testo: qui diventa un segno verde (trovata) o rosso (non trovata), e un
 // clic sulle citazioni di passaggi già letti mostra originale e traduzione.

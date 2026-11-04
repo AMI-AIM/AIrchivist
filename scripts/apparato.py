@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Apparato editoriale nei testi importati: testatine e note a piè di pagina dei curatori (lavoro 40, A1).
+Apparato editoriale nei testi importati: testatine e note a piè di pagina dei curatori.
 
 Le testatine (titolo corrente, autori o curatori, numero di pagina, ripetuti in testa o in piede delle pagine) e le
 note dei curatori di un'edizione non sono parole del documento. Lasciate nel testo finiscono nei passaggi e il

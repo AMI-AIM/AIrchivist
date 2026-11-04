@@ -89,7 +89,7 @@ class Progetto(unittest.TestCase):
         self.assertNotIn("[Renmin Ribao]", serie)                  # solo la descrizione dei campi, nessuna serie
 
     def test_cartella_non_vuota_esito(self):
-        """Da quando l'avvio guidato (lavoro 28) chiama cmd_nuovo: cartella occupata = esito 1, non SystemExit."""
+        """Da quando l'avvio guidato chiama cmd_nuovo: cartella occupata = esito 1, non SystemExit."""
         righe = []
         radice = self.tmp / "occupata"
         radice.mkdir()
@@ -109,7 +109,7 @@ class Progetto(unittest.TestCase):
 
 
 class ComandoDellaVariabile(unittest.TestCase):
-    """E1: su Windows anche la forma di PowerShell, dove «set …» non imposta la variabile."""
+    """Su Windows anche la forma di PowerShell, dove «set …» non imposta la variabile."""
     def test_forme(self):
         from unittest import mock
         with mock.patch.object(P.os, "name", "nt"):

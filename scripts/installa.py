@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Installazione e controllo dell'ambiente (lavoro 15, fase 4).
+Installazione e controllo dell'ambiente.
 
 Il motore è la cartella scripts: si scarica (git clone o archivio .zip) e si usa dove sta, con config.ini accanto
 al codice. I requisiti si installano nel sistema, mai dentro la cartella del progetto.
@@ -15,7 +15,7 @@ Uso (nella cartella scripts):
                                           --scrivi mostra solo che cosa cambierebbe
       client --verifica                  avvia il server come lo avvierebbe il client e controlla handshake MCP
                                          ed elenco degli strumenti
-  python installa.py modello [azione]   profili dei modelli che leggono i passaggi (lavoro 26):
+  python installa.py modello [azione]   profili dei modelli che leggono i passaggi:
       nuovo                         procedura guidata per un profilo nuovo (azione predefinita)
       elenca                        profili, quelli in uso, chiavi presenti
       usa <profilo> [--ruolo R] [--progetto]
@@ -28,7 +28,7 @@ Uso (nella cartella scripts):
                                     (es. sqi chi_sim) le scarica da tessdata_best nella cartella dei modelli
                                     di Tesseract, se si può scrivere (Tesseract incluso nel programma)
   python installa.py inizia [--passi N,...] [--saltati N,...] [--si] [--rapido]
-                                    avvio guidato per chi installa per la prima volta (lavoro 28):
+                                    avvio guidato per chi installa per la prima volta:
                                     1 ambiente, 2 modello, 3 primo progetto, 4 chat, 5 riepilogo.
                                     Si interrompe e riprende senza rifare i passi già completati; ogni passo
                                     si può saltare (--saltati 2,4). Con --si i passi automatici non chiedono
@@ -381,7 +381,7 @@ def cmd_librerie(args, stampa=print):
     return esito
 
 
-# ---------------------------------------------------------------- client MCP (lavoro 27)
+# ---------------------------------------------------------------- client MCP
 def voce_server():
     """Come il client avvia il server MCP. Da un'interfaccia aperta con pythonw.exe (senza finestra, come fa il
     collegamento del programma installato) il client deve usare python.exe, che parla sullo stdio."""
@@ -739,7 +739,7 @@ def cmd_client(args, stampa=print, chiedi=input):
     return 0
 
 
-# ---------------------------------------------------------------- profili di modello (lavoro 26)
+# ---------------------------------------------------------------- profili di modello
 FILE_CONFIG = posizioni.file_config()
 NOME_PROFILO = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # servizi con una sola chiave: nome, indirizzo, variabile della chiave, modello proposto, pausa, dove si prende la chiave
@@ -1078,7 +1078,7 @@ def modello_prova(args, stampa, **_):
 
 def modello_usa(args, stampa, gia_provato=False, default=None, **_):
     """Sceglie un profilo per tutti i ruoli o per quelli indicati, solo dopo una prova di collegamento riuscita.
-    «default» (callable): procedura guidata che chiede il nome quando args.nome manca (avvio guidato, lavoro 28)."""
+    «default» (callable): procedura guidata che chiede il nome quando args.nome manca (avvio guidato)."""
     from llm import RUOLI, ErroreModello, leggi_profili, profili_attivi
     from progetto import cartella_scelta
     cfg = leggi_cfg()
@@ -1399,7 +1399,7 @@ def cmd_modello(args, stampa=print, **kw):
     return AZIONI_MODELLO[args.azione](args, stampa=stampa, **kw)
 
 
-# ---------------------------------------------------------------- avvio guidato (lavoro 28)
+# ---------------------------------------------------------------- avvio guidato
 PASSI = {1: "ambiente", 2: "modello", 3: "progetto", 4: "chat", 5: "riepilogo"}
 
 
@@ -1445,7 +1445,7 @@ def stato_ambiente(args, stampa):
 
 
 def guida_modello(stampa, chiedi=input):
-    """Passo 2: scelta del modello che legge i passaggi (lavoro 26). 0 fatto o non necessario, 1 fallito o saltato."""
+    """Passo 2: scelta del modello che legge i passaggi. 0 fatto o non necessario, 1 fallito o saltato."""
     from llm import ErroreModello, leggi_profili, profilo, usa_profili
     cfg = leggi_cfg()
     profili = leggi_profili(cfg)
@@ -1534,7 +1534,7 @@ def voce_presente(codice, file=None):
 
 
 def guida_chat(stampa, chiedi=input, si=False, file=None, scrivi_voce=None):
-    """Passo 4: configurazione della chat (lavoro 27). Mostra le modifiche al file del client scelto, le scrive
+    """Passo 4: configurazione della chat. Mostra le modifiche al file del client scelto, le scrive
     dopo la conferma (senza domanda solo con --si), poi prova l'handshake MCP come lo farebbe il client. 0 fatto,
     1 saltato o non riuscito. «file» e «scrivi_voce» servono solo ai test: percorso del file da usare al posto di
     quello reale e voce del server finta."""
@@ -1599,7 +1599,7 @@ def riepilogo(stampa, file_client_fn=None):
 
 
 def cmd_inizia(args, stampa=print, chiedi=input, funzioni=None, riepilogo_fn=None):
-    """Avvio guidato: i cinque passi della roadmap (lavoro 28). Si interrompe e riprende senza rifare i passi
+    """Avvio guidato: i cinque passi. Si interrompe e riprende senza rifare i passi
     già completati (ognuno riconosce il proprio stato); ogni passo si può saltare (--saltati, o rispondendo
     «no» alle domande). «funzioni» e «riepilogo_fn» servono solo ai test."""
     sys.path.insert(0, str(CARTELLA))
@@ -1663,7 +1663,7 @@ def main(argv=None):
     g = sub.add_parser("lingue", help="lingue OCR: stato; con i codici, le scarica (Tesseract incluso nel programma)")
     g.add_argument("codici", nargs="*", help="codici Tesseract da scaricare, es. sqi chi_sim")
     i = sub.add_parser("inizia", help="avvio guidato: ambiente, modello, primo progetto, chat, riepilogo "
-                                      "(lavoro 28)")
+                                      "")
     i.add_argument("--passi", default="", help="solo questi passi, numeri da 1 a 5 separati da virgola (es. 3,4)")
     i.add_argument("--saltati", default="", help="tutti tranne questi (es. --saltati 2 per non toccare il modello)")
     i.add_argument("--si", action="store_true", help="nei passi automatici nessuna domanda di conferma")

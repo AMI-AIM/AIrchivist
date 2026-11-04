@@ -1,5 +1,5 @@
 """
-Test delle serie con meno campi e della citazione Chicago generata dal tipo (lavoro 30): un profilo di tre campi
+Test delle serie con meno campi e della citazione Chicago generata dal tipo: un profilo di tre campi
 (nome, tipo, lingua) ha cartella e sigla predefinite e produce una voce Chicago 17 note-bibliografia corretta per ogni
 tipo (periodico, quotidiano, articolo, volume, archivio), con la pagina citata in coda; autori nella forma della
 bibliografia; una serie minima creata e usata per importare un documento.

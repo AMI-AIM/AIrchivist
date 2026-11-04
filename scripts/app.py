@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interfaccia di Pressmark (lavoro 35): un server locale, con la sola libreria standard, che apre una finestra
+Interfaccia di Pressmark: un server locale, con la sola libreria standard, che apre una finestra
 propria (pywebview, opzionale) con i menu «Progetto» e «Modello» e il percorso guidato della ricerca (domanda,
 forme del nome attestate da confermare, avvio, avanzamento, risposta come documento). Senza pywebview apre nel
 browser. Le funzioni sono quelle del motore (strumenti.py, le stesse del server MCP): interfaccia e chat fanno le stesse cose allo stesso
@@ -15,7 +15,7 @@ Progetto: la scelta vale per l'interfaccia (variabile PRESSMARK_PROGETTO del pro
 e si scrive in config.ini, sezione [progetto], perché la seguano anche chat e riga di comando (una copia di
 sicurezza al giorno). Il cambio è bloccato mentre una ricerca del progetto è in corso.
 Modello: la scelta passa per la prova di collegamento (installa.modello_usa): se fallisce resta il precedente.
-Conversazione sulle fonti (lavoro 38, conversazione.py): con il modello della sintesi e gli strumenti del motore;
+Conversazione sulle fonti: con il modello della sintesi e gli strumenti del motore;
 disattivata, con la spiegazione, se la prova dice che il modello non sa usare gli strumenti.
 
 Uso (nella cartella scripts):
@@ -480,7 +480,7 @@ class App:
             out["messaggi"].append("Il profilo resta salvato ma non è in uso: correggilo o provane un altro.")
         return out
 
-    # ------------------------------------------------------------ preparazione (lavoro 39, fase 2)
+    # ------------------------------------------------------------ preparazione
     def _modello_scelto(self, c):
         """Il profilo in uso, se tutti i ruoli ne hanno uno che esiste; None altrimenti."""
         from llm import RUOLI, ErroreModello, leggi_profili, profilo, usa_profili
@@ -788,7 +788,7 @@ class App:
         a, b = t.find("<body>"), t.rfind("</body>")
         return {"corpo": t[a + 6:b] if 0 <= a < b else ""}
 
-    # ------------------------------------------------------------ fili (lavoro 41)
+    # ------------------------------------------------------------ fili
     # Un filo è una conversazione della pagina: messaggi di chi scrive, ricerche avviate, risposte (il documento),
     # repliche della conversazione con il modello. Un file JSON per filo in results/fili; la pagina lo riscrive
     # intero a ogni messaggio.
@@ -849,7 +849,7 @@ class App:
         M.FONTI_SCELTE = sorted({profili.gruppo(n) for n in profili.tutti()})
         return {"fonti": M.FONTI_SCELTE}
 
-    # ------------------------------------------------------------ visore della fonte, passaggi, glossario (lavoro 36)
+    # ------------------------------------------------------------ visore della fonte, passaggi, glossario
     # La scheda «Fonte» mostra una pagina del documento: il testo di data/ con la riga del passaggio evidenziata e,
     # se l'originale è un PDF in sources/ e c'è PyMuPDF, l'immagine della pagina. Le pagine sono quelle dei
     # marcatori [[p. N | pdf K]]; un file senza marcatori si sfoglia a blocchi di righe (posizione nel file).
@@ -980,8 +980,8 @@ class App:
         return {"schede": sorted(out, key=lambda x: x["nome"].lower()),
                 "serie": sorted(serie, key=lambda x: x["nome"].lower())}
 
-    # ------------------------------------------------------------ importazione (lavoro 37)
-    # La scheda «Importazioni» fa tutto dall'interfaccia: proposta (lavoro 29), tabella di revisione modificabile
+    # ------------------------------------------------------------ importazione
+    # La scheda «Importazioni» fa tutto dall'interfaccia: proposta, tabella di revisione modificabile
     # qui oltre che in Excel, controllo senza scrivere (applica --prova), importazione vera, avanzamento dell'OCR.
     # I processi restano quelli indipendenti avviati dagli strumenti: la pagina chiude, il lavoro continua.
     def importa(self, azione, percorso_file="", serie="", prova=False, sovrascrivi=False):
@@ -1108,7 +1108,7 @@ class App:
         revisione.scrivi_tabella(destinazione, colonne, nuove)
         return {"salvata": True, "righe": len(nuove), "tabella": str(destinazione)}
 
-    # ------------------------------------------------------------ conversazione sulle fonti (lavoro 38)
+    # ------------------------------------------------------------ conversazione sulle fonti
     # Il modello della sintesi con gli strumenti del motore. La prova degli strumenti si fa una volta per profilo
     # (finché l'interfaccia resta aperta); la conversazione ricomincia quando cambiano progetto o modello.
     def _stato_conversazione(self, riprova=False):
@@ -1497,7 +1497,7 @@ def _avvia_finestra_propria(server, url, senza_browser):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Interfaccia di Pressmark (lavoro 35)")
+    ap = argparse.ArgumentParser(description="Interfaccia di Pressmark")
     ap.add_argument("--porta", type=int, default=0, help="porta locale (predefinita: una libera)")
     ap.add_argument("--senza-browser", action="store_true",
                     help="non aprire né la finestra né il browser (stampa solo il collegamento)")

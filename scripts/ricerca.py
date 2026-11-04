@@ -22,7 +22,7 @@ cambiata; --usa-modello-attuale la fa proseguire con quelli scelti adesso.
 
 Se l'entità non esiste, viene aggiunta a entities.ini una scheda da completare con le varianti del nome.
 
-Registro (lavoro 40, C3): tutto ciò che la ricerca stampa, compresi i passi di estrazione, lettura e risposta, va
+Registro: tutto ciò che la ricerca stampa, compresi i passi di estrazione, lettura e risposta, va
 anche in registro.txt della sua cartella, riga per riga con l'ora, scritto subito; a ogni fase la sua durata.
 """
 import argparse
@@ -173,7 +173,7 @@ def chiudi_profili(cart):
 
 
 class Registro:
-    """Copia di ciò che la ricerca stampa in registro.txt della sua cartella, con l'ora a ogni riga (C3)."""
+    """Copia di ciò che la ricerca stampa in registro.txt della sua cartella, con l'ora a ogni riga."""
     def __init__(self, f, uscita):
         self.f, self.uscita, self.a_capo = open(f, "a", encoding="utf-8"), uscita, True
 

@@ -1,10 +1,10 @@
 """
-Test della lettura che non si blocca e va più veloce (lavoro 40, obiettivi C e G della roadmap della prova del flusso):
-- C1: un'attesa lunga si annuncia; dopo «ferma_dopo» secondi senza risposte utili la chiamata si ferma (ServizioFermo);
-- C3: il registro della ricerca (registro.txt) riceve ogni riga con l'ora, anche quella dei passi;
-- G2: l'analisi va a lotti (più passaggi per richiesta), con ritorno alla lettura uno per uno per le voci mancanti;
+Test della lettura che non si blocca e va più veloce:
+- un'attesa lunga si annuncia; dopo «ferma_dopo» secondi senza risposte utili la chiamata si ferma (ServizioFermo);
+- il registro della ricerca (registro.txt) riceve ogni riga con l'ora, anche quella dei passi;
+- l'analisi va a lotti (più passaggi per richiesta), con ritorno alla lettura uno per uno per le voci mancanti;
   gli esiti dello smistamento restano in smistamento.jsonl e un'interruzione dell'analisi non lo fa ripetere;
-- G3: più richieste alla volta, con la pausa tra le richieste rispettata da tutti i thread.
+- più richieste alla volta, con la pausa tra le richieste rispettata da tutti i thread.
 Senza modelli: un servizio finto in locale.
 """
 import io

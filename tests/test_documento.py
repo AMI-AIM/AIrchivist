@@ -1,5 +1,5 @@
 """
-Test della risposta come documento (lavoro 31: documento.py): l'HTML autonomo ha lo stesso testo di risposta.md
+Test della risposta come documento: l'HTML autonomo ha lo stesso testo di risposta.md
 (confronto del testo senza la sintassi), i rimandi [n] portano ai passaggi, i passaggi originali restano come
 sono (asterischi dell'OCR compresi), il documento non carica niente da fuori; il server MCP consegna riassunto e
 percorso entro il limite di caratteri.

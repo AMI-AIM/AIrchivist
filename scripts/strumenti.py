@@ -6,7 +6,7 @@ Li usano l'interfaccia (app.py), la conversazione sulle fonti (conversazione.py)
 che li espone ai client esterni: tutti chiamano le stesse funzioni con le stesse regole.
 
 STRUMENTI: nome -> (funzione, descrizione, proprietà dello schema, obbligatori); 14 strumenti, quelli con più
-operazioni hanno «azione»; i nomi di prima del lavoro 14 restano accettati (ALIAS). chiama(nome, argomenti) esegue
+operazioni hanno «azione»; i nomi di prima restano accettati (ALIAS). chiama(nome, argomenti) esegue
 uno strumento e restituisce il testo JSON accorciato entro [mcp] max_caratteri (adatta), come lo riceve il modello.
 
 Il modello della chat NON legge le fonti: usa questi strumenti. La lettura dei passaggi resta alla pipeline
@@ -386,7 +386,7 @@ def compatto(s_):
 
 
 def riassunto(f, max_risposta=1500):
-    """Consegna di una risposta alla chat (lavoro 31): un riassunto breve e il percorso del documento completo
+    """Consegna di una risposta alla chat: un riassunto breve e il percorso del documento completo
     (HTML, si apre con il browser e si stampa), perché il modello della chat non riscriva la risposta."""
     p = presentazione(f)
     html_ = f.with_suffix(".html")
@@ -618,7 +618,7 @@ def t_passaggi_archivio(entita, dal=None, al=None, fonti=None, solo_pertinenti=T
             continue
         if ammesse and not fonte_ammessa(p, ammesse):
             continue
-        # raccolte: conta la data interna del documento, non l'anno di edizione del volume (lavoro 9)
+        # raccolte: conta la data interna del documento, non l'anno di edizione del volume
         anno, di = anno_del_documento(p, dati)
         if anno and ((dal and anno < int(dal)) or (al and anno > int(al))):
             continue
@@ -770,7 +770,7 @@ def t_correggi_passaggio(id, entita, pertinente=None, traduzione=None, nota=""):
     return {"corretto": True, "nota": "La correzione vale per tutte le ricerche successive che ritrovano il passaggio."}
 
 
-# ---------------------------------------------------------------- strumenti unificati (lavoro 14)
+# ---------------------------------------------------------------- strumenti unificati
 def t_guida():
     """Istruzioni complete e quadro del progetto: per i client che non mostrano al modello le istruzioni del server."""
     import profili
@@ -804,7 +804,7 @@ def t_ricerca(azione="attendi", entita="", collegate=None, modalita="occorrenze"
 
 
 def t_modello(azione="elenca", profilo="", ruoli=None, solo_progetto=False, gia_provato=False):
-    """Profili dei modelli che leggono i passaggi (installa.py modello, lavoro 26): elenca, prova, usa. «usa» cambia
+    """Profili dei modelli che leggono i passaggi (installa.py modello): elenca, prova, usa. «usa» cambia
     la scelta solo se la prova di collegamento riesce, come da riga di comando. gia_provato (non nello schema dello
     strumento: solo per l'interfaccia) salta la prova appena fatta da «Aggiungi modello»."""
     import installa
@@ -968,7 +968,7 @@ STRUMENTI = {
               ["azione"]),
 }
 
-# nomi degli strumenti fino al lavoro 13: accettati (assistenti e prompt già scritti), ma non più elencati
+# nomi degli strumenti delle versioni precedenti: accettati (assistenti e prompt già scritti), ma non più elencati
 ALIAS = {
     "elenca_entita": ("schede", {"azione": "elenca"}), "crea_scheda": ("schede", {"azione": "crea"}),
     "avvia_ricerca": ("ricerca", {"azione": "avvia"}), "attendi_ricerca": ("ricerca", {"azione": "attendi"}),
@@ -1054,7 +1054,7 @@ class StrumentoSconosciuto(ValueError):
 
 
 def chiama(nome, argomenti=None):
-    """Esegue uno strumento per nome (anche con i nomi di prima del lavoro 14): (testo JSON entro [mcp]
+    """Esegue uno strumento per nome (anche con i nomi di prima): (testo JSON entro [mcp]
     max_caratteri, vero se è un errore). Gli argomenti che lo strumento non conosce si ignorano; un'eccezione dello
     strumento diventa un testo d'errore. StrumentoSconosciuto se il nome non c'è."""
     argomenti = argomenti or {}

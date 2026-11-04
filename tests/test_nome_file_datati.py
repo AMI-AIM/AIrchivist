@@ -1,5 +1,5 @@
 """
-Test del punto B6 della roadmap (lavoro 40): nome del file dei documenti datati senza data. Nella prova del
+Test del nome del file dei documenti datati senza data. Nella prova del
 3/11/2026 il documento senza data, con anno 1962 indicato nella tabella, diventava «MPs.d.-relacion….txt»:
 con l'anno il nome comincia con l'anno (MP1962-…). I documenti delle raccolte si distinguono per titolo, come
 quelli d'archivio: due documenti con la stessa data non finiscono nello stesso file.

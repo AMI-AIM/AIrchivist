@@ -1,5 +1,5 @@
 """
-Test specifici per il punto B4 della roadmap: segnatura d'archivio e tipo 'raccolta'.
+Test della segnatura d'archivio e tipo 'raccolta'.
 """
 import sys
 import unittest
@@ -11,10 +11,10 @@ import profili as P
 
 
 class TestSegnatura(unittest.TestCase):
-    """B4: estrazione della segnatura d'archivio dalle ultime pagine."""
+    """Estrazione della segnatura d'archivio dalle ultime pagine."""
 
     def test_segnatura_con_AQSH(self):
-        """Test estrazione segnatura AQSH (esempio dal roadmap)."""
+        """Test estrazione segnatura AQSH."""
         testo = "Pagine di testo... [AQSH, F. 14/APMP ML Itali, V. 1964, D. 1, fl. 9-12]"
         m = R.SEGNATURA.search(testo)
         self.assertTrue(m, "La regex deve trovare la segnatura AQSH")
@@ -29,11 +29,11 @@ class TestSegnatura(unittest.TestCase):
 
 
 class TestRaccolta(unittest.TestCase):
-    """B4: tipo serie 'raccolta' per documenti con segnature d'archivio pubblicate in un volume curato."""
+    """Tipo serie 'raccolta' per documenti con segnature d'archivio pubblicate in un volume curato."""
 
     def test_proposta_raccolta_con_segnature(self):
         """Proposta automatica del tipo 'raccolta' quando i documenti hanno segnature."""
-        # Documenti fittizi con testatina, data e segnatura (formato dal roadmap B4)
+        # Documenti fittizi con testatina, data e segnatura
         # Importante: segnatura deve essere non vuota per essere conteggiata
         doc1 = {
             "file": [Path("doc1.pdf")],

@@ -31,7 +31,7 @@ RIGHE_CAMPO = 6              # righe al massimo di un valore dell'intestazione s
 # Date estratte dal testo stesso (non dal frontespizio): nel corpus di Peking Review sono inattendibili
 FONTI_DATA_INATTENDIBILI = {"filename+local_header"}
 
-# ---------------------------------------------------------------- stati dei campi dell'intestazione (lavoro 8, fase 2)
+# ---------------------------------------------------------------- stati dei campi dell'intestazione
 # Regole decise:
 #   1. ASSENZA di <CAMPO>_STATUS = campo verificato (default implicito). Il valore esplicito «verificato» è
 #      ammesso ed equivale all'assenza; così i campi derivati automaticamente possono essere marcati «dedotto»
@@ -415,7 +415,7 @@ def main():
 
     if ind and (args.dal or args.al):
         # si saltano solo i periodici: nelle raccolte l'anno del file è quello di edizione, e il periodo si
-        # controlla passaggio per passaggio sulla data interna dei documenti (lavoro 9)
+        # controlla passaggio per passaggio sulla data interna dei documenti
         from citazioni import profilo_di
 
         def fuori(f):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Istruzioni per l'IA della chat, consegnate dal server MCP (lavoro 14, fase 4): non dipendono dal client né dal
+Istruzioni per l'IA della chat, consegnate dal server MCP: non dipendono dal client né dal
 corpus. Si compongono di tre parti:
   1. regole generali del motore (questo modulo): come usare gli strumenti, come citare, cosa non fare;
   2. fonti del progetto, ricavate dai profili di serie (series.ini) e da project.ini (nome, descrizione);

@@ -124,7 +124,7 @@ def normale(s):
 
 def paesi_nel_testo(testo):
     """Paesi nominati in un testo latino: [(forma cinese, sigle dei partiti)], nell'ordine della tavola.
-    Le forme della tavola sono separate da «;» e valgono solo intere (D1, 3/11/2026: con l'indizio «Nuova Unità»
+    Le forme della tavola sono separate da «;» e valgono solo intere (3/11/2026: con l'indizio «Nuova Unità»
     ogni parola di «nuova zelanda» valeva da sola e arrivava la Nuova Zelanda; «Germania Est» portava anche la
     Germania Ovest). Le forme di una parola contano da quattro lettere in su («usa» è anche un verbo)."""
     t = " " + re.sub(r"\s+", " ", re.sub(r"[^a-z' -]", " ", normale(testo))) + " "

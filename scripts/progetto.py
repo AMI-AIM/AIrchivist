@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Progetti di ricerca separati dal motore (lavoro 13, fase 4).
+Progetti di ricerca separati dal motore.
 
 Il motore è la cartella scripts con config.ini (modelli, router, parametri). I dati di una ricerca stanno in una
 cartella di progetto (di solito in projects/, accanto al motore e fuori da git):
@@ -174,7 +174,7 @@ def serie_vuoto():
 
 def cmd_nuovo(args, stampa=print):
     """Crea un progetto vuoto; 0 riuscito, 1 la cartella esiste già con qualcosa dentro, 2 nome non ammesso.
-    Con «stampa» si può raccogliere il messaggio altrove (l'avvio guidato, lavoro 28)."""
+    Con «stampa» si può raccogliere il messaggio altrove (l'avvio guidato)."""
     radice = Path(args.cartella).resolve()
     if radice.exists() and any(radice.iterdir()):
         stampa(f"La cartella {radice} esiste e non è vuota: per sicurezza non creo un progetto lì.")
@@ -204,7 +204,7 @@ def cmd_nuovo(args, stampa=print):
 
 def comando_variabile(radice):
     """Il comando che sceglie il progetto per il terminale aperto. Su Windows le forme di PowerShell e del Prompt dei
-    comandi (E1: «set …» in PowerShell non imposta la variabile), perché il terminale in uso non si riconosce con
+    comandi («set …» in PowerShell non imposta la variabile), perché il terminale in uso non si riconosce con
     sicurezza."""
     if os.name != "nt":
         return f'export {VARIABILE}="{radice}"'

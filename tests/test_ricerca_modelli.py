@@ -1,5 +1,5 @@
 """
-Test del cambio di modello a metà progetto (lavoro 26) sulla ricerca completa (ricerca.py -> classifica.py ->
+Test del cambio di modello a metà progetto sulla ricerca completa (ricerca.py -> classifica.py ->
 sintesi.py), con un servizio finto in locale e un progetto temporaneo con due numeri finti del Renmin Ribao:
 - una ricerca interrotta riprende con il profilo con cui era partita, anche dopo un cambio di scelta;
 - finita la ricerca, la successiva usa il profilo scelto adesso, e i passaggi già letti vengono dall'archivio;
@@ -154,7 +154,7 @@ class CambioDiModello(unittest.TestCase):
         risposta = (self.cart / "risposta.md").read_text(encoding="utf-8")
         limiti = risposta[risposta.index("## 5."):risposta.index("## 6.")]
         self.assertIn("letti dal modello modello-a: non misurato su queste fonti", limiti)
-        documento = (self.cart / "risposta.html").read_text(encoding="utf-8")     # lavoro 31
+        documento = (self.cart / "risposta.html").read_text(encoding="utf-8")
         self.assertIn("<h2>Limiti e problemi interpretativi</h2>", documento)   # nel documento senza numeri
         self.assertIn("Berlinguer a Pechino.", documento)
 

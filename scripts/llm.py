@@ -8,13 +8,13 @@ Collegamento ai modelli linguistici. Tipi di servizio:
 Dopo ogni chiamata, 'ultimo_modello' contiene il modello che ha davvero risposto (con un router può
 cambiare da una richiesta all'altra); 'modelli_ammessi' rifiuta le risposte di modelli non verificati.
 
-Profili (lavoro 26): ogni modello configurato è una sezione di models.ini (servizio, modello, indirizzo, variabile
+Profili: ogni modello configurato è una sezione di models.ini (servizio, modello, indirizzo, variabile
 della chiave, parametri propri; modello pubblico: models_template.ini). config.ini o project.ini scelgono il profilo
 nella sezione [modello]: «profilo» per tutti i ruoli, «smistamento», «analisi», «sintesi» per un ruolo solo.
 Senza profilo scelto vale la configurazione precedente: «backend» e le sezioni [anthropic], [openai], [router],
 [ollama] di config.ini (installa.py modello converti la trasforma in profili).
 
-Attese (lavoro 40, C1 e G3): un'attesa più lunga di «avviso_dopo» secondi si annuncia con il motivo; dopo
+Attese: un'attesa più lunga di «avviso_dopo» secondi si annuncia con il motivo; dopo
 «ferma_dopo» secondi senza una risposta la chiamata si ferma (ServizioFermo) e la ricerca si rilancia più tardi.
 Lo stesso oggetto LLM si può usare da più thread («paralleli» richieste contemporanee): la pausa tra le richieste
 vale per tutte, e ultimo_modello è quello della richiesta del thread che lo legge.
@@ -57,7 +57,7 @@ class ModelloNonAmmesso(ErroreModello):
 
 class ServizioFermo(ErroreModello):
     """Nessuna risposta utile per più di «ferma_dopo» secondi: la lettura si ferma e si riprende con un nuovo lancio,
-    invece di restare ferma senza dire nulla (C1)."""
+    invece di restare ferma senza dire nulla."""
     pass
 
 
@@ -78,10 +78,10 @@ RUOLI = ("smistamento", "analisi", "sintesi")
 # risposte da richiedere di nuovo: senza JSON, JSON troncato, forma inattesa (llm.json)
 FORMA_INATTESA = re.compile(r"forma inattesa|non contiene JSON|JSON non valido")
 TENTATIVI_FORMA = 3
-# secondi senza risposta dopo i quali l'attesa si annuncia, e dopo i quali la chiamata si ferma (C1)
+# secondi senza risposta dopo i quali l'attesa si annuncia, e dopo i quali la chiamata si ferma
 AVVISO_DOPO, FERMA_DOPO = 120, 600
 # timeout predefinito dello smistamento con un router: meglio un nuovo tentativo, che il router può mandare a un altro
-# fornitore, che cinque minuti di attesa su una richiesta che nessuno serve (G4)
+# fornitore, che cinque minuti di attesa su una richiesta che nessuno serve
 TIMEOUT_ROUTER = 120
 
 
@@ -212,7 +212,7 @@ def catalogo_router(cfg, solo_disponibili=True):
 class LLM:
     """ruolo = 'smistamento' | 'analisi' | 'sintesi'; nome_profilo: un profilo di models.ini al posto di quello
     scelto nella configurazione (per provarlo prima di sceglierlo)."""
-    # conteggi per il registro della ricerca (G1): richieste inviate, secondi passati ad aspettare la risposta del
+    # conteggi per il registro della ricerca: richieste inviate, secondi passati ad aspettare la risposta del
     # modello e secondi di attesa del motore (pause, limiti del servizio, errori), risposte da richiedere di nuovo.
     # Con più richieste in parallelo i secondi si sommano: possono superare la durata della lettura.
     richieste = 0
@@ -261,7 +261,7 @@ class LLM:
                               else cfg.getint("modello", "timeout", fallback=300))
         self.avviso_dopo = intero("avviso_dopo", cfg.getint("modello", "avviso_dopo", fallback=AVVISO_DOPO))
         self.ferma_dopo = intero("ferma_dopo", cfg.getint("modello", "ferma_dopo", fallback=FERMA_DOPO))
-        # richieste contemporanee (G3): con un router, che smista su più fornitori, ne partono 3; con un servizio
+        # richieste contemporanee: con un router, che smista su più fornitori, ne partono 3; con un servizio
         # solo una, salvo che il profilo o [modello] dicano altrimenti
         self.paralleli = max(1, intero("paralleli", cfg.getint("modello", "paralleli",
                                                                fallback=3 if scelta == "router" else 1)))
@@ -329,7 +329,7 @@ class LLM:
 
     def prova(self, secondi=60):
         """Prova del collegamento con una richiesta minima, senza attese né nuovi tentativi: il modello che ha
-        risposto, oppure ErroreModello con la spiegazione. Serve anche prima di una lettura (C1): un router può
+        risposto, oppure ErroreModello con la spiegazione. Serve anche prima di una lettura: un router può
         rispondere a /models e non ancora alle richieste."""
         self.controlla()
         funzione = {"anthropic": self._anthropic, "openai": self._openai, "ollama": self._ollama}[self.backend]
@@ -388,7 +388,7 @@ class LLM:
                     attesa = 20.0          # quota senza indicazione: i piani gratuiti si liberano in decine di secondi
                 raise LimiteRaggiunto(min(max(attesa, 2.0), 120.0))
             if e.code in (500, 502, 504):
-                # G4: attesa più breve e incremento rapido per i tentativi
+                # attesa più breve e incremento rapido per i tentativi
                 raise LimiteRaggiunto(2.0, f"errore temporaneo del servizio ({e.code})")
             raise ErroreModello(f"Il servizio ha risposto con errore {e.code}: {testo[:400]}")
         except urllib.error.URLError as e:
@@ -401,7 +401,7 @@ class LLM:
             raise TimeoutException("risposta")
 
     # ---------------- backend ----------------
-    # max_token: la lunghezza massima di questa risposta (più lunga per una lettura a lotti, G2)
+    # max_token: la lunghezza massima di questa risposta (più lunga per una lettura a lotti)
     def _anthropic(self, sistema, utente, schema, max_token):
         if schema:
             utente += "\n\nRispondi SOLO con un oggetto JSON conforme a questo schema:\n" + \
@@ -469,7 +469,7 @@ class LLM:
     def json(self, sistema, utente, schema, tentativi_forma=TENTATIVI_FORMA, max_token=None):
         """La risposta come oggetto JSON. Una risposta senza JSON o di forma inattesa (un elenco di più oggetti al
         posto dell'oggetto) si richiede di nuovo, fino a tentativi_forma volte: con un router la richiesta nuova
-        può andare a un altro modello della catena (C2). Solo dopo l'ultimo tentativo il passaggio resta da leggere.
+        può andare a un altro modello della catena. Solo dopo l'ultimo tentativo il passaggio resta da leggere.
         max_token: lunghezza massima di questa risposta, al posto di quella del profilo."""
         for n in range(tentativi_forma):
             try:
@@ -498,12 +498,12 @@ class LLM:
         inizio, finito = time.time(), threading.Event()
         motivo = ["attendo la risposta del modello"]
 
-        def aspetta(secondi, perche):   # ogni attesa del motore entra nel registro della ricerca (G1)
+        def aspetta(secondi, perche):   # ogni attesa del motore entra nel registro della ricerca
             motivo[0] = perche
             self._conta("secondi_attesa", secondi)
             time.sleep(secondi)
 
-        def sorveglia():                # C1: un'attesa lunga si annuncia, con il motivo
+        def sorveglia():                # un'attesa lunga si annuncia, con il motivo
             while not finito.wait(self.avviso_dopo):
                 avviso(f"    nessuna risposta da {(time.time() - inizio) / 60:.0f} min ({motivo[0]}); la lettura si "
                       f"ferma dopo {self.ferma_dopo / 60:.0f} min")
@@ -532,14 +532,14 @@ class LLM:
                         temporanei += 1
                         if temporanei > 2:        # dopo 3 tentativi si lascia il passaggio per il prossimo lancio
                             raise ErroreModello(f"{l.motivo}, ripetuto 3 volte")
-                        # G4: attesa che cresce con i tentativi (2, 4, 8 s)
+                        # attesa che cresce con i tentativi (2, 4, 8 s)
                         attesa_temporanea = min(2.0 * (2 ** (temporanei - 1)), 15.0)
                     pausa = max(l.attesa, attesa_temporanea)
                     avviso(f"    {l.motivo}: attendo {pausa:.0f} s...")
                     aspetta(pausa, l.motivo)
                     errore = l.motivo
                 except TimeoutException as t:
-                    # G4: timeout diversi per connessione vs risposta
+                    # timeout diversi per connessione vs risposta
                     errore = f"nessuna risposta entro {self.timeout} s (timeout della {t.tipo})"
                     avviso(f"    {errore}: riprovo")
                     # retry veloce per problemi di rete

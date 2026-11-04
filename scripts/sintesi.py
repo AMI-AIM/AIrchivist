@@ -469,7 +469,7 @@ def filtra_rif(voci, validi):
     return tenute, scartate
 
 
-# 3/11/2026 (lavoro 40, A4): un fatto smentito dai documenti stessi (una persona data per morta che ricompare in un
+# 3/11/2026: un fatto smentito dai documenti stessi (una persona data per morta che ricompare in un
 # documento successivo) va segnalato come contraddizione, non riportato come dato. L'esempio è volutamente diverso
 # dal caso della prova, che serve da controllo.
 REGOLA_CONTRADDIZIONI = ("CONTROLLO DELLE CONTRADDIZIONI: confronta i dati tra loro e con le date dei documenti. Un dato "
@@ -662,7 +662,7 @@ def main():
     out += ["## 7. Risposta finale", "", finale or ("*(non generata: vedi l'avviso in testa)*" if errore_sintesi else "*(non generata)*"), ""]
     out += sez_tecnica(docs, incerti)
     (cart / "risposta.md").write_text("\n".join(out), encoding="utf-8")
-    from documento import scrivi_html                 # la stessa risposta come documento HTML (lavoro 31)
+    from documento import scrivi_html                 # la stessa risposta come documento HTML
     scrivi_html(cart / "risposta.md")
     print(f"Risposta: {(cart / 'risposta.md').resolve()}")
 
