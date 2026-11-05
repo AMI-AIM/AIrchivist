@@ -135,7 +135,7 @@ def cmd_prepara(args):
         camp["motori"][nome] = {"disponibile": True, "descrizione": m.descrizione(), "secondi_per_pagina": secondi,
                                 "confidenza": round(sum(confs) / len(confs), 1) if confs else None}
         print(f"  {secondi} s per pagina (compreso l'avvio del motore)")
-    rif = args.riferimento or next((n for n in ("paddleocr", "tesseract")
+    rif = args.riferimento or next((n for n in ("tesseract",)
                                     if camp["motori"].get(n, {}).get("disponibile")), "")
     for n, img in immagini:
         f = dest / f"p{n:03d}.riferimento.txt"
@@ -233,7 +233,7 @@ def main(argv=None):
     p.add_argument("--lingua", required=True)
     p.add_argument("--pagine", default="")
     p.add_argument("--dpi", type=int, default=300)
-    p.add_argument("--motori", default="tesseract,tesseract:3,tesseract:6,paddleocr,kraken")
+    p.add_argument("--motori", default="tesseract,tesseract:3,tesseract:6,kraken")
     p.add_argument("--riferimento", default="", help="motore la cui lettura fa da proposta di riferimento")
     s = sub.add_parser("misura")
     s.add_argument("nomi", nargs="+")

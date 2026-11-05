@@ -35,8 +35,8 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName=Pressmark
-SetupIconFile={#Cartella}\assets\marchio\pressmark.ico
-UninstallDisplayIcon={app}\assets\marchio\pressmark.ico
+SetupIconFile={#Cartella}\assets\pressmark.ico
+UninstallDisplayIcon={app}\assets\pressmark.ico
 
 [Languages]
 Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
@@ -65,8 +65,8 @@ Type: files; Name: "{userdesktop}\AIrchivist.lnk"
 Source: "{#Cartella}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{userprograms}\Pressmark"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\scripts\app.py"""; WorkingDir: "{app}\scripts"; IconFilename: "{app}\assets\marchio\pressmark.ico"; Comment: "Ricerca nelle fonti primarie"
-Name: "{userdesktop}\Pressmark"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\scripts\app.py"""; WorkingDir: "{app}\scripts"; IconFilename: "{app}\assets\marchio\pressmark.ico"; Tasks: desktop
+Name: "{userprograms}\Pressmark"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\scripts\app.py"""; WorkingDir: "{app}\scripts"; IconFilename: "{app}\assets\pressmark.ico"; Comment: "Ricerca nelle fonti primarie"
+Name: "{userdesktop}\Pressmark"; Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\scripts\app.py"""; WorkingDir: "{app}\scripts"; IconFilename: "{app}\assets\pressmark.ico"; Tasks: desktop
 
 [Run]
 Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\scripts\app.py"""; WorkingDir: "{app}\scripts"; Description: "{cm:Apri}"; Flags: postinstall nowait skipifsilent

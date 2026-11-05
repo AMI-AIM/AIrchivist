@@ -8,7 +8,7 @@ l'installatore stesso se Inno Setup è presente:
   Pressmark/
     python/           Python «embeddable» ufficiale (python.org), con PyMuPDF e pywebview in Lib/site-packages
     scripts/          il motore (i file sotto git), config.ini senza scelte personali, installazione.ini
-    assets/marchio/   logotipo e favicon (SVG, per l'interfaccia) e pressmark.ico (collegamenti, installatore)
+    assets/          logotipo e favicon (SVG, per l'interfaccia) e pressmark.ico (collegamenti, installatore)
     tesseract/        Tesseract (copiato da un'installazione esistente) con le lingue scelte
     docs/             guide per gli utenti, LICENSE, TERZE_PARTI.txt
 
@@ -28,6 +28,7 @@ Uso (dalla cartella del repository):
 import argparse
 import configparser
 import datetime as dt
+import hashlib
 import os
 import re
 import shutil
@@ -43,6 +44,11 @@ SCRIPTS = RADICE / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 URL_PYTHON = "https://www.python.org/ftp/python/{v}/python-{v}-embed-amd64.zip"
+# SHA-256 dello zip embeddable per versione: il file scaricato (o già nella cache) si usa solo se corrisponde. Per una
+# versione nuova si copia l'hash dalla pagina della versione su python.org (o si passa --sha256-python).
+SHA256_PYTHON = {
+    "3.14.6": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c",
+}
 # file di Tesseract che servono al programma: l'eseguibile e le sue librerie (non gli strumenti di addestramento)
 TESSDATA_SEMPRE = ("osd", "eng")                  # orientamento della pagina e inglese, sempre
 DOCUMENTI = ("quickstart.it.md", "quickstart.md", "user_guide.it.md", "user_guide.md", "troubleshooting.it.md",
@@ -66,15 +72,33 @@ def stampa(t=""):
     print(t, flush=True)
 
 
-def scarica(url, dest):
-    if dest.exists():
-        return dest
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    stampa(f"  scarico {url}")
-    parziale = dest.with_suffix(dest.suffix + ".parziale")
-    with urllib.request.urlopen(url, timeout=120) as r, open(parziale, "wb") as f:
-        shutil.copyfileobj(r, f)
-    parziale.replace(dest)
+def sha256(f):
+    h = hashlib.sha256()
+    with open(f, "rb") as d:
+        for blocco in iter(lambda: d.read(1 << 20), b""):
+            h.update(blocco)
+    return h.hexdigest()
+
+
+def scarica(url, dest, atteso=None, apri=None):
+    """Scarica url in dest (prima in un file .parziale, tolto se qualcosa va storto). Con `atteso` (SHA-256) il file,
+    scaricato ora o già nella cache, si usa solo se corrisponde."""
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        stampa(f"  scarico {url}")
+        parziale = dest.with_suffix(dest.suffix + ".parziale")
+        try:
+            with (apri or urllib.request.urlopen)(url, timeout=120) as r, open(parziale, "wb") as f:
+                shutil.copyfileobj(r, f)
+        except BaseException:
+            parziale.unlink(missing_ok=True)
+            raise
+        parziale.replace(dest)
+    if atteso:
+        trovato = sha256(dest)
+        if trovato != atteso.lower():
+            dest.unlink()
+            raise SystemExit(f"{dest.name}: SHA-256 {trovato}, atteso {atteso}. File tolto dalla cache: non lo uso.")
     return dest
 
 
@@ -92,14 +116,20 @@ def versione_programma():
 
 
 # ---------------------------------------------------------------- Python
-def prepara_python(dest, versione, cache):
-    """Python embeddable estratto in dest, con site-packages e la cartella scripts nel percorso dei moduli."""
-    zip_ = scarica(URL_PYTHON.format(v=versione), cache / f"python-{versione}-embed-amd64.zip")
+def prepara_python(dest, versione, cache, atteso=None):
+    """Python embeddable estratto in dest, con site-packages e la cartella scripts nel percorso dei moduli. Lo zip
+    si verifica con il suo SHA-256 (atteso, o quello di SHA256_PYTHON per la versione)."""
+    atteso = atteso or SHA256_PYTHON.get(versione)
+    if not atteso:
+        raise SystemExit(f"Nessuno SHA-256 noto per Python {versione}: copialo dalla pagina della versione su "
+                         "python.org (file «Windows embeddable package (64-bit)») in SHA256_PYTHON, o passalo con "
+                         "--sha256-python.")
+    zip_ = scarica(URL_PYTHON.format(v=versione), cache / f"python-{versione}-embed-amd64.zip", atteso)
     with zipfile.ZipFile(zip_) as z:
         z.extractall(dest)
     pth = next(dest.glob("python3*._pth"))
     righe = [r for r in pth.read_text(encoding="utf-8").splitlines() if r.strip() and r.strip() != "#import site"]
-    # i moduli del motore si importano per nome (anche dai processi delle ricerche e dal server MCP)
+    # i moduli del motore si importano per nome (anche dai processi delle ricerche)
     righe += ["Lib\\site-packages", "..\\scripts", "import site"]
     pth.write_text("\n".join(righe) + "\n", encoding="utf-8")
     (dest / "Lib" / "site-packages").mkdir(parents=True, exist_ok=True)
@@ -168,7 +198,7 @@ def copia_motore(dest, versione):
     (dest / "installazione.ini").write_text(INSTALLAZIONE_INI.format(versione=versione), encoding="utf-8")
 
 
-MARCHIO = RADICE / "assets" / "marchio"
+MARCHIO = RADICE / "assets"
 LATI_ICONA = (16, 24, 32, 48, 64, 256)
 
 
@@ -285,6 +315,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--python", default=".".join(map(str, sys.version_info[:3])),
                     help="versione del Python incluso (predefinita: quella che esegue lo script)")
+    ap.add_argument("--sha256-python", dest="sha256_python",
+                    help="SHA-256 dello zip embeddable, per una versione che SHA256_PYTHON non conosce")
     ap.add_argument("--tesseract", help="cartella di un Tesseract installato (predefinita: quella del sistema)")
     ap.add_argument("--lingue", help="lingue OCR da includere, separate da virgole (predefinite: tutte quelle "
                                      "installate; osd ed eng sempre)")
@@ -306,13 +338,13 @@ def main(argv=None):
     prog.mkdir(parents=True)
 
     stampa(f"1. Python {args.python} embeddable")
-    prepara_python(prog / "python", args.python, cache)
+    prepara_python(prog / "python", args.python, cache, args.sha256_python)
     stampa("2. Librerie (requirements.txt)")
     pacchetti = installa_pacchetti(prog / "python", cache)
     stampa("   " + ", ".join(pacchetti))
     stampa("3. Motore")
     copia_motore(prog / "scripts", versione)
-    copia_marchio(prog / "assets" / "marchio")
+    copia_marchio(prog / "assets")
     stampa("4. Tesseract")
     if args.tesseract:
         origine = Path(args.tesseract)

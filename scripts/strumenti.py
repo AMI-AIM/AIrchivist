@@ -2,18 +2,16 @@
 """
 Strumenti del motore: le operazioni con cui un modello di chat lavora sulle fonti senza leggerle (schede, ricerca,
 risposte, passaggi dell'archivio, importazioni, serie, modelli) e le istruzioni che le accompagnano (istruzioni.py).
-Li usano l'interfaccia (app.py), la conversazione sulle fonti (conversazione.py) e il server MCP (mcp_server.py),
-che li espone ai client esterni: tutti chiamano le stesse funzioni con le stesse regole.
+Li usano l'interfaccia (app.py) e la conversazione sulle fonti (conversazione.py): chiamano le stesse funzioni con
+le stesse regole.
 
-STRUMENTI: nome -> (funzione, descrizione, proprietà dello schema, obbligatori); 14 strumenti, quelli con più
-operazioni hanno «azione»; i nomi di prima restano accettati (ALIAS). chiama(nome, argomenti) esegue
-uno strumento e restituisce il testo JSON accorciato entro [mcp] max_caratteri (adatta), come lo riceve il modello.
+STRUMENTI: nome -> (funzione, descrizione, proprietà dello schema, obbligatori); quelli con più operazioni hanno
+«azione». chiama(nome, argomenti) esegue uno strumento e restituisce il testo JSON accorciato entro
+[conversazione] max_caratteri (adatta), come lo riceve il modello.
 
 Il modello della chat NON legge le fonti: usa questi strumenti. La lettura dei passaggi resta alla pipeline
 (archivio unico + profili di modello di models.ini, strumento «modello»); alla chat arrivano solo risultati con
 citazioni verificate.
-
-Nessun effetto all'importazione: stdout resta com'è (lo sposta solo il server MCP, che lo usa per il protocollo).
 """
 import argparse
 import datetime as dt
@@ -207,7 +205,7 @@ def cartella_importazioni():
 
 
 def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore="", anno="", volume="",
-                    unisci=False, sovrascrivi=False, prova=0, prima_pagina=None, da_pagina=None):
+                    unisci=False, sovrascrivi=False, prova=0, prima_pagina=None, da_pagina=None, lingue="", ocr=""):
     """Avvia l'importazione (OCR se serve) come processo indipendente; lo stato con importa (azione stato)."""
     import importa
     p = Path(os.path.expandvars(os.path.expanduser((percorso_file or "").strip().strip('"'))))
@@ -229,6 +227,10 @@ def t_importa_fonti(percorso_file, serie, data="", numero="", titolo="", autore=
         comando.append("--sovrascrivi")
     if prova:
         comando += ["--prova", str(int(prova))]
+    if lingue:                                         # lingue dell'OCR (eng+ita): «Rifai l'OCR» dell'interfaccia
+        comando += ["--lingue", str(lingue)]
+    if ocr in ("auto", "sempre", "strato"):
+        comando += ["--ocr", ocr]
     if prima_pagina:                                   # pagine stampate dei PDF (numerazione.py)
         comando += ["--prima-pagina", str(int(prima_pagina)), "--da-pagina", str(int(da_pagina or 1))]
     avvia_importazione(d, comando)
@@ -365,11 +367,11 @@ def compatto(s_):
     fine = s_.get("battito", time.time()) if finito else time.time()      # durata, non tempo trascorso da allora
     out = {"finito": finito, "stato": s_.get("stato"),
            "minuti": round((fine - s_.get("inizio", fine)) / 60)}
-    for k in ("fase", "avanzamento", "prossimo_tentativo", "messaggio", "risposta", "profili"):
+    for k in ("fase", "avanzamento", "prossimo_tentativo", "prossimo_ts", "messaggio", "risposta", "profili"):
         if s_.get(k):
             out[k] = s_[k]
     if not finito:
-        # 25/10/2026: in Jan il modello ha smesso di attendere dopo 10 minuti di sintesi e ha detto che la ricerca
+        # 25/10/2026: in una chat il modello ha smesso di attendere dopo 10 minuti di sintesi e ha detto che la ricerca
         # non finiva; la risposta è arrivata due minuti dopo
         out["nota"] = ("In corso: richiama ricerca con azione attendi. La sintesi (fase 3/3) può durare 10-20 minuti "
                        "con i modelli gratuiti. Se smetti di attendere, la ricerca continua da sola: di' all'utente di "
@@ -420,7 +422,7 @@ def t_attendi_ricerca(secondi=None):
         if not d:
             return {"errore": "Nessuna ricerca avviata."}
         return compatto(s_)
-    massimo = c.getint("mcp", "attesa_massima", fallback=75)   # sotto il tempo che il client concede a uno strumento
+    massimo = c.getint("conversazione", "attesa_massima", fallback=75)   # ogni attesa resta breve: la conversazione non si blocca
     fine = time.time() + max(1, min(int(secondi or massimo), massimo))
     iniziale = s_.get("stato")
     while time.time() < fine:
@@ -771,17 +773,6 @@ def t_correggi_passaggio(id, entita, pertinente=None, traduzione=None, nota=""):
 
 
 # ---------------------------------------------------------------- strumenti unificati
-def t_guida():
-    """Istruzioni complete e quadro del progetto: per i client che non mostrano al modello le istruzioni del server."""
-    import profili
-    from progetto import nome
-    c = cfg()
-    return {"progetto": nome(c), "istruzioni": istruzioni(),
-            "fonti_selezionabili": FONTI_SCELTE,
-            "serie": {n: {k: p.get(k, "") for k in ("tipo", "lingua", "periodo", "gruppo") if p.get(k)}
-                      for n, p in profili.tutti().items()}}
-
-
 def t_schede(azione="elenca", filtro="", nome="", varianti=None, descrizione="", contesto=None, forme_ambigue=None,
              collegate=None, tipo="", forma_estesa=""):
     if azione == "crea":
@@ -876,8 +867,6 @@ def _azione(*valori):
 
 
 STRUMENTI = {
-    "guida": (t_guida, "Istruzioni di lavoro e fonti del progetto. Chiamalo PRIMA di qualsiasi altro strumento, "
-              "all'inizio di ogni conversazione, e seguilo.", {}, []),
     "schede": (t_schede, "Primo passo per ogni domanda su una persona, un'organizzazione o una testata: elenca "
                "(filtro = nome) trova la scheda. Senza scheda: esplora_nome, conferma dell'utente, poi crea con le "
                "sole forme confermate.",
@@ -968,25 +957,14 @@ STRUMENTI = {
               ["azione"]),
 }
 
-# nomi degli strumenti delle versioni precedenti: accettati (assistenti e prompt già scritti), ma non più elencati
-ALIAS = {
-    "elenca_entita": ("schede", {"azione": "elenca"}), "crea_scheda": ("schede", {"azione": "crea"}),
-    "avvia_ricerca": ("ricerca", {"azione": "avvia"}), "attendi_ricerca": ("ricerca", {"azione": "attendi"}),
-    "ferma_ricerca": ("ricerca", {"azione": "ferma"}),
-    "leggi_risposta": ("risposte", {"azione": "leggi"}), "elenca_risposte": ("risposte", {"azione": "elenca"}),
-    "importa_fonti": ("importa", {"azione": "avvia"}), "stato_importazione": ("importa", {"azione": "stato"}),
-    "elenca_serie": ("serie", {"azione": "elenca"}), "crea_serie": ("serie", {"azione": "crea"}),
-}
-
-
 def elenco_strumenti():
     return [{"name": n, "description": d,
              "inputSchema": {"type": "object", "properties": props, "required": req}}
             for n, (_, d, props, req) in STRUMENTI.items()]
 
 
-LIMITE_CARATTERI = 7500       # sotto gli 8000 a cui Jan taglia il risultato di uno strumento (maxToolOutputChars)
-AVVISO_LUNGHEZZA = ("Risultato accorciato dal server per stare nel limite del client ([mcp] max_caratteri): le parti "
+LIMITE_CARATTERI = 7500       # caratteri del risultato di uno strumento: lo spazio che occupa nel contesto del modello
+AVVISO_LUNGHEZZA = ("Risultato accorciato per stare nel limite degli strumenti ([conversazione] max_caratteri): le parti "
                     "che finiscono con «…[accorciato]» sono incomplete. Per il resto: risposte con azione leggi e "
                     "sezioni, oppure gli argomenti da/massimo/dal/al dello strumento. Non trarre conclusioni da ciò che "
                     "non hai letto.")
@@ -998,9 +976,9 @@ PROTETTE = {"risposta", "nota", "errore", "messaggio", "prossimo_passo", "avviso
 
 def spazio_testo(riserva=1500):
     """Caratteri di testo che uno strumento può restituire lasciando posto a nomi dei campi e indicazioni, entro
-    [mcp] max_caratteri: gli strumenti che paginano (continua_da) devono stare sotto, o l'accorciamento di adatta
+    [conversazione] max_caratteri: gli strumenti che paginano (continua_da) devono stare sotto, o l'accorciamento di adatta
     farebbe saltare un pezzo."""
-    return max(1000, cfg().getint("mcp", "max_caratteri", fallback=LIMITE_CARATTERI) - riserva)
+    return max(1000, cfg().getint("conversazione", "max_caratteri", fallback=LIMITE_CARATTERI) - riserva)
 
 
 def _testo(out):
@@ -1008,9 +986,8 @@ def _testo(out):
 
 
 def adatta(out, limite=LIMITE_CARATTERI):
-    """Testo JSON del risultato entro `limite` caratteri. I client tagliano i risultati lunghi a metà (Jan a 8000
-    caratteri), e il modello riceve un JSON spezzato senza saperlo: qui si accorcia invece la parte più lunga, una
-    alla volta (le stringhe dalla fine, gli elenchi togliendo le ultime voci), e si aggiunge un avviso."""
+    """Testo JSON del risultato entro `limite` caratteri. Invece di tagliare il JSON a metà (il modello lo
+    riceverebbe spezzato senza saperlo) si accorcia la parte più lunga, una alla volta (le stringhe dalla fine, gli elenchi togliendo le ultime voci), e si aggiunge un avviso."""
     testo = _testo(out)
     if len(testo) <= limite or not isinstance(out, dict):
         return testo
@@ -1054,13 +1031,10 @@ class StrumentoSconosciuto(ValueError):
 
 
 def chiama(nome, argomenti=None):
-    """Esegue uno strumento per nome (anche con i nomi di prima): (testo JSON entro [mcp]
-    max_caratteri, vero se è un errore). Gli argomenti che lo strumento non conosce si ignorano; un'eccezione dello
+    """Esegue uno strumento per nome: (testo JSON entro [conversazione] max_caratteri, vero se è un
+    errore). Gli argomenti che lo strumento non conosce si ignorano; un'eccezione dello
     strumento diventa un testo d'errore. StrumentoSconosciuto se il nome non c'è."""
     argomenti = argomenti or {}
-    if nome in ALIAS:
-        nome, fissi = ALIAS[nome]
-        argomenti = {**argomenti, **fissi}
     if nome not in STRUMENTI:
         raise StrumentoSconosciuto(f"Strumento sconosciuto: {nome}")
     fn, _, props, _ = STRUMENTI[nome]
@@ -1068,5 +1042,5 @@ def chiama(nome, argomenti=None):
         out = fn(**{k: v for k, v in argomenti.items() if k in props})
     except Exception as e:
         return f"Errore: {type(e).__name__}: {e}", True
-    limite = cfg().getint("mcp", "max_caratteri", fallback=LIMITE_CARATTERI)
+    limite = cfg().getint("conversazione", "max_caratteri", fallback=LIMITE_CARATTERI)
     return adatta(out, limite), isinstance(out, dict) and "errore" in out

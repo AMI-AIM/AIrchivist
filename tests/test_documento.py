@@ -1,7 +1,7 @@
 """
 Test della risposta come documento: l'HTML autonomo ha lo stesso testo di risposta.md
 (confronto del testo senza la sintassi), i rimandi [n] portano ai passaggi, i passaggi originali restano come
-sono (asterischi dell'OCR compresi), il documento non carica niente da fuori; il server MCP consegna riassunto e
+sono (asterischi dell'OCR compresi), il documento non carica niente da fuori; gli strumenti consegnano riassunto e
 percorso entro il limite di caratteri.
 """
 import html
@@ -66,7 +66,7 @@ Franz Strobl dirige *Rote Fahne* [1] e nel 1967 è citato dalla stampa cinese [2
 """
 
 
-def testo_md(t):
+def _testo_md(t):
     # il documento mette risposta, limiti e copertura in testa e toglie i numeri delle sezioni
     t = re.sub(r"^(##\s+)\d+\.\s+", r"\1", D.in_evidenza(t), flags=re.MULTILINE)
     t = re.sub(r"<!--.*?-->", " ", t, flags=re.DOTALL)
@@ -89,7 +89,7 @@ def testo_md(t):
     return re.sub(r"\s+", " ", " ".join(righe)).strip()
 
 
-def testo_html(t):
+def _testo_html(t):
     corpo = t.split("<body>", 1)[1].split("</body>")[0]
     corpo = re.sub(r"<!--.*?-->", " ", corpo, flags=re.DOTALL)
     corpo = re.sub(r"</?(p|br|h\d|li|ul|blockquote|table|thead|tbody|tr|th|td)\b[^>]*>", " ", corpo)
@@ -102,13 +102,22 @@ class Documento(unittest.TestCase):
         self.html = D.md_a_html(RISPOSTA)
 
     def test_stesso_testo(self):
-        self.assertEqual(testo_html(self.html), testo_md(RISPOSTA))
+        self.assertEqual(_testo_html(self.html), _testo_md(RISPOSTA))
 
     def test_risposta_in_testa(self):
         titoli = re.findall(r"<h2>(.*?)</h2>", self.html)
         self.assertEqual(titoli, ["Risposta finale", "Limiti e problemi interpretativi", "Documenti rilevanti",
                                   "Passaggi rilevanti", "Dati espliciti"])
         self.assertLess(self.html.index("<h1>"), self.html.index("<h2>Risposta finale</h2>"))
+
+    def test_rimandi_raggruppati(self):
+        from documento import inline
+        h = inline("Vedi [1, 2, 3], [4; 9] e [12].", {"1", "2", "3", "4"})
+        self.assertIn('[<a class="rimando" href="#doc-1">1</a>, <a class="rimando" href="#doc-2">2</a>, '
+                      '<a class="rimando" href="#doc-3">3</a>]', h)
+        self.assertIn('[<a class="rimando" href="#doc-4">4</a>; 9]', h)     # un numero senza passaggio resta testo
+        self.assertIn("[12]", h)
+        self.assertNotIn('href="#doc-12"', h)
 
     def test_struttura(self):
         h = self.html
@@ -138,7 +147,7 @@ class Documento(unittest.TestCase):
         f.write_text(RISPOSTA, encoding="utf-8")
         dest = D.scrivi_html(f)
         self.assertEqual(dest, f.with_suffix(".html"))
-        self.assertEqual(testo_html(dest.read_text(encoding="utf-8")), testo_md(RISPOSTA))
+        self.assertEqual(_testo_html(dest.read_text(encoding="utf-8")), _testo_md(RISPOSTA))
 
 
 class Consegna(unittest.TestCase):

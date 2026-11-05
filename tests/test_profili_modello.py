@@ -301,17 +301,17 @@ class Converti(Base):
         self.assertEqual(esito.mancanti, ["modelli: spento"])
 
 
-class StrumentoMcp(Base):
-    """Strumento «modello» del server MCP e opzioni dello strumento «ricerca»."""
+class StrumentoModello(Base):
+    """Strumento «modello» (strumenti.py) e opzioni dello strumento «ricerca»."""
     def setUp(self):
         super().setUp()
         import strumenti
         self.M = strumenti
-        self.patch_mcp = mock.patch.object(strumenti, "CONFIG", str(self.config))
-        self.patch_mcp.start()
+        self.patch_strumenti = mock.patch.object(strumenti, "CONFIG", str(self.config))
+        self.patch_strumenti.start()
 
     def tearDown(self):
-        self.patch_mcp.stop()
+        self.patch_strumenti.stop()
         super().tearDown()
 
     def test_elenca(self):

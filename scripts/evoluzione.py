@@ -20,6 +20,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from citazioni import data_it
 from classifica import carica_jsonl
 import cronologia as _cronologia
 from cronologia import calcola, data_di, fatti, tabella
@@ -227,7 +228,7 @@ def main():
     if args.domanda:
         out += [f"*Domanda:* {args.domanda}", ""]
     collegate = [e for e in schede if e != args.principale]
-    out += [f"*Generato il {dt.date.today().isoformat()} — documenti pertinenti: {len(docs)}"
+    out += [f"*Generato il {data_it(dt.date.today().isoformat())} — documenti pertinenti: {len(docs)}"
             + (f"; entità collegate: {', '.join(collegate)}" if collegate else "")
             + (f" (analizzate fino al {args.collegate_fino_a})" if collegate and args.collegate_fino_a else "")
             + ".*", ""]

@@ -3,7 +3,7 @@
 Indice di ricerca testuale delle fonti (SQLite FTS5, libreria standard di Python).
 
 Serve a cercare in pochi istanti una forma di un nome in tutte le fonti, invece di rileggere ogni volta
-circa 1 GB di testo: lo usano gli strumenti esplora_nome e cerca_testo del server MCP.
+circa 1 GB di testo: lo usano gli strumenti esplora_nome e cerca_testo (strumenti.py).
 L'indice contiene solo i riferimenti (file e riga), non il testo: i passaggi si rileggono dai file originali.
 
 Uso:

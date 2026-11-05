@@ -33,9 +33,9 @@ quoted Italian text below is what you will see.
   name does not exist (any more) at the service; free services often retire models. Create another profile with
   `python installa.py modello`: once it has the key, the procedure lists the models the service really offers.
 - **"Manca la chiave" or "variabile … assente"** (key or variable missing): the environment variable holding the
-  key is not visible in the terminal (or chat client) in use. After saving it (Windows `setx NAME "..."`; macOS and
+  key is not visible in the terminal (or interface) in use. After saving it (Windows `setx NAME "..."`; macOS and
   Linux a line `export NAME="..."` in `~/.zprofile` or `~/.profile`) close and reopen the terminal and restart the
-  chat client: programs that were already open do not see new variables.
+  interface: programs that were already open do not see new variables.
 - **Error 401 or 403**: wrong or expired key. **Error 404**: model retired. Check with
   `python installa.py modello prova <profile>`.
 - **"Il profilo di modello … non esiste"** (the model profile does not exist): the name chosen in `[modello]` of
@@ -62,27 +62,16 @@ quoted Italian text below is what you will see.
   `varianti`. A form listed only in `forme_ambigue` (ambiguous forms) is not searched: it must be in `varianti`
   too. `python schede.py controlla` reports it.
 - **"Indice delle fonti in costruzione"** (source index being built): the first time, on a large corpus, the index
-  takes 10-30 minutes; meanwhile the chat says so. By hand: `python indice.py costruisci`.
+  takes 10-30 minutes; meanwhile the conversation says so. By hand: `python indice.py costruisci`.
 
-## Chat (Jan, Claude Desktop, LM Studio)
+## Conversation about the sources
 
-- **You set up the program when it was called AIrchivist**: an entry named `airchivist` in the client stays as it
-  is, and `installa.py client <name> --scrivi` updates it instead of adding a second one. Rename the environment
-  variable `AIRCHIVIST_PROGETTO` to `PRESSMARK_PROGETTO` wherever you set it (in the client's entries too): the old
-  name is no longer read. An installed copy keeps using `%APPDATA%\AIrchivist` while no `%APPDATA%\Pressmark`
-  folder exists.
-- **The Pressmark server does not appear or is off**: restart the client after `installa.py client <name>
-  --scrivi`. In Jan an entry written while the program is open is lost (Jan rewrites its files when it closes):
-  close Jan, rerun the command, reopen Jan. Then check the connection with `python installa.py client --verifica`.
-- **The client cannot find `python`**: the server entry's command must be the full path of the interpreter;
-  `installa.py client <name> --scrivi` writes it that way.
-- **The chat answers without using the tools**: the chat model must support tool use (in Jan: **Tools** enabled on
-  the model) and web search must be off. If the server's instructions do not reach the model, write at the start
-  of the conversation "call the guida tool".
-- **The chat says the search never ends**: searches run as separate processes and continue even if the chat stops
-  waiting. Ask "how far has the search got?": the assistant finds it again.
-- **A tool result is cut off**: the client accepts fewer characters than the server sends. In Jan the right value
-  (8000) is set by `installa.py client jan --scrivi`; for other clients lower `[mcp] max_caratteri` in
-  `config.ini`.
-- **"All models exhausted"** (FreeLLMAPI): the free quotas for the chat model are used up for now. Try again later;
-  searches already started wait and resume by themselves.
+- **You set up the program when it was called AIrchivist**: rename the environment variable `AIRCHIVIST_PROGETTO`
+  to `PRESSMARK_PROGETTO` wherever you set it: the old name is no longer read. An installed copy keeps using
+  `%APPDATA%\AIrchivist` while no `%APPDATA%\Pressmark` folder exists.
+- **The conversation stays disabled**: the test on opening says the chosen model cannot use tools. Choose another
+  profile for the synthesis, or use the guided search path.
+- **The conversation says the search never ends**: searches run as separate processes and continue even if the
+  conversation stops waiting. Follow it in the search panel, or ask "how far has the search got?".
+- **"All models exhausted"** (FreeLLMAPI): the free quotas are used up for now. Try again later; searches already
+  started wait and resume by themselves.

@@ -51,6 +51,20 @@ a:hover { text-decoration: underline; }
 """
 
 
+def _rimandi(m, ancore):
+    """[n] diventa un rimando al passaggio n; un gruppo [1, 2, 3] diventa un rimando per ogni numero, tra le stesse
+    parentesi: il riassunto cita spesso più passaggi insieme, e ognuno si deve poter aprire."""
+    numeri = re.findall(r"\d{1,4}", m.group(1))
+    if len(numeri) == 1:
+        n = numeri[0]
+        return f'<a class="rimando" href="#doc-{n}">[{n}]</a>' if n in ancore else m.group(0)
+    if not any(n in ancore for n in numeri):
+        return m.group(0)
+    sep = ";" if ";" in m.group(1) else ","
+    parti = [f'<a class="rimando" href="#doc-{n}">{n}</a>' if n in ancore else n for n in numeri]
+    return "[" + f"{sep} ".join(parti) + "]"
+
+
 def inline(testo, ancore=frozenset(), corsivo=True):
     """Elementi in linea: testo sicuro (escape), **grassetto**, *corsivo*, `codice`, rimandi [n] ai passaggi.
     corsivo=False nei passaggi originali (>), dove un asterisco può essere del testo (OCR) e resta com'è."""
@@ -64,8 +78,7 @@ def inline(testo, ancore=frozenset(), corsivo=True):
         s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
         if corsivo:
             s = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<em>\1</em>", s)
-        s = re.sub(r"\[(\d{1,4})\]", lambda m: (f'<a class="rimando" href="#doc-{m.group(1)}">[{m.group(1)}]</a>'
-                                               if m.group(1) in ancore else m.group(0)), s)
+        s = re.sub(r"\[(\d{1,4}(?:\s*[,;]\s*\d{1,4})*)\]", lambda m: _rimandi(m, ancore), s)
         out.append(s)
     return "".join(out)
 

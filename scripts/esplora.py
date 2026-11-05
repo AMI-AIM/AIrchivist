@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Esplorazione delle fonti prima di creare la scheda di un'entità nuova (usato dal server MCP).
+Esplorazione delle fonti prima di creare la scheda di un'entità nuova (strumento esplora_nome).
 
 esplora_nome: dato un nome (come lo scrive l'utente) e qualche indizio (paese, partito, in cinese e in
 lingua occidentale), restituisce le forme del nome ATTESTATE nelle fonti, con conteggi per serie e anno,

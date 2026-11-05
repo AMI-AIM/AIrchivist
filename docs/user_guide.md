@@ -3,9 +3,9 @@
 To get started in a few minutes: [`quickstart.md`](quickstart.md). If something goes wrong:
 [`troubleshooting.md`](troubleshooting.md). In Italian: [`user_guide.it.md`](user_guide.it.md).
 
-The system is used from a **chat client** connected to the engine through the MCP server `mcp_server.py`: Jan,
-Claude Desktop, LM Studio or any other client that supports MCP servers. The chat model does not read the sources:
-it uses the engine's tools and reports what they return. The same steps can also be run from the command line.
+The system is used from its **browser interface** (`python app.py`): the guided search path and, next to it, a
+conversation about the sources, whose model does not read the sources but uses the engine's tools and reports what
+they return. The same steps can also be run from the command line.
 
 The work is divided like this:
 - **Python, on your computer**: finding the occurrences, checking the citations and laying out the answer.
@@ -21,7 +21,7 @@ or PowerShell), in the engine's `scripts` folder; on macOS and Linux the command
 import, `ricerca` = search, `proponi` = propose, `applica` = apply, `controlla` = check, `elenca` = list, `usa` =
 use, `prova` = test/dry run), configuration keys, messages, the eight section titles of an answer, and the
 translations and summaries of the passages are in Italian. This guide gives the meaning of each the first time it
-appears. The chat assistant can answer in another language (`[mcp] lingua` in `config.ini`).
+appears. The conversation can answer in another language (`[conversazione] lingua` in `config.ini`).
 
 ## Folder layout
 
@@ -29,35 +29,35 @@ appears. The chat assistant can answer in another language (`[mcp] lingua` in `c
 Pressmark/                  the repository (the engine: it can be published)
   README.it.md, README.md   overview (in Italian and English)
   LICENSE, requirements.txt licence (AGPL-3.0) and optional libraries
-  assets/marchio/           the Pressmark logotype and favicon, light and dark versions (SVG)
+  assets/                   the Pressmark logotype and favicon, light and dark versions (SVG)
   docs/                     documentation: quickstart, this guide, troubleshooting
   tests/                    automated tests (python -m unittest discover -s tests); test_project/: sample project
   scripts/
-    installa.py             guided setup, libraries, environment check, model profiles, chat clients
+    installa.py             guided setup, libraries, environment check, model profiles
     app.py, interfaccia/    the browser interface (local server and page)
     conversazione.py        the interface's conversation about the sources and the check of its citations
-    strumenti.py            the engine's tools (interface, conversation, MCP server); istruzioni.py: the
-                            rules for the chat model
-    mcp_server.py           the optional MCP server, to use the tools from an external chat client
-    ricerca.py              the engine: extraction -> reading -> answer (started by the server)
+    strumenti.py            the engine's tools (interface and conversation); istruzioni.py: the rules for the
+                            conversation's model
+    ricerca.py              the engine: extraction -> reading -> answer (started by the interface)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
     glossario.py, archivio.py, schede.py, varianti.py, llm.py   the parts of the engine
     indice.py, esplora.py   source index, exploration of new names and free-text search
     varianti_nomi.py        Chinese transcriptions and translated forms proposed by esplora_nome
-    lavori.py               runs searches as processes independent of the chat
+    lavori.py               runs searches as processes independent of the interface
     progetto.py, profili.py research projects (new, status, paths) and series profiles
     importa.py, revisione.py   import of new material (PDF, scans, .txt, PAGE/ALTO XML) and the metadata
                             review table
-    pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py, tabelle.py
+    pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, confronto_testi.py, tabelle.py
                             parts of the import: XML, page numbers, column order in newspapers, OCR engines,
                             text comparison, reading tables (.csv, .xlsx)
     citazioni.py            Chicago notes-bibliography citations from the file headers and series profiles
     documento.py            the answer as a self-contained HTML document, to open in a browser and print
-    sessione.py             reading passages in a session (the chat assistant reads them)
+    sessione.py             reading passages in a session (an assistant reads them)
     valuta.py               quick test of the models against a reference reading
     valutazione.py          hand-verified reference set; precision and recall measurements
-    prova_ocr.py, prova_chat.py   tests of OCR engines and of chat models
-    config.ini              engine configuration (model profile in use, parameters, project in use)
+    prova_ocr.py            tests of OCR engines
+    config.ini              engine configuration: the default values (under version control, never changed)
+    config.utente.ini       your choices (project and model in use), read over config.ini; outside version control
     models.ini              your model profiles (outside version control; created by installa.py modello)
     models_template.ini     example model profiles, with a description of every key
     series_template.ini     template of series.ini for new projects
@@ -67,7 +67,7 @@ Pressmark/                  the repository (the engine: it can be published)
       glossary/
         entities.ini        entity cards
         series.ini          series profiles (including citations)
-        instructions.md     project rules for the chat model
+        instructions.md     project rules for the conversation's model
       sources/              original uploaded documents, never modified
       data/                 the processed sources, one .txt per document with a metadata header
       audit/
@@ -80,15 +80,15 @@ Pressmark/                  the repository (the engine: it can be published)
       results/
         archive/            single archive of the passages already read
         searches/           one folder per search (modelli.json: the model profiles it started with)
-        answers/            the full answers of searches started from the chat (one per question)
+        answers/            the full answers of searches started from the conversation (one per question)
         references/         reference readings for valuta.py
         past_sessions/      work from assisted sessions (readings, tables, reports)
-        trials/             tests of models, OCR and chat (they do not enter the archive)
+        trials/             tests of models, OCR and conversation (they do not enter the archive)
         evaluation/         hand-verified reference sets and measurements (valutazione.py)
       system/
         index/              search index of the sources (updates itself when you add files)
-        jobs/               one folder per search started from the chat: status and message log
-        import_jobs/, cache/   imports started from the chat and pages already read by OCR
+        jobs/               one folder per search: status and message log
+        import_jobs/, cache/   imports in progress and pages already read by OCR
         backups/            copies of files outside version control (sources, archive, cards),
                             one folder per date and subject
         model_changes.csv   log of model changes (installa.py modello usa)
@@ -102,8 +102,8 @@ Pressmark/                  the repository (the engine: it can be published)
 | **PyMuPDF** (to import PDFs) | `python installa.py librerie` | `python3 installa.py librerie` | `python3 installa.py librerie`, or `sudo apt install python3-fitz` |
 | **Tesseract** (to import scans) | `winget install -e --id UB-Mannheim.TesseractOCR` | `brew install tesseract tesseract-lang` | `sudo apt install tesseract-ocr tesseract-ocr-<language>` |
 
-You also need **a model to read the passages** (see "Models that read the passages") and, to ask questions in a
-conversation, **a chat client** (see "Connecting the chat"). The engine uses only Python's standard library.
+You also need **a model to read the passages** (see "Models that read the passages"). The engine uses only
+Python's standard library.
 Everything is installed system-wide, never inside the project folder.
 
 From the `scripts` folder:
@@ -113,32 +113,27 @@ python installa.py inizia
 ```
 
 `inizia` (start) is the guided setup for first-time users: it checks the environment, creates the model profile,
-creates the first project and selects it, connects the chat, and ends with a summary that re-runs the required
-checks. Each step can be skipped (`--saltati 4`, skipped) or run alone (`--passi 3`, steps); run again, it does not
-redo completed steps. The same things one at a time:
+creates the first project and selects it, and ends with a summary that re-runs the required checks. Each step can
+be skipped (`--saltati 2`, skipped) or run alone (`--passi 3`, steps); run again, it does not redo completed
+steps. The same things one at a time:
 
 ```
 python installa.py librerie
 python installa.py modello
 python installa.py controlla
-python installa.py client jan --scrivi
 ```
 
 - `librerie` (libraries) installs the optional libraries in `requirements.txt` (PyMuPDF) into the system Python. On
   Linux distributions that do not allow it ("externally-managed-environment"), use the distribution's package.
 - `modello` (model) creates the first model profile with a guided procedure (see below).
 - `controlla` (check) checks Python, SQLite with FTS5, the model profiles in use (key present, service
-  reachable), the project in use, PyMuPDF, Tesseract with the languages of the series, and PaddleOCR, and gives the
-  right command for your system for whatever is missing. It exits with status 1 if a required item is missing;
-  `--rapido` (quick) skips PaddleOCR.
-- `client` configures the chat: see "Connecting the chat".
+  reachable), the project in use, PyMuPDF, Tesseract with the languages of the series, and gives the right command
+  for your system for whatever is missing. It exits with status 1 if a required item is missing.
 
 ### Models that read the passages (profiles)
 
-There are two models, and they are different:
-- the **model that reads the passages** (sorting, translation, summary), chosen here;
-- the **chat model**, which uses the tools and presents the answer: it is chosen in the client (Jan, Claude
-  Desktop, LM Studio).
+The **model that reads the passages** (sorting, translation, summary) is chosen here. The conversation about the
+sources in the interface uses the profile chosen for the synthesis.
 
 Every configured model is a **profile** with a name, in `scripts/models.ini`: service, model name, address, name of
 the environment variable holding the key, and its own parameters (pause between requests, maximum response
@@ -172,7 +167,7 @@ Then the model name, if you have not already picked it from the list, and the pr
 key is needed and the variable is not set, it asks for it (it is not shown as you type) and, if you agree, saves it
 as an environment variable of your user (on Windows with `setx`; on macOS and Linux it gives the line to add to
 `~/.zprofile` or `~/.profile`). Finally it tests the connection and asks whether to use the profile straight away.
-New variables apply to terminals and programs opened afterwards: reopen the terminal and restart the chat client.
+New variables apply to terminals and programs opened afterwards: reopen the terminal and restart the interface.
 
 **Selecting a profile.** `usa` (use) first tests the connection and changes the selection **only if the test
 succeeds**; otherwise the previous profile stays and the message explains the problem (key refused, model does not
@@ -210,7 +205,7 @@ itself. It is the advanced choice: to get started, a service with a single key i
 3. On the **Fallback Chain** page you need two chains:
    - `ricerca` (search): the models verified with `valuta.py` or `valutazione.py`, used by the engine to read the
      passages;
-   - `chat`: only models able to use tools, used by the chat client.
+   - `chat`: only models able to use tools, used by the conversation about the sources.
 4. Routing strategy: **Custom**, with reliability 0%, speed 40% and intelligence 60%.
 5. Copy the single key (`freellmapi-…`, **Keys** page) and save it in the environment variable `FREELLMAPI_KEY`
    (Windows: `setx FREELLMAPI_KEY "..."`; macOS and Linux: `export FREELLMAPI_KEY="..."` in the shell profile).
@@ -233,26 +228,25 @@ python app.py
 ```
 
 Starts a server on your computer and opens the interface in your browser; the terminal shows the link, to copy if
-the browser does not open (it is valid while the window stays open; Ctrl+C to close). No chat client is needed: the
-interface calls the same functions as the MCP server. Its labels are in Italian.
+the browser does not open (it is valid while the window stays open; Ctrl+C to close). Its labels are in Italian;
+for English, choose "English" under Settings → Generale → "Lingua dell'interfaccia" (interface language), or open
+the interface once with `?lingua=en` at the end of the address. Answers and passage translations stay in the
+project's language.
 
 - **"Preparazione" (setup)** (button in the header; it opens by itself while the project or the model is missing):
-  the steps to get started without a terminal. Project and model are required, first sources and chat optional;
-  each step has its own button ("Nuovo progetto…", "Aggiungi modello…", "Importa…", "Collega…" for Jan, Claude
-  Desktop and LM Studio). "Collega…" (connect) first shows the chat program's file and what changes; it writes only
-  on "Scrivi le modifiche" (write the changes), with a backup copy, leaving the other entries untouched, and does
-  not write while Jan is open; then it tests the server as the chat program will start it. "Controllo
+  the steps to get started without a terminal. Project and model are required, first sources optional; each step
+  has its own button ("Nuovo progetto…", "Aggiungi modello…", "Importa…"). "Controllo
   dell'ambiente" (environment check) repeats the checks of `installa.py controlla` (Python, own window, project,
   model connection, PyMuPDF, Tesseract and the series' languages) and shows where configuration, profiles and
-  projects are. Below it, "Lingue OCR" (OCR languages): the installed languages and those the project's series
+  projects are. Below it, "Lingue delle scansioni" (OCR languages): the installed languages and those the project's series
   lack, with "Scarica le mancanti" (download the missing ones) and a field for any other Tesseract code (e.g. `por`,
   `chi_tra`). Models come from tessdata_best and go into Tesseract's folder: this works only with the Tesseract
   bundled in the installed program; with a system-wide Tesseract (in Program Files) the panel explains how to add
   them with its installer. From the command line: `installa.py lingue` (status) and `installa.py lingue sqi
   chi_sim` (download). If the scans in an import table lack their language, "Prova senza scrivere" (try
   without writing) already says so.
-- **"Progetto" (project) menu**: the projects in the `projects` folder; the choice also applies to the chat and the
-  command line (it is written to `config.ini`, section `[progetto]`). "Nuovo progetto…" creates one. While a search
+- **"Progetto" (project) menu**: the projects in the `projects` folder; the choice also applies to the
+  command line (it is written to `config.utente.ini`, section `[progetto]`). "Nuovo progetto…" creates one. While a search
   of the project is running, switching is blocked.
 - **"Modello" (model) menu**: the model profiles, marked "misurato" or "non misurato" (measured or not on these
   sources), with a dot for the connection (green: key present and service reachable). The choice goes through the
@@ -264,8 +258,7 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
   again if you close and reopen the page; 4. the summary of the answer and the full document, which opens in the
   left column.
 - **Conversazione sulle fonti** (conversation about the sources, below the search path): free questions to the
-  chosen model (the synthesis one, if the choices differ by role), which uses the same tools as the MCP server with
-  the same rules. It is an addition, not the main route: weak models can invent references. So every citation in
+  chosen model (the synthesis one, if the choices differ by role), which uses the engine's tools (see "Use"). It is an addition, not the main route: weak models can invent references. So every citation in
   the answer is compared with what the tools returned: underlined in green if it is there (a click shows the
   passage's original and translation), in red if no tool gave it. On opening, a test tells whether the model can
   use tools; if not, the conversation stays disabled with the explanation and the guided path remains. A search
@@ -284,52 +277,47 @@ interface calls the same functions as the MCP server. Its labels are in Italian.
   and right arrow keys) or, in files without markers, by blocks of lines. It opens from the "Apri la fonte"
   button next to each citation of the answer document (the citation's own page), or from the Passaggi tab;
   "Torna al documento" goes back to where you started.
-- **Passaggi** (passages): the passages of the open document; for a search, those read, grouped by document, with
-  page, relevance, translation and the model that read them, with a filter (also "Solo pertinenti", relevant
-  only); a click opens the source.
+- **Passaggi** (passages): the passages of the open document; for a search, and for a saved answer whose search
+  folder still exists, all those read, grouped by document, with page, relevance, translation and the model that
+  read them, and the number [n] of those cited in the answer. Above the table, a timeline (passages per year, or per
+  month when the span is short; the filled part is the relevant share) and buttons for series and language: a click
+  on a period or a button filters the table. Filters "Solo pertinenti" (relevant only) and "Solo citati" (cited
+  only). A click on a row opens the source.
+- **Corrections**: in the Passaggi table the "sì"/"no" (yes/no) relevance is a button: one click flips it, and
+  "Correggi" (correct) under a translation lets you rewrite it. A correction is saved in the search and in the
+  single archive of readings as a manual reading: later searches use it and never send that passage back to the
+  model. The answer changes when you run the search again.
 - **Glossario** (glossary): the project's entity records and series profiles, read-only.
 
 The server listens only on your computer (`127.0.0.1`) and accepts only the browser opened with the session link.
 Options: `--porta 8770` (fixed port), `--senza-browser` (do not open the browser).
 
-## Connecting the chat
+### While a search runs, and after
 
-```
-python installa.py client claude --scrivi
-python installa.py client --verifica
-```
+- **Live reading**: under the progress bar, the last passages read appear as the model decides (✓ relevant,
+  – not relevant), with an estimate of the time left and the models in use. When a free quota runs out, a countdown
+  shows when the search will retry, and "Riprova ora" (retry now) tries at once.
+- **Requests and tokens**: next to the model menu, how many requests the project has sent today; a click shows
+  tokens read and written, per model and for the last 7 days (from `system/usage.jsonl`). Before a search starts,
+  the summary also estimates how many requests the reading will take.
+- **What changed**: an answer to the same entity run again shows, above the text, what changed since the previous
+  one: passages cited now and not before (new documents, corrections), those no longer cited, and the two short
+  answers side by side. New references are marked "nuovo".
+- **Export** (next to "Documento completo"): Word with Chicago-style footnotes, Zotero or Mendeley (CSL-JSON), BibTeX
+  (documents in an edited collection become `@incollection`, with editors), and the table of passages as CSV for
+  Excel. Each CSV row has a link that opens the passage in Pressmark while the interface is open at that address.
+- **Name forms**: the forms found for a new name are chips to switch on or off; the one under the cursor or the
+  keyboard shows an example below. Keyboard: arrows between forms, Space switches, A marks ambiguous, Enter creates
+  the card. Forms left off are remembered for that name and are not proposed again next time.
+- **OCR quality** (at the bottom of Importazioni): "Controlla la qualità" lists the documents with low OCR
+  confidence or many unreadable words, the worst first. "Rifai l'OCR" (redo OCR) reimports one from its original
+  with the languages you choose, keeping series, date, issue, title and author.
 
-`client <name>` (`jan`, `claude`, `lmstudio`) finds the client's configuration file on your system, shows what will
-change and, with `--scrivi` (write), adds or updates only the Pressmark entry (command: the full path of the
-Python interpreter; argument: `scripts/mcp_server.py`; variable `PYTHONUTF8=1`), after a backup copy
-(`<file>.pressmark-<date>.bak`) and your confirmation. The other entries stay untouched. Without `--scrivi` it
-only shows what it would write. `client json` prints the generic `mcpServers` block, to paste into other clients.
-`client --verifica` (verify) starts the server the way the client would and checks the MCP handshake and the tool
-list. For clients that use HTTP: `python mcp_server.py --http 8765`.
+### Keyboard
 
-Restart the client after writing. Claude Desktop exists for Windows and macOS; on Linux use Jan or LM Studio.
-
-### Jan
-
-1. Install Jan from https://jan.ai (free, open source; Windows, macOS, Linux).
-2. Add the service of the chat model: Settings → Model Providers (a service already listed, or **Add Provider** with
-   address and key, for example FreeLLMAPI with `http://127.0.0.1:31415/v1` and the model `auto:chat`). For the
-   chosen model, with the pencil icon, enable **Tools**.
-3. **With Jan closed**, from the `scripts` folder: `python installa.py client jan --scrivi`. Jan rewrites its files
-   when it closes, so a change made while Jan is open would be lost. The command updates the server entry (also if
-   it is called "Pipeline") and switches it on, raises the tool timeout to at least 90 seconds, turns smart routing
-   off, raises tool results to 8000 characters and turns web search off (files `mcp_config.json` and
-   `settings.json` in Jan's data folder).
-
-   By hand, instead: Settings → **MCP Servers** → **+ Add MCP Server**, type STDIO, Command the full path of Python
-   (`where python` on Windows, `which python3` on macOS and Linux), Arguments the path of `scripts/mcp_server.py`
-   in the engine folder, environment variable `PYTHONUTF8` = `1`; then, in the MCP settings, tool timeout 90 seconds
-   and smart routing off, and **Web Search** off.
-4. An **assistant** (for example "Source search") with the chosen model. The working rules (sources, citations,
-   translations) are sent by the server (see "Instructions for the chat AI"): in the assistant's instructions it is
-   enough to write "At the start of every conversation call the guida tool and follow its instructions".
-
-After every engine update, switch the Pressmark server off and on again in the client's MCP settings.
+Ctrl+K opens a command box that reaches actions, recent searches, entity cards (they start a search) and projects.
+`/` goes to the question box, `?` lists all shortcuts. In the Passaggi table: J and K (or the arrows) move between
+rows, O or Enter opens the source, R flips relevance. Ctrl+N new search, Ctrl+B sidebar, Ctrl+, settings, Esc closes.
 
 ## Research projects
 
@@ -352,8 +340,7 @@ python progetto.py nuovo ../projects/albanian_press --nome "Albanian press 1960-
 Without a selected project the engine does not start: it says so and points to `progetto.py nuovo`.
 
 **Which project to use**: in `config.ini`, section `[progetto]`, key `cartella` (folder); or the environment
-variable `PRESSMARK_PROGETTO`, which takes precedence. A chat client can have several MCP servers, one per project:
-same command and arguments, with the environment variable `PRESSMARK_PROGETTO` pointing to the project folder.
+variable `PRESSMARK_PROGETTO`, which takes precedence. The interface writes the choice to `config.utente.ini`.
 
 In `project.ini` you can also change, for that project only, the settings of `config.ini` (for example
 `[estrazione] finestra = 300`) and move a file with the `[percorsi]` (paths) section (paths relative to the project
@@ -361,7 +348,7 @@ folder).
 
 ## Use
 
-New conversation with the assistant connected to the server, then type the question. Examples (from the project
+In the interface, use the search path or the conversation about the sources and type the question. Examples (from the project
 the system was built for, on dissident communism between Beijing and Tirana):
 - "What do the sources say about Jacques Grippa in 1964?"
 - "How did Grippa's politics evolve up to 1972?"
@@ -370,51 +357,40 @@ the system was built for, on dissident communism between Beijing and Tirana):
 - "Which new variants are there for Grippa?"
 - "Passage X is not relevant: correct it."
 
-Tools available to the chat model (14; those with several operations take the `azione` (action) parameter):
+Tools available to the conversation's model (those with several operations take the `azione` (action) parameter):
 
 | Tool | What it does |
 |---|---|
-| `guida` (guide) | working instructions and the project's sources (for clients that do not show them to the model) |
 | `schede` (cards) | `elenca`: finds the exact name of a card; `crea`: creates the card with the forms you confirmed |
 | `esplora_nome` (explore name) | for an entity without a card: the forms of the name attested in the sources, with counts and examples |
 | `cerca_testo` (search text) | free search for a word or phrase in all sources (no relevance assessment) |
-| `ricerca` (search) | `avvia` (start), `attendi` (wait: progress and model profiles in use; short waits, `[mcp] attesa_massima`), `ferma` (stop): full search in the sources. With `avvia`, on your request: `usa_modello_attuale`, `rileggi_modello` (see below) |
-| `modello` (model) | `elenca`: profiles, those in use, keys present, whether the model is measured on these sources; `prova`: connection test; `usa`: selects a profile (also for some roles or for the project only), only if the test succeeds |
+| `ricerca` (search) | `avvia` (start), `attendi` (wait: progress and model profiles in use; short waits, `[conversazione] attesa_massima`), `ferma` (stop): full search in the sources. With `avvia`, on your request: `usa_modello_attuale`, `rileggi_modello` (see below) |
 | `risposte` (answers) | `elenca`, `leggi` (read): the answers saved in the project's `results/answers` folder, by section |
 | `passaggi_archivio` (archive passages) | passages already read (original, translation, reference): immediate answer |
 | `copertura_fonti` (source coverage) | how many issues of each periodical (series profiles) exist in a period and which are missing |
 | `apri_fonte` (open source) | the text of the source file around a line |
 | `varianti` (variants) | forms of the name proposed during reading: list, add, discard |
 | `correggi_passaggio` (correct passage) | records your correction: it applies to all later searches |
-| `importa` (import) | `proponi`, `applica`, `rivedi`, `avvia`, `stato`: import of new sources (see "Importing new sources") |
-| `serie` (series) | `elenca`, `crea`: the project's series profiles |
 
-The names used until 25/10/2026 (`elenca_entita`, `avvia_ricerca`, `leggi_risposta`...) are still accepted, so an
-assistant that uses them keeps working.
+Models and imports are not tools of the conversation: they have the "Modello" menu and the "Importazioni" tab.
 
-From the chat you can ask which model reads the passages ("Which model reads the passages? Is it measured?") and
-change it ("Use the ollama-qwen-9b profile for the synthesis"): the `modello` tool runs the same test as
-`installa.py modello usa`. A new profile can only be created from the command line, so that the key does not pass
-through the chat. The chat model itself is changed in the client.
-
-**Without a chat client.** A search can also be started from the command line, on an entity that has a card (see
+**From the command line.** A search can also be started from the command line, on an entity that has a card (see
 "Entity cards and glossary"): `python ricerca.py "Card name"`, with `--apri` (open) to open the answer document when
 the search ends. Useful options: `--dal` and `--al` (from and to, years), `--fonti "Series 1; Series 2"` (sources),
 `--evoluzione` (evolution over time, including the related entities). The answer stays in
 `results/searches/<name>/`.
 
-### Instructions for the chat AI
+### Instructions for the conversation's AI
 
-The server composes them every time (`istruzioni.py`) from three parts: the engine's general rules (how to use the
+The engine composes them every time (`istruzioni.py`) from three parts: the engine's general rules (how to use the
 tools, how to cite, what not to do), the list of sources derived from `series.ini` with the name and description
 from `project.ini`, and the project's own rules written in `instructions.md` in the project folder (subject,
 character of the sources, conventions on names and offices, citation examples; lines starting with `#` are not
-sent). It delivers them in three ways, because not every client shows them to the model: in the `instructions`
-field of the MCP protocol, as the MCP prompt `istruzioni`, and through the `guida` tool. Language of the chat
-answers (`lingua = italiano`, or `English`, or another) and maximum wait: `config.ini` (or `project.ini`), section
-`[mcp]`. Translations and summaries of the passages are, for now, always in Italian.
+sent). They reach the model as the system message of the conversation. Language of the answers (`lingua =
+italiano`, or `English`, or another) and maximum wait: `config.ini` (or `project.ini`), section
+`[conversazione]`. Translations and summaries of the passages are, for now, always in Italian.
 
-Every full search started from the chat saves the answer in the project's `results/answers` folder, with the date
+Every full search started from the conversation saves the answer in the project's `results/answers` folder, with the date
 and the question in the file name. The answer has eight sections (titles in Italian):
 1. Documents (*Documenti rilevanti*)
 2. Original passages (*Passaggi rilevanti*)
@@ -518,7 +494,7 @@ also appears in 贝林格韦, a region of Zimbabwe): they must be confirmed one 
 ambiguous forms, which the model always sorts.
 
 The assistant shows you the attested forms and creates the card only after your confirmation: no form enters the
-card unless it appears in the sources. Then the search proceeds as for the other entities. Without a chat client
+card unless it appears in the sources. Then the search proceeds as for the other entities. From the command line
 the card is written by hand in `glossary/entities.ini` (`tipo` and `varianti` are enough).
 
 The **source index** (in the project's `system/index/`; for a corpus of a few thousand files, almost 1 GB) is used
@@ -590,8 +566,8 @@ In the header the author is written "Surname, Name" (several authors separated b
 "Surname, Name", the others become "Name Surname"). Unknown year: "s.d.". `nome_citazione` gives the name of the
 newspaper as it should be written (e.g. `*Renmin ribao* 人民日报`). The `chicago` field is needed only for a form
 different from the type's (e.g. the JPRS translations of Red Flag). The advanced fields are described at the top
-of `series.ini` (template: `scripts/series_template.ini`). Series are added with the guided import (below), by
-writing the block, or by asking in the chat ("create the series ..."). The profile also tells the rest of the system
+of `series.ini` (template: `scripts/series_template.ini`). Series are added with the guided import (below), or by
+writing the block. The profile also tells the rest of the system
 how to treat the series: whether it is a periodical (`tipo`), how far its issues go (`periodo`, period, for the
 silences in the chronology), how often it comes out (`periodicita`), which other series to search it with
 (`gruppo`, group), how to find the page in the text (`pagina_regex`). A series without `periodo` has no final
@@ -629,8 +605,7 @@ inferred, to-be-verified or missing values); correct it and `applica` rewrites o
 line endings stay those of the file), with a copy of the previous version in `system/backups/` and one row per field
 in `audit/changes.csv`. A corrected value becomes verified.
 
-From the chat, the same path: `importa` tool, actions `proponi`, `applica` (first with `prova`) and `rivedi`; the
-chat says which file to open and does not fill in the table for you.
+From the interface, the same path: the "Importazioni" tab (see "The browser interface").
 
 **Importing a file into an existing series.** In the chat: "import the folder <path of the scans> into the series
 Zëri i Popullit". The first time for a series or a kind of scan the assistant runs a **test** on the first pages and
@@ -732,9 +707,7 @@ python prova_ocr.py misura china_icm
 ```
 
 1. `motori` (engines): which engines are available and why the others are not. Today: Tesseract, also with
-   different page segmentations (`tesseract:3`, `tesseract:6`). PaddleOCR is used from a separate Python (see
-   `ocr_paddle.py`); on the author's computer it was too slow, about 50 seconds per page. Kraken needs Linux (on
-   Windows, WSL).
+   different page segmentations (`tesseract:3`, `tesseract:6`). Kraken needs Linux (on Windows, WSL).
 2. `prepara` (prepare): renders the pages as images and has every engine read them; if the PDF already has a text
    layer, it adds it to the comparison (`strato_pdf`). Everything goes into `results/trials/ocr/<name>/`, outside
    the archive. For every page it writes `pNNN.riferimento.txt`, a proposal to be corrected by hand by looking at
@@ -877,22 +850,6 @@ models are requested from FreeLLMAPI, through its profile: the one in use, if it
 the first in `models.ini`. For measurements on any corpus and with any service, see "Measurements on a
 hand-verified set".
 
-## Testing chat models
-
-Chat models do not read the passages: they use the tools. To choose them, `prova_chat.py` simulates the client on a
-real question (real tools, those that write are simulated: it changes nothing) and computes a score out of 8: guida
-called first, procedure followed, no answer reconstructed with apri_fonte, confirmation asked, expected Chinese form,
-no files or lines, no "corpus", text without stray characters.
-
-```
-python prova_chat.py --modelli "auto:chat; gpt-oss-120b; nemotron-3-ultra"
-python prova_chat.py --modelli "gpt-oss-120b" --domanda "..." --forma 格里巴 --istruzioni-complete
-```
-
-Results and conversations in `results/trials/chat/`. The score measures the procedure and the cleanliness of the
-text, not the quality of the choices: the answers must be read (for example, a model may propose as a form of the
-name another person found through the alignment).
-
 ## Measurements on a hand-verified set
 
 `valutazione.py` builds a reference set verified by you and measures on it both the extraction and the readings (by
@@ -947,4 +904,4 @@ table goes into `misure_<date>.md`. `--limite 6` runs a quick test.
 ## Troubleshooting
 
 Collected in [`troubleshooting.md`](troubleshooting.md): installation on the three systems, the model that reads the
-passages, project and import, chat clients.
+passages, project and import, conversation about the sources.

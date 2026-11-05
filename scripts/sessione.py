@@ -159,7 +159,7 @@ def prepara(args, cfg):
         simili = [s for s in cp.sections() if args.nome.lower() in s.lower() or s.lower() in args.nome.lower()]
         sys.exit(f"Entità '{args.nome}' senza scheda in entities.ini."
                  + (f" Forse: {', '.join(simili)}." if simili else "")
-                 + " Prima esplora_nome, conferma delle forme e schede crea (server MCP).")
+                 + " Prima esplora_nome, conferma delle forme e schede crea.")
     cart = cartella(cfg, args.cartella or slug(args.nome))
     cart.mkdir(parents=True, exist_ok=True)
     if args.senza_archivio:

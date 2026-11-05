@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/marchio/pressmark-logotipo-scuro.svg">
-    <img src="assets/marchio/pressmark-logotipo-chiaro.svg" alt="Pressmark" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/pressmark-logotipo-scuro.svg">
+    <img src="assets/pressmark-logotipo-chiaro.svg" alt="Pressmark" width="360">
   </picture>
 </h1>
 
@@ -86,8 +86,8 @@ connection, and it tells you which models have been measured on your sources.
    searches run in the background and resume on their own if a free quota runs out.
 4. **The answer**: a document to read, print or keep, with the answer first and then the evidence behind it.
 
-You can also ask questions from a chat client such as Jan, Claude Desktop or LM Studio: Pressmark includes an MCP
-server with the same tools, and the setup window connects it for you.
+You can also ask free questions in the interface's conversation about the sources: its model uses the same tools,
+and every citation it gives is checked against what they returned.
 
 ## Documentation
 
@@ -95,8 +95,9 @@ server with the same tools, and the setup window connects it for you.
 - [User guide](docs/user_guide.md): everything in detail, including the command line.
 - [Troubleshooting](docs/troubleshooting.md): common problems and their solutions.
 
-The interface is in Italian for now, and so are the translations of the passages. The guides are in English and
-Italian, and the English guide explains every Italian term you will meet.
+The interface is in Italian and English (Settings → Generale → "Lingua dell'interfaccia"); the translations of the
+passages are in Italian. The guides are in English and Italian, and the English guide explains every Italian term
+you will meet.
 
 ## Development
 
@@ -112,6 +113,6 @@ outside version control: the repository contains only the application.
 ## Licence
 
 Copyright (C) 2026 Ivan Masci. Pressmark is free software under the GNU Affero General Public License, version 3
-([`LICENSE`](LICENSE)). If you run a modified version as a network service, including as an MCP server other people
+([`LICENSE`](LICENSE)). If you run a modified version as a network service that other people
 use, you must make its source code available to them. The licence does not cover your sources, which remain
 subject to their own rights.

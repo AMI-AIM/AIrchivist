@@ -8,7 +8,7 @@ cartella di progetto (di solito in projects/, accanto al motore e fuori da git):
   <progetto>/
     project.ini             nome del progetto ed eventuali impostazioni proprie (vedi sotto)
     glossary/               entities.ini (schede delle entità), series.ini (profili delle serie), instructions.md
-                            (regole proprie del progetto per l'IA della chat, le invia il server MCP)
+                            (regole proprie del progetto per l'IA della conversazione)
     sources/                documenti originali caricati, immutabili
     data/                   documenti processati (.txt con intestazione)
     audit/                  changes.csv, open_issues.csv, imports.csv, checks/ (controlli delle importazioni)
@@ -49,7 +49,7 @@ PERCORSI = {
     "risultati": "results",
     "entita": "glossary/entities.ini",
     "serie": "glossary/series.ini",
-    "istruzioni": "glossary/instructions.md",     # regole proprie del progetto per l'IA della chat (server MCP)
+    "istruzioni": "glossary/instructions.md",     # regole proprie del progetto per l'IA della conversazione
     "problemi": "audit/open_issues.csv",
     "registro_modifiche": "audit/changes.csv",
     "registro_importazioni": "audit/imports.csv",
@@ -155,7 +155,7 @@ ENTITA_VUOTO = """# Schede delle entità del progetto: una sezione per entità.
 # spiegazione senza «#» veniva inviata come regola)
 ISTRUZIONI_VUOTO = """# Regole proprie di questo progetto per l'IA della chat
 #
-# Il server MCP le aggiunge alle regole generali e all'elenco delle fonti (ricavato da series.ini). Scrivi qui solo
+# La conversazione le aggiunge alle regole generali e all'elenco delle fonti (ricavato da series.ini). Scrivi qui solo
 # ciò che vale per questa ricerca: argomento e taglio, carattere delle fonti (primarie o studi, propaganda),
 # convenzioni sui nomi e sulle cariche, esempi di citazione. Le righe che iniziano con «#» non vengono inviate.
 #
@@ -169,7 +169,7 @@ def serie_vuoto():
     """series.ini di un progetto nuovo: descrizione dei campi ed esempio dal modello del motore, senza serie."""
     f = CARTELLA / "series_template.ini"
     testo = f.read_text(encoding="utf-8").rstrip() + "\n" if f.exists() else ""
-    return testo + "\n# Nessuna serie: aggiungile copiando l'esempio o chiedendo in Jan («crea la serie ...»).\n"
+    return testo + "\n# Nessuna serie: aggiungile copiando l'esempio qui sopra.\n"
 
 
 def cmd_nuovo(args, stampa=print):

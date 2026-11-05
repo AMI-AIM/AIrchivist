@@ -52,18 +52,18 @@ class Riferimento(unittest.TestCase):
             (d / "campione.json").write_text(json.dumps({
                 "sorgente": "x.pdf", "lingua": "zh", "dpi": 300, "pagine": [1, 2],
                 "motori": {"tesseract": {"disponibile": True, "secondi_per_pagina": 2.0},
-                           "paddleocr": {"disponibile": True, "secondi_per_pagina": 5.0},
+                           "tesseract:6": {"disponibile": True, "secondi_per_pagina": 5.0},
                            "kraken": {"disponibile": False, "motivo": "serve Linux"}}}), encoding="utf-8")
             self.scrivi(d, "格里巴同志访问北京", "Ivan Masci")
             (d / "p002.riferimento.txt").write_text(P.ISTRUZIONI_RIF.format(
                 img="p002.png", verifica=P.VERIFICA, motore="x") + "未检查", encoding="utf-8")
             for n in (1, 2):
                 (d / f"p{n:03d}.tesseract.txt").write_text("格里吧同志访问北京", encoding="utf-8")
-                (d / f"p{n:03d}.paddleocr.txt").write_text("格里巴同志\n访问北京", encoding="utf-8")
+                (d / f"p{n:03d}.tesseract_psm6.txt").write_text("格里巴同志\n访问北京", encoding="utf-8")
             camp, out, da_verificare = P.misura_campione(d)
             self.assertEqual(da_verificare, [2])
             self.assertEqual((out["tesseract"]["errori"], out["tesseract"]["caratteri"]), (1, 9))
-            self.assertEqual(out["paddleocr"]["errori"], 0)
+            self.assertEqual(out["tesseract:6"]["errori"], 0)
             self.assertNotIn("kraken", out)
 
 

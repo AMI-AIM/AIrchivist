@@ -4,9 +4,7 @@ Dall'installazione alla prima risposta in circa 15 minuti di lavoro attivo, su W
 - qualche documento tuo: PDF (con testo o scansionati), scansioni delle pagine o file `.txt`. Per la prima prova
   bastano due o tre PDF;
 - un modello che legga i passaggi: una chiave gratuita di un servizio (Groq, Google Gemini, OpenRouter) oppure
-  Ollama sul tuo computer;
-- facoltativo, per fare domande in conversazione: un client di chat che usi server MCP (Jan, Claude Desktop, LM
-  Studio).
+  Ollama sul tuo computer.
 
 La guida completa è in [`user_guide.it.md`](user_guide.it.md); se qualcosa non va, vedi
 [`troubleshooting.it.md`](troubleshooting.it.md). Comandi, messaggi e nomi dei campi del sistema sono in italiano.
@@ -38,17 +36,14 @@ Oppure scarica l'archivio `.zip` del repository, estrailo dove vuoi e apri un te
 python installa.py inizia
 ```
 
-Cinque passi; ognuno fa una domanda alla volta e propone una risposta (Invio per accettarla):
+Quattro passi; ognuno fa una domanda alla volta e propone una risposta (Invio per accettarla):
 1. **Ambiente**: controlla Python e SQLite. PyMuPDF (per i PDF) e Tesseract sono facoltativi; se manca PyMuPDF:
    `python installa.py librerie`.
 2. **Modello**: scegli il servizio. Il più semplice è «un servizio con una sola chiave», per esempio Groq: la
    procedura dice dove creare la chiave gratuita, te la chiede (non si vede mentre la scrivi), la salva come
    variabile d'ambiente del tuo utente e fa una prova. Con Ollama non serve nessuna chiave.
 3. **Primo progetto**: nome della tua ricerca e cartella (va bene quella proposta, dentro `projects/`).
-4. **Chat**: scegli il client che usi (Jan, Claude Desktop, LM Studio) oppure «nessuno, per ora». Il sistema
-   mostra che cosa cambierà nel file del client e scrive solo dopo la tua conferma, con una copia di sicurezza.
-   Jan dev'essere chiuso mentre si scrive.
-5. **Riepilogo**: «Tutto pronto» se non manca nulla.
+4. **Riepilogo**: «Tutto pronto» se non manca nulla.
 
 Puoi interrompere e rilanciare `inizia` quando vuoi: non rifà i passi già completati.
 
@@ -87,20 +82,17 @@ ancora una scheda, «Cerca le forme nelle fonti» mostra le forme del nome attes
 quelle giuste e premi «Crea la scheda e avvia la ricerca». Segui l'avanzamento; alla fine il documento della
 risposta si apre a sinistra. I menu in alto cambiano progetto e modello; la scheda «Importazioni» fa anche il passo 4 da qui.
 
-### Dalla chat
+### In conversazione
 
-Riavvia il client se era aperto. Controlla che il server «pressmark» risulti acceso nelle impostazioni MCP del
-client e che il modello della chat sappia usare gli strumenti (in Jan: **Tools** attivo sul modello, **Web Search**
-spento). Poi scrivi, per esempio:
+Sotto il percorso della ricerca, «Conversazione sulle fonti» accetta domande libere, per esempio:
 
 > Cosa dicono le fonti di Enver Hoxha?
 
-L'assistente cerca nelle fonti le forme del nome effettivamente attestate (con conteggi ed esempi) e te le mostra:
-conferma quelle giuste. La ricerca parte e l'assistente ne segue l'avanzamento; una ricerca su pochi documenti
-dura qualche minuto. A ricerca finita ricevi un riassunto e il percorso del **documento della risposta**, un file
-`.html` da aprire con il browser: passaggi originali, traduzione, citazioni con la pagina, limiti e copertura.
+Il modello usa gli strumenti del motore: cerca le forme attestate del nome, avvia la ricerca e ne segue
+l'avanzamento nel riquadro della ricerca. Ogni citazione della sua risposta si controlla su ciò che gli strumenti
+hanno restituito (verde se c'è, rosso se no). Il documento della risposta è lo stesso di sopra.
 
-### Senza chat
+### Da riga di comando
 
 Scrivi la scheda dell'entità in `glossary/entities.ini` della cartella del progetto, con le forme del nome che
 la ricerca deve trovare:
@@ -119,7 +111,7 @@ python ricerca.py "Enver Hoxha" --apri
 
 La ricerca estrae i passaggi, li fa leggere al modello e, alla fine, apre il documento della risposta nel
 browser (con un servizio gratuito e pochi documenti, due o tre minuti). Il documento resta in
-`results/searches/<nome>/risposta.html` del progetto; le risposte delle ricerche fatte dalla chat si raccolgono
+`results/searches/<nome>/risposta.html` del progetto; le risposte delle ricerche fatte dalla conversazione si raccolgono
 anche in `results/answers/`.
 
 ## E adesso

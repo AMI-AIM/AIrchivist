@@ -181,7 +181,7 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(r.status, 404)
 
     def test_marchio(self):
-        # logotipo e favicon vengono da assets/marchio; fuori da quella cartella non si legge nulla
+        # logotipo e favicon vengono da assets (serviti come /marchio/...); fuori da quella cartella non si legge nulla
         for nome in ("pressmark-favicon-chiaro.svg", "pressmark-logotipo-scuro.svg"):
             r, testo = self.richiesta("GET", f"/marchio/{nome}")
             self.assertEqual((r.status, r.getheader("Content-Type")), (200, "image/svg+xml"))
@@ -655,12 +655,161 @@ class Interfaccia(unittest.TestCase):
                                                      encoding="utf-8")
         codice, r = self.get("/api/passaggi?ricerca=prova_visore")       # senza risposta.html: va bene lo stesso
         self.assertEqual(codice, 200, r)
-        self.assertEqual(r["passaggi"], [{"data": "1980-04-15", "fonte": "Renmin Ribao, 1980-04-15", "pagina": "1",
+        self.assertEqual(r["passaggi"], [{"id": "a1", "entita": "", "data": "1980-04-15",
+                                          "fonte": "Renmin Ribao, 1980-04-15", "serie": "", "pagina": "1",
                                           "pertinente": "sì", "letto_da": "modello-a",
                                           "traduzione": "Berlinguer a Pechino.",
-                                          "file": "riviste/renmin_ribao/1980-04-15.txt", "riga": "9"}])
+                                          "file": "riviste/renmin_ribao/1980-04-15.txt", "riga": "9",
+                                          "corretto": False, "lingua": r["passaggi"][0]["lingua"]}])
+        self.assertEqual((r["ricerca"], r["tutti"]), ("prova_visore", True))
         for q in ("ricerca=..", "ricerca=assente", "risposta=..%2F..%2Fconfig.ini", ""):
             self.assertEqual(self.get("/api/passaggi?" + q)[0], 400, q)
+
+    def _ricerca_di_prova(self, nome="correzioni_berlinguer", entita="Enrico Berlinguer"):
+        """Una ricerca finta con due passaggi letti (uno pertinente, uno no) e la sua risposta salvata."""
+        cartella = self.p1 / "results" / "searches" / nome
+        cartella.mkdir(parents=True, exist_ok=True)
+        passaggi = [{"id": "p1", "entita": entita, "file": "riviste/renmin_ribao/1980-04-15.txt", "riga": 9,
+                     "passaggio": "贝林格 a Pechino"},
+                    {"id": "p2", "entita": entita, "file": "riviste/renmin_ribao/1980-04-16.txt", "riga": 9,
+                     "passaggio": "un altro testo"}]
+        (cartella / "passaggi.jsonl").write_text("".join(json.dumps(p, ensure_ascii=False) + "\n" for p in passaggi),
+                                                 encoding="utf-8")
+        letti = [dict(passaggi[0], data="1980-04-15", fonte="Renmin Ribao", citazione="Renmin Ribao, 15 aprile 1980",
+                      analisi={"pertinente": "sì", "traduzione_it": "Berlinguer a Pechino.", "modello_analisi": "m"}),
+                 dict(passaggi[1], data="1980-04-16", fonte="Renmin Ribao", citazione="Renmin Ribao, 16 aprile 1980",
+                      analisi={"pertinente": "no", "modello_smistamento": "m"})]
+        (cartella / "classificati.jsonl").write_text("".join(json.dumps(p, ensure_ascii=False) + "\n" for p in letti),
+                                                    encoding="utf-8")
+        return cartella
+
+    def test_correggi_passaggio(self):
+        cartella = self._ricerca_di_prova()
+        archivio_f = self.p1 / "results" / "archive" / "readings.jsonl"
+        prima = archivio_f.read_bytes() if archivio_f.exists() else None
+        self.addCleanup(lambda: archivio_f.write_bytes(prima) if prima is not None else archivio_f.unlink(missing_ok=True))
+        self.addCleanup(shutil.rmtree, cartella, True)
+        codice, r = self.post("/api/passaggio/correggi", {"ricerca": cartella.name, "id": "p2", "pertinente": "sì",
+                                                          "traduzione": "Testo corretto."})
+        self.assertEqual(codice, 200, r)
+        self.assertEqual((r["passaggio"]["pertinente"], r["passaggio"]["traduzione"], r["passaggio"]["corretto"]),
+                         ("sì", "Testo corretto.", True))
+        # la lettura della ricerca è cambiata, e l'archivio ha la correzione (le ricerche dopo non la rileggono)
+        righe = [json.loads(x) for x in (cartella / "classificati.jsonl").read_text(encoding="utf-8").splitlines()]
+        a = next(x for x in righe if x["id"] == "p2")["analisi"]
+        self.assertTrue(a["corretto_a_mano"])
+        self.assertEqual(a["provenienza"]["decisione"]["da"], "correzione dall'interfaccia")
+        archivio = (self.p1 / "results" / "archive" / "readings.jsonl").read_text(encoding="utf-8")
+        self.assertIn('"origine": "correzione manuale"', archivio)
+        codice, r = self.get(f"/api/passaggi?ricerca={cartella.name}")
+        self.assertEqual([p["pertinente"] for p in r["passaggi"]], ["sì", "sì"])
+        for dati in ({"ricerca": cartella.name, "id": "p2"}, {"ricerca": cartella.name, "id": "x", "pertinente": "no"},
+                     {"ricerca": "..", "id": "p1", "pertinente": "no"},
+                     {"ricerca": cartella.name, "id": "p1", "pertinente": "forse"}):
+            self.assertEqual(self.post("/api/passaggio/correggi", dati)[0], 400, dati)
+
+    def test_letture_e_riprova(self):
+        cartella = self._ricerca_di_prova("enrico_berlinguer")
+        lavoro = self.p1 / "system" / "jobs" / "lavoro1"
+        lavoro.mkdir(parents=True, exist_ok=True)
+        (lavoro / "stato.json").write_text(json.dumps({
+            "id": "lavoro1", "stato": "in attesa", "inizio": time.time(), "battito": time.time(),
+            "prossimo_ts": int(time.time()) + 600,
+            "parametri": {"principale": "Enrico Berlinguer", "modalita": "occorrenze"}}), encoding="utf-8")
+        try:
+            codice, r = self.get("/api/ricerca/letture?dopo=0")
+            self.assertEqual(codice, 200, r)
+            self.assertEqual((r["righe"], r["nuove"], r["ricerca"]), (2, 2, cartella.name))
+            self.assertEqual(self.get("/api/ricerca/letture?dopo=2")[1]["letture"], [])
+            self.assertTrue(self.get("/api/ricerca/letture?dopo=9")[1]["azzera"])
+            codice, r = self.get("/api/ricerca")
+            self.assertEqual(r.get("prossimo_ts") and r["stato"], "in attesa", r)
+            codice, r = self.post("/api/ricerca/riprova", {})
+            self.assertEqual(codice, 200, r)
+            self.assertTrue(r["riprova"])
+            self.assertTrue((lavoro / "riprova").exists())
+        finally:
+            shutil.rmtree(lavoro, ignore_errors=True)
+            shutil.rmtree(cartella, ignore_errors=True)      # la ricerca vera della stessa entità parte pulita
+
+    def test_confronto_tra_risposte(self):
+        risposte = self.p1 / "results" / "answers"
+        risposte.mkdir(parents=True, exist_ok=True)
+        testa = "<!-- Domanda: Berlinguer | entità: Enrico Berlinguer | occorrenze -->\n\n# Enrico Berlinguer\n\n"
+        prima = risposte / "2020-01-01_berlinguer.md"
+        prima.write_text(testa + "## 7. Risposta finale\n\nVisita a Pechino [1].\n\n## 8. Dati tecnici per la verifica\n\n"
+                         "- [1] `riviste/renmin_ribao/1980-04-15.txt`, riga 9\n", encoding="utf-8")
+        ora = risposte / "2020-02-01_berlinguer.md"
+        ora.write_text(testa + "## 7. Risposta finale\n\nVisita e incontro [1][2].\n\n## 8. Dati tecnici per la verifica\n\n"
+                       "- [1] `riviste/renmin_ribao/1980-04-15.txt`, riga 9\n"
+                       "- [2] `riviste/renmin_ribao/1980-04-16.txt`, riga 9\n", encoding="utf-8")
+        os.utime(prima, (time.time() - 100, time.time() - 100))
+        codice, r = self.get("/api/confronto?risposta=" + ora.name)
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["precedente"]["file"], prima.name)
+        self.assertEqual([x["n"] for x in r["nuovi"]], ["2"])
+        self.assertEqual(r["tolti"], [])
+        self.assertTrue(r["risposta_cambiata"])
+        self.assertEqual(r["risposta_prima"], "Visita a Pechino [1].")
+        self.assertIsNone(self.get("/api/confronto?risposta=" + prima.name)[1]["precedente"])
+
+    def test_consumo(self):
+        f = self.p1 / "system" / "usage.jsonl"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        oggi = time.strftime("%Y-%m-%d")
+        f.write_text("".join(json.dumps(x) + "\n" for x in (
+            {"giorno": oggi, "profilo": "a", "ingresso": 100, "uscita": 20},
+            {"giorno": oggi, "profilo": "a", "ingresso": 50, "uscita": 5, "cache": 30},
+            {"giorno": "2000-01-01", "profilo": "a", "ingresso": 9999, "uscita": 9999})) + "non json\n",
+            encoding="utf-8")
+        try:
+            codice, r = self.get("/api/consumo")
+            self.assertEqual(codice, 200, r)
+            self.assertEqual(r["oggi"], {"richieste": 2, "ingresso": 150, "uscita": 25, "cache": 30})
+            self.assertEqual(r["per_servizio"]["a"]["richieste"], 2)
+            self.assertEqual(r["lotti"]["smistamento"], 6)
+        finally:
+            f.unlink()
+
+    def test_esportazioni(self):
+        cartella = self._ricerca_di_prova("prova_esporta")
+        self.addCleanup(shutil.rmtree, cartella, True)
+        (cartella / "risposta.md").write_text(
+            "# Enrico Berlinguer\n\n## 1. Documenti rilevanti\n\n[1] *Renmin Ribao*, 15 aprile 1980 — notizia\n\n"
+            "## 7. Risposta finale\n\nBerlinguer è a Pechino [1].\n\n## 8. Dati tecnici per la verifica\n\n"
+            "- [1] `riviste/renmin_ribao/1980-04-15.txt`, riga 9\n", encoding="utf-8")
+        for formato, deve in (("csl", '"type"'), ("bibtex", "@"), ("csv", "data;fonte;pagina")):
+            r, corpo = self.richiesta("GET", f"/esporta?formato={formato}&ricerca={cartella.name}")
+            self.assertEqual(r.status, 200, corpo[:200])
+            self.assertIn("attachment", r.getheader("Content-Disposition"))
+            self.assertIn(deve, corpo.decode("utf-8-sig"))
+        r, corpo = self.richiesta("GET", f"/esporta?formato=docx&ricerca={cartella.name}")
+        self.assertEqual(r.status, 200)
+        import io
+        import zipfile
+        from xml.dom import minidom
+        with zipfile.ZipFile(io.BytesIO(corpo)) as z:
+            for n in z.namelist():
+                minidom.parseString(z.read(n))               # XML ben formato in ogni parte
+            note = z.read("word/footnotes.xml").decode("utf-8")
+            self.assertIn("Renmin Ribao", note)
+            self.assertNotIn("Dati tecnici", z.read("word/document.xml").decode("utf-8"))
+        self.assertEqual(self.richiesta("GET", f"/esporta?formato=exe&ricerca={cartella.name}")[0].status, 404)
+        self.assertEqual(self.richiesta("GET", "/esporta?formato=csv&ricerca=..")[0].status, 404)
+
+    def test_salute_ocr(self):
+        cattivo = self.p1 / "data" / "riviste" / "ocr_cattivo.txt"
+        cattivo.write_text("[TITLE: Scansione storta]\n[OCR_ENGINE: Tesseract]\n[OCR_CONFIDENCE: 41.5]\n\n" +
+                           " ".join(["t3e", "fl;Ja", "q", "parola", "w%", "1i1"] * 30) + "\n", encoding="utf-8")
+        try:
+            codice, r = self.get("/api/salute-ocr")
+            self.assertEqual(codice, 200, r)
+            self.assertEqual([d["file"] for d in r["documenti"]], ["riviste/ocr_cattivo.txt"])
+            self.assertEqual(r["documenti"][0]["confidenza"], 41.5)
+            self.assertGreater(r["documenti"][0]["rumore"], .5)
+            self.assertEqual(self.post("/api/rifai-ocr", {"file": "riviste/ocr_cattivo.txt", "lingue": "ita"})[0], 400)
+        finally:
+            cattivo.unlink()
 
     def test_glossario(self):
         codice, r = self.get("/api/glossario")
@@ -671,29 +820,19 @@ class Interfaccia(unittest.TestCase):
         self.assertTrue(all({"nome", "campi"} <= set(s) for s in r["serie"]))
 
     # ------------------------------------------------------------ preparazione
-    def client_finti(self):
-        """I file dei client di chat in una cartella temporanea, mai quelli veri di questo computer."""
-        base = self.p1.parent.parent / f"client_{self._testMethodName}"      # una cartella per test
-        return mock.patch.object(A.installa, "file_client",
-                                 lambda nome, dati=None: base / nome / "data" / "mcp_config.json")
-
     def test_preparazione(self):
-        with self.client_finti():
-            codice, r = self.get("/api/avvio")
+        codice, r = self.get("/api/avvio")
         self.assertEqual(codice, 200, r)
         self.assertTrue(r["completo"])
         passi = {p["id"]: p for p in r["passi"]}
-        self.assertEqual(list(passi), ["progetto", "modello", "fonti", "chat"])
+        self.assertEqual(list(passi), ["progetto", "modello", "fonti"])
         self.assertTrue(passi["progetto"]["fatto"] and passi["modello"]["fatto"] and passi["fonti"]["fatto"])
         self.assertIn("a", passi["modello"]["dettaglio"])
-        self.assertFalse(passi["chat"]["fatto"])
-        self.assertEqual([c["id"] for c in r["chat"]], ["jan", "claude", "lmstudio"])
         # senza progetto né modello: la preparazione non è completa e comincia dal progetto
         vuoto = self.config.with_name("vuoto.ini")
         vuoto.write_text("[estrazione]\nforme_sicure = no\n", encoding="utf-8")
         os.environ.pop(VARIABILE, None)
-        with self.client_finti():
-            r = A.App(vuoto, self.progetti).avvio()
+        r = A.App(vuoto, self.progetti).avvio()
         passi = {p["id"]: p for p in r["passi"]}
         self.assertFalse(r["completo"])
         self.assertFalse(passi["progetto"]["fatto"] or passi["modello"]["fatto"] or passi["fonti"]["fatto"])
@@ -708,8 +847,7 @@ class Interfaccia(unittest.TestCase):
         self.config.write_text(self.config.read_text(encoding="utf-8").replace("profilo = a", "profilo = nessuno"),
                                encoding="utf-8")
         os.environ[VARIABILE] = str(self.p1)
-        with self.client_finti():
-            r = self.get("/api/avvio")[1]
+        r = self.get("/api/avvio")[1]
         self.assertFalse(r["completo"])
         self.assertFalse(next(p for p in r["passi"] if p["id"] == "modello")["fatto"])
 
@@ -732,50 +870,6 @@ class Interfaccia(unittest.TestCase):
         self.assertEqual(r["mancano"], ["progetto"])
         self.assertEqual(voci["progetto"]["azione"], "progetto")
         self.assertFalse(any(v.startswith("modelli") for v in voci))
-
-    def test_collega_la_chat(self):
-        f = self.p1.parent.parent / f"client_{self._testMethodName}" / "jan" / "data" / "mcp_config.json"
-        f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps({"mcpServers": {"altro": {"command": "x", "args": []}}}), encoding="utf-8")
-        prove = []
-
-        def verifica(args, stampa, avvia=None):
-            prove.append(1)
-            stampa("Handshake MCP riuscito")
-            return 0
-        with self.client_finti(), mock.patch.object(A.installa, "in_esecuzione", lambda nome: False), \
-                mock.patch.object(A.installa, "client_verifica", verifica):
-            codice, c = self.get("/api/client?nome=jan")
-            self.assertEqual(codice, 200, c)
-            self.assertFalse(c["gia"])
-            self.assertTrue(any("pressmark" in m for m in c["modifiche"]), c)
-            self.assertIn("mcp_server.py", c["avvia"])
-            self.assertEqual(json.loads(f.read_text(encoding="utf-8")),     # l'anteprima non scrive
-                             {"mcpServers": {"altro": {"command": "x", "args": []}}})
-            codice, r = self.post("/api/client", {"nome": "jan"})
-            self.assertEqual(codice, 200, r)
-            self.assertTrue(r["scritto"] and r["prova"])
-            doc = json.loads(f.read_text(encoding="utf-8"))
-            self.assertEqual(doc["mcpServers"]["altro"], {"command": "x", "args": []})
-            self.assertTrue(doc["mcpServers"]["pressmark"]["active"])
-            self.assertTrue(list(f.parent.glob("mcp_config.json.pressmark-*.bak")))
-            self.assertTrue(self.get("/api/client?nome=jan")[1]["gia"])
-            avvio = self.get("/api/avvio")[1]
-            self.assertTrue(next(p for p in avvio["passi"] if p["id"] == "chat")["fatto"])
-            # di nuovo: niente da scrivere, solo la prova
-            r = self.post("/api/client", {"nome": "jan"})[1]
-            self.assertFalse(r["scritto"])
-            self.assertEqual(len(prove), 2)
-            self.assertEqual(self.get("/api/client?nome=sconosciuto")[0], 400)
-        # Jan aperto: nessuna scrittura
-        g = f.with_name("altro.json")
-        with mock.patch.object(A.installa, "file_client", lambda nome, dati=None: g), \
-                mock.patch.object(A.installa, "in_esecuzione", lambda nome: True):
-            self.assertTrue(self.get("/api/client?nome=jan")[1]["aperto"])
-            codice, r = self.post("/api/client", {"nome": "jan"})
-        self.assertEqual(codice, 400)
-        self.assertIn("aperto", r["errore"])
-        self.assertFalse(g.exists())
 
     def test_cartella_delle_lingue_propria(self):
         # Tesseract in una cartella che chiede l'amministratore: le lingue si copiano in una cartella dell'utente

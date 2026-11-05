@@ -4,9 +4,7 @@ From installation to your first answer in about 15 minutes of active work, on Wi
 - a few documents of your own: PDFs (with text or scanned), page scans or `.txt` files. Two or three PDFs are
   enough for a first try;
 - a model to read the passages: a free key for a service (Groq, Google Gemini, OpenRouter) or Ollama on your
-  computer;
-- optional, to ask questions in a conversation: a chat client that supports MCP servers (Jan, Claude Desktop,
-  LM Studio).
+  computer.
 
 The full guide is [`user_guide.md`](user_guide.md); if something goes wrong, see
 [`troubleshooting.md`](troubleshooting.md). The system's commands, messages and field names are in Italian; this
@@ -39,7 +37,7 @@ folder. Every command on this page is run from there.
 python installa.py inizia
 ```
 
-(`installa` = install, `inizia` = start.) Five steps; each asks one question at a time and proposes an answer
+(`installa` = install, `inizia` = start.) Four steps; each asks one question at a time and proposes an answer
 (press Enter to accept it). Answers are `s` (yes) or `n` (no), or the number of an option:
 1. **Environment** (*Controllo dell'ambiente*): checks Python and SQLite. PyMuPDF (for PDFs) and Tesseract are
    optional; if PyMuPDF is missing: `python installa.py librerie`.
@@ -49,10 +47,7 @@ python installa.py inizia
    the models the service offers and runs a test request. Ollama needs no key.
 3. **First project** (*Il tuo primo progetto*): the name of your research and its folder (the proposed one,
    inside `projects/`, is fine).
-4. **Chat** (*Collegamento con la chat*): choose the client you use (Jan, Claude Desktop, LM Studio) or "none for
-   now" (*nessuno, per ora*). The system shows what will change in the client's configuration file and writes
-   only after you confirm, with a backup copy. Jan must be closed while the file is written.
-5. **Summary** (*Riepilogo*): "Tutto pronto" (all set) if nothing is missing.
+4. **Summary** (*Riepilogo*): "Tutto pronto" (all set) if nothing is missing.
 
 You can stop and rerun `inizia` whenever you like: it does not redo completed steps.
 
@@ -93,22 +88,20 @@ the name, with counts and examples; tick the right ones and press "Crea la sched
 card and start the search). Follow the progress; at the end the answer document opens on the left. The menus at
 the top switch project ("Progetto") and model ("Modello"); the "Importazioni" tab also does step 4 from here.
 
-### From the chat
+### In a conversation
 
-Restart the client if it was open. Check that the "pressmark" server is switched on in the client's MCP settings
-and that the chat model can use tools (in Jan: **Tools** enabled on the model, **Web Search** off). Then write, for
+Below the search path, "Conversazione sulle fonti" (conversation about the sources) takes free questions, for
 example:
 
 > What do the sources say about Google Books?
 
-The assistant searches the sources for the forms of the name that are actually attested (with counts and examples)
-and shows them to you: confirm the right ones. The search starts and the assistant follows its progress; a search
-over a few documents takes a few minutes. When it is over you get a summary and the path of the **answer
-document**, an `.html` file to open in your browser: original passages, translation, citations with the page,
-limits and coverage. Translations and summaries in the answer are in Italian for now. The chat assistant answers in
-Italian unless you set `lingua = English` in `scripts/config.ini`, section `[mcp]`.
+The model uses the engine's tools: it looks for the attested forms of the name, starts the search and follows its
+progress in the search panel. Every citation in its answer is checked against what the tools returned (green if
+found, red if not). The answer document is the same as above. Translations and summaries in the answer are in
+Italian for now; the conversation answers in Italian unless you set `lingua = English` in `scripts/config.ini`,
+section `[conversazione]`.
 
-### Without a chat client
+### From the command line
 
 Write the entity card (*scheda*) in `glossary/entities.ini` in the project folder, with the forms of the name the
 search must find:
@@ -127,9 +120,9 @@ python ricerca.py "Google Books" --apri
 ```
 
 (`ricerca` = search, `--apri` = open.) The search extracts the passages, has the model read them and finally opens
-the answer document (in Italian, like the chat answers) in your browser (with a free service and a few documents,
+the answer document (in Italian) in your browser (with a free service and a few documents,
 two or three minutes). The document
-stays in `results/searches/<name>/risposta.html` in the project; answers to searches started from the chat are
+stays in `results/searches/<name>/risposta.html` in the project; answers to searches started from the conversation are
 also collected in `results/answers/`.
 
 ## What next

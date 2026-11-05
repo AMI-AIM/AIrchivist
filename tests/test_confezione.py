@@ -137,6 +137,7 @@ class LingueOcr(unittest.TestCase):
     def test_errori_non_lasciano_file(self):
         import urllib.error
         assente = urllib.error.HTTPError("u", 404, "Not Found", {}, None)
+        self.addCleanup(assente.close)
         with self.assertRaisesRegex(ValueError, "non ha un modello"):
             importa.scarica_lingua("xyz", self.cartella, apri=self.apri(errore=assente), stampa=lambda t: None)
         with self.assertRaisesRegex(ValueError, "troppo piccolo"):
@@ -192,6 +193,43 @@ class LingueOcr(unittest.TestCase):
         self.assertIn("rus", avvisi[1])
         with mock.patch.object(importa, "cerca_tesseract", return_value=None):
             self.assertEqual(revisione.lingue_mancanti(righe, esistenti, da_creare, cfg), [])
+
+
+class ScaricaPython(unittest.TestCase):
+    """Lo zip di Python incluso si usa solo con lo SHA-256 atteso; uno scaricamento interrotto non lascia file."""
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dest = Path(self._tmp.name) / "cache" / "python.zip"
+
+    @staticmethod
+    def apri(dati=b"zip finto", errore=None):
+        def apri(url, timeout=None):
+            if errore:
+                raise errore
+            return io.BytesIO(dati)
+        return apri
+
+    def test_hash_giusto(self):
+        import hashlib
+        atteso = hashlib.sha256(b"zip finto").hexdigest()
+        with mock.patch.object(C, "stampa", lambda t="": None):
+            self.assertEqual(C.scarica("https://x/p.zip", self.dest, atteso, apri=self.apri()), self.dest)
+        self.assertEqual(self.dest.read_bytes(), b"zip finto")
+
+    def test_hash_sbagliato_toglie_il_file(self):
+        with mock.patch.object(C, "stampa", lambda t="": None), self.assertRaisesRegex(SystemExit, "SHA-256"):
+            C.scarica("https://x/p.zip", self.dest, "0" * 64, apri=self.apri())
+        self.assertEqual(list(self.dest.parent.iterdir()), [])
+
+    def test_errore_di_rete_non_lascia_file(self):
+        with mock.patch.object(C, "stampa", lambda t="": None), self.assertRaises(OSError):
+            C.scarica("https://x/p.zip", self.dest, "0" * 64, apri=self.apri(errore=OSError("rete assente")))
+        self.assertEqual(list(self.dest.parent.iterdir()), [])
+
+    def test_versione_senza_hash(self):
+        with self.assertRaisesRegex(SystemExit, "Nessuno SHA-256"):
+            C.prepara_python(Path(self._tmp.name) / "py", "3.0.0", Path(self._tmp.name) / "cache")
 
 
 if __name__ == "__main__":

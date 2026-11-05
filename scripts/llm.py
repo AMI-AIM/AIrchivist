@@ -204,7 +204,7 @@ def catalogo_router(cfg, solo_disponibili=True):
     p = profilo_router(cfg)
     chiave = os.environ.get(p.get("chiave_env", ""), "") if p.get("chiave_env") else ""
     req = urllib.request.Request(p.get("url", "").rstrip("/") + "/models" + ("?available=true" if solo_disponibili else ""),
-                                 headers={"Authorization": f"Bearer {chiave}", "User-Agent": "ricerca-fonti/1.0"})
+                                 headers={"Authorization": f"Bearer {chiave}", "User-Agent": "Pressmark/1.0"})
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.load(r).get("data", [])
 
@@ -231,6 +231,22 @@ class LLM:
     @ultimo_modello.setter
     def ultimo_modello(self, valore):
         self._locale.modello = valore
+
+    def _registra_consumo(self, ingresso, uscita, cache=0):
+        """Una riga per richiesta riuscita: giorno, servizio, modello, ruolo e token (0 se il servizio non li dice).
+        Un errore di scrittura non ferma la lettura: il contatore è un'informazione, non una prova."""
+        if not self._file_consumo:
+            return
+        try:
+            from archivio import append_jsonl
+            self._file_consumo.parent.mkdir(parents=True, exist_ok=True)
+            append_jsonl(self._file_consumo, [json.dumps({
+                "giorno": time.strftime("%Y-%m-%d"), "ora": time.strftime("%H:%M:%S"), "servizio": self.servizio,
+                "profilo": self.profilo, "modello": self.ultimo_modello, "ruolo": self.ruolo,
+                "ingresso": int(ingresso or 0), "uscita": int(uscita or 0), "cache": int(cache or 0)},
+                ensure_ascii=False)])
+        except Exception:
+            pass
 
     def _conta(self, voce, quanto):
         with self._blocco:
@@ -279,6 +295,13 @@ class LLM:
         except ValueError:
             raise ErroreModello(f"«pausa_secondi» nel profilo «{self.profilo}» deve essere un numero.")
         self._ultima = 0.0
+        # consumo di richieste e token, giorno per giorno: system/usage.jsonl del progetto (il contatore dell'interfaccia)
+        self.ruolo, self.servizio = ruolo, scelta
+        try:
+            from progetto import percorso as _percorso
+            self._file_consumo = _percorso(cfg, "lavori").parent / "usage.jsonl"
+        except Exception:                      # senza progetto (prove di collegamento): non si registra
+            self._file_consumo = None
         # parti di nome (minuscole) dei modelli accettati, separate da ";": vuoto = qualsiasi modello
         self.ammessi = [x.strip().lower() for x in p.get("modelli_ammessi", "").replace("；", ";").split(";")
                         if x.strip()]
@@ -309,7 +332,7 @@ class LLM:
             base = self.url.rsplit("/chat/completions", 1)[0]
             try:
                 urllib.request.urlopen(urllib.request.Request(base + "/models", headers={
-                    "Authorization": f"Bearer {self.chiave}", "User-Agent": "ricerca-fonti/1.0"}), timeout=10).close()
+                    "Authorization": f"Bearer {self.chiave}", "User-Agent": "Pressmark/1.0"}), timeout=10).close()
             except urllib.error.HTTPError as e:
                 if e.code in (401, 403):
                     raise ErroreModello("Il router rifiuta la chiave: controlla FREELLMAPI_KEY (vedi docs/user_guide.it.md).")
@@ -334,7 +357,7 @@ class LLM:
         self.controlla()
         funzione = {"anthropic": self._anthropic, "openai": self._openai, "ollama": self._ollama}[self.backend]
         timeout = self.timeout
-        self.timeout = min(self.timeout, secondi)      # 60 s: sotto i 90 s che Jan concede a uno strumento
+        self.timeout = min(self.timeout, secondi)      # 60 s: una prova resta breve
         try:
             # pochi token bastano per sapere se il servizio risponde (i modelli che "ragionano" possono restituire
             # un testo vuoto: conta che la richiesta sia accettata)
@@ -370,7 +393,7 @@ class LLM:
         req = urllib.request.Request(url, data=json.dumps(corpo).encode("utf-8"),
                                      headers={"Content-Type": "application/json", "Accept": "application/json",
                                               # alcuni servizi (Cloudflare) rifiutano l'intestazione predefinita di Python
-                                              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ricerca-fonti/1.0",
+                                              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Pressmark/1.0",
                                               **intestazioni})
         try:
             # il timeout vale per ogni attesa sul collegamento, compresa quella della risposta intera (senza
@@ -410,6 +433,8 @@ class LLM:
                  "system": sistema, "messages": [{"role": "user", "content": utente}]}
         r, _ = self._post(self.url, corpo, {"x-api-key": self.chiave, "anthropic-version": "2023-06-01"})
         self.ultimo_modello = r.get("model") or self.modello
+        u = r.get("usage") or {}
+        self._registra_consumo(u.get("input_tokens"), u.get("output_tokens"), u.get("cache_read_input_tokens"))
         return "".join(b.get("text", "") for b in r.get("content", []) if b.get("type") == "text")
 
     def _openai(self, sistema, utente, schema, max_token):
@@ -441,6 +466,9 @@ class LLM:
                 f"ha risposto un modello non ammesso ({self.ultimo_modello}): togli quel modello dalla catena "
                 f"del router oppure aggiungilo a 'modelli_ammessi' ({self.profilo}) dopo averlo verificato con "
                 f"valutazione.py")
+        u = r.get("usage") or {}
+        self._registra_consumo(u.get("prompt_tokens"), u.get("completion_tokens"),
+                               (u.get("prompt_tokens_details") or {}).get("cached_tokens"))
         scelte = r.get("choices") or [{}]
         return (scelte[0].get("message") or {}).get("content") or ""
 
@@ -460,6 +488,7 @@ class LLM:
                 return self._ollama(sistema, utente, schema, max_token)
             raise
         self.ultimo_modello = r.get("model") or self.modello
+        self._registra_consumo(r.get("prompt_eval_count"), r.get("eval_count"))
         return r.get("message", {}).get("content", "")
 
     # ---------------- interfaccia ----------------

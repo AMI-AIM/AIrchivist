@@ -1,6 +1,7 @@
 """
 Test delle posizioni dei file dell'utente (posizioni.py, applicazione installabile, fase 1):
-- modo sviluppo: configurazione e profili in scripts, progetti in projects/, come sempre;
+- modo sviluppo: profili in scripts, progetti in projects/; le scelte dell'utente in config.utente.ini (fuori da
+  git), letto sopra il config.ini pubblico, che non si modifica;
 - modo installato (PRESSMARK_DATI o installazione.ini): le scelte dell'utente nel suo config.ini, letto sopra i
   valori predefiniti del programma, che non si modificano mai; models.ini e progetti nuovi fuori dal programma;
 - un file indicato a mano (prove, --config) si legge da solo anche da installato;
@@ -34,7 +35,9 @@ class Posizioni(unittest.TestCase):
         self.base.write_text(BASE, encoding="utf-8")
         self.base_prima = self.base.read_bytes()
         self.marcatore = self.tmp / "programma" / "installazione.ini"      # assente: modo sviluppo
+        self.utente = self.tmp / "programma" / "config.utente.ini"
         self._patch = [mock.patch.object(Q, "CONFIG_BASE", self.base),
+                       mock.patch.object(Q, "CONFIG_SVILUPPO", self.utente),
                        mock.patch.object(Q, "FILE_INSTALLAZIONE", self.marcatore)]
         for p in self._patch:
             p.start()
@@ -57,11 +60,21 @@ class Posizioni(unittest.TestCase):
         """Senza marcatore né variabile: tutto accanto al codice, come prima."""
         self.assertFalse(Q.installato())
         self.assertEqual(Q.cartella_dati(), Q.CARTELLA)
-        self.assertEqual(Q.file_config(), Q.CARTELLA / "config.ini")
+        # le scelte dell'utente in un file fuori da git, sopra il config.ini pubblico
+        self.assertEqual(Q.file_config(), self.utente)
         self.assertEqual(Q.file_profili(), Q.CARTELLA / "models.ini")
         self.assertEqual(Q.cartella_progetti(), Q.CARTELLA.parent / "projects")
-        self.assertEqual(Q.file_letti(), [Q.CARTELLA / "config.ini"])
+        self.assertEqual(Q.file_letti(), [self.base, self.utente])
         self.assertEqual(llm.file_profili(P.leggi_config(self.base)), Q.CARTELLA / "models.ini")
+
+    def test_sviluppo_non_scrive_nel_config_pubblico(self):
+        """Nel repository le scelte vanno in config.utente.ini: config.ini (sotto git) resta identico."""
+        I.imposta_voci(Q.file_config(), "modello", {"profilo": "mio"})
+        self.assertTrue(self.utente.is_file())
+        self.assertEqual(self.base.read_bytes(), self.base_prima)
+        cfg = P.leggi_config()
+        self.assertEqual(cfg.get("modello", "profilo"), "mio")
+        self.assertEqual(cfg.get("modello", "max_token"), "4000")
 
     def test_installato_legge_sopra_i_predefiniti(self):
         dati = self.installa_in()

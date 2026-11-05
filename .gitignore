@@ -9,6 +9,9 @@ _docs_interni/
 # Profili dei modelli di chi usa il motore (il modello pubblico è scripts/models_template.ini)
 scripts/models.ini
 
+# Scelte dell'utente nel modo sviluppo (progetto, modello: posizioni.py); scripts/config.ini resta quello pubblico
+scripts/config.utente.ini
+
 # Marcatore del programma installato (lo mette l'installatore: scripts/posizioni.py)
 scripts/installazione.ini
 
@@ -28,7 +31,7 @@ __pycache__/
 .impeccable/
 .pytest_cache/
 
-# Carattere usato per disegnare il marchio: i file SVG di assets/marchio non ne hanno bisogno
+# Carattere usato per disegnare il marchio: i file SVG di assets non ne hanno bisogno
 assets/atwriter.ttf
 
 # Sistema

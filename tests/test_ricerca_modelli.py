@@ -237,14 +237,14 @@ class Limiti(unittest.TestCase):
         self.assertEqual(len(righe), 1)
         self.assertIn("modelli diversi", righe[0])
         self.assertIn("groq/qwen/qwen3.8-27b, 3 passaggi, misurato su passaggi verificati", righe[0])
-        self.assertIn("qwen3.5:9b, 1 passaggi, non misurato", righe[0])
+        self.assertIn("qwen3.5:9b, 1 passaggio, non misurato", righe[0])
 
     def test_stesso_modello_con_e_senza_servizio(self):
         voci = [self.lettura("groq/qwen/qwen3.8-27b")] * 2 + [self.lettura("qwen/qwen3.8-27b")] * 4
         righe = S.righe_modelli_limiti(voci, set())
         self.assertEqual(righe, ["- I passaggi (6) sono stati letti dal modello qwen/qwen3.8-27b (anche come "
-                                 "groq/qwen/qwen3.8-27b): non misurato su queste fonti (valutazione.py misura "
-                                 "--profili)."])
+                                 "groq/qwen/qwen3.8-27b): non misurato su queste fonti: la sua affidabilità "
+                                 "qui non è ancora stata verificata."])
 
     def test_solo_sessione_niente_riga(self):
         self.assertEqual(S.righe_modelli_limiti([{"analisi": {"pertinente": "sì", "classificato_da": "lettura manuale"}}],

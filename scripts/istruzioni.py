@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
 """
-Istruzioni per l'IA della chat, consegnate dal server MCP: non dipendono dal client né dal
+Istruzioni per l'IA della conversazione sulle fonti (conversazione.py): non dipendono dal
 corpus. Si compongono di tre parti:
   1. regole generali del motore (questo modulo): come usare gli strumenti, come citare, cosa non fare;
   2. fonti del progetto, ricavate dai profili di serie (series.ini) e da project.ini (nome, descrizione);
   3. regole proprie del progetto, dal file instructions.md della cartella del progetto (righe con «#» escluse).
 
-Impostazioni (config.ini o project.ini, sezione [mcp]):
+Impostazioni (config.ini o project.ini, sezione [conversazione]):
   lingua            lingua delle risposte (predefinita: italiano)
-  attesa_massima    secondi di attesa di ogni chiamata ricerca(azione=attendi) (predefinita: 75); va tenuta sotto
-                    il tempo massimo che il client concede a uno strumento
-
-Il server le invia nel campo «instructions» di initialize, come prompt MCP «istruzioni» e con lo strumento
-«guida», per i client che non mostrano le istruzioni del server al modello.
+  attesa_massima    secondi di attesa di ogni chiamata ricerca(azione=attendi) (predefinita: 75): un'attesa
+                    breve, poi il modello dice a che punto è e torna ad attendere
 """
 
-GENERALI = """Rispondi in {lingua}. Le fonti le conosci solo attraverso gli strumenti di questo server: non le leggi \
+GENERALI = """Rispondi in {lingua}. Le fonti le conosci solo attraverso questi strumenti: non le leggi \
 tu, le legge la pipeline, che restituisce passaggi con citazioni verificate.
 
 Procedura:
@@ -54,7 +51,7 @@ finita; serie nuova senza tabella: serie (azione elenca, poi crea con i dati che
 - Il modello che legge i passaggi non è quello di questa chat: modello (azione elenca) dice quale è e se è misurato \
 su queste fonti; cambialo (azione usa) o rileggi i passaggi di un modello (ricerca con rileggi_modello) solo se \
 l'utente lo chiede.
-- Usa solo gli strumenti di questo server: niente shell né lettura diretta dei file.
+- Usa solo questi strumenti: niente shell né lettura diretta dei file.
 - Applica queste regole senza enunciarle."""
 
 
@@ -78,8 +75,8 @@ def componi(cfg):
     """Istruzioni complete per il progetto in uso."""
     import profili
     from progetto import nome, percorso
-    lingua = cfg.get("mcp", "lingua", fallback="italiano")
-    attesa = cfg.getint("mcp", "attesa_massima", fallback=75)
+    lingua = cfg.get("conversazione", "lingua", fallback="italiano")
+    attesa = cfg.getint("conversazione", "attesa_massima", fallback=75)
     parti = [GENERALI.format(lingua=lingua, attesa=attesa)]
     descr = cfg.get("progetto", "descrizione", fallback="").strip()
     elenco = fonti(profili.tutti())

@@ -2,13 +2,14 @@
 """
 Gestore delle ricerche come lavori indipendenti dalla chat.
 
-Ogni ricerca avviata dalla chat (strumento ricerca, azione avvia) gira in un processo a sé, che sopravvive al
-riavvio del server MCP o del client, e tiene il proprio stato su disco nella cartella system/jobs/<id>/ del progetto:
+Ogni ricerca avviata dalla chat (strumento ricerca, azione avvia) gira in un processo a sé, che sopravvive alla
+chiusura dell'interfaccia, e tiene il proprio stato su disco nella cartella system/jobs/<id>/ del progetto:
   richiesta.json   parametri della ricerca
   stato.json       stato attuale (lo legge ricerca con azione attendi), aggiornato ogni pochi secondi; «profili»:
                    i profili di modello della ricerca, fissati al suo avvio (ricerca.py, modelli.json)
   registro.txt     tutti i messaggi della ricerca
   ferma            (file vuoto) chiede al lavoro di fermarsi
+  riprova          (file vuoto) chiede a un lavoro in attesa delle quote di riprovare subito («Riprova ora»)
 
 Se le quote dei servizi gratuiti si esauriscono, il lavoro non si ferma: aspetta e riprova (dopo 10, 15, 30,
 poi ogni 60 minuti, per al massimo 36 ore). La ricerca riparte da dove era, con gli stessi profili di modello
@@ -174,18 +175,29 @@ def avvia(cfg, interp, domanda, config=None):
     opzioni = dict(cwd=CARTELLA, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                    env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1"))
     if os.name == "nt":
-        # processo indipendente da Jan (non si chiude quando Jan riavvia o spegne il server) e senza finestre
+        # processo indipendente da chi l'avvia (non si chiude con l'interfaccia) e senza finestre
         try:
-            subprocess.Popen(comando, creationflags=SENZA_FINESTRA | NUOVO_GRUPPO | FUORI_DAL_JOB, **opzioni)
-        except OSError:                       # Jan non consente l'uscita dal suo gruppo di processi
-            subprocess.Popen(comando, creationflags=SENZA_FINESTRA | NUOVO_GRUPPO, **opzioni)
+            proc = subprocess.Popen(comando, creationflags=SENZA_FINESTRA | NUOVO_GRUPPO | FUORI_DAL_JOB, **opzioni)
+        except OSError:                       # il processo che avvia non consente l'uscita dal suo gruppo
+            proc = subprocess.Popen(comando, creationflags=SENZA_FINESTRA | NUOVO_GRUPPO, **opzioni)
     else:
-        subprocess.Popen(comando, start_new_session=True, **opzioni)
+        proc = subprocess.Popen(comando, start_new_session=True, **opzioni)
+    _AVVIATI[:] = [x for x in _AVVIATI if x.poll() is None] + [proc]
     return d, stato
+
+
+# i processi avviati da qui: chi resta aperto (l'interfaccia) raccoglie l'esito di quelli finiti, così su macOS e
+# Linux non restano processi «zombie»; quelli ancora in corso continuano anche se l'interfaccia si chiude
+_AVVIATI = []
 
 
 def ferma(d):
     (Path(d) / "ferma").touch()
+
+
+def riprova_ora(d):
+    """Un lavoro in attesa delle quote smette di aspettare e riprova al prossimo controllo (entro 5 secondi)."""
+    (Path(d) / "riprova").touch()
 
 
 def termina(proc):
@@ -223,6 +235,7 @@ class Esecutore:
             self.stato.update(k)
             if self.stato.get("stato") in FINALI:
                 self.stato.pop("prossimo_tentativo", None)
+                self.stato.pop("prossimo_ts", None)
             self.stato["battito"] = time.time()
             self.stato["ultimi_messaggi"] = self.ultimi[-8:]
             scrivi_json(self.d / "stato.json", self.stato)
@@ -296,13 +309,20 @@ class Esecutore:
 
     def attendi(self, minuti, motivo):
         prossimo = time.time() + minuti * 60
-        self.aggiorna(stato="in attesa", messaggio=motivo,
+        # prossimo_ts: lo stesso istante in secondi, per il conto alla rovescia della pagina
+        self.aggiorna(stato="in attesa", messaggio=motivo, prossimo_ts=round(prossimo),
                       prossimo_tentativo=dt.datetime.fromtimestamp(prossimo).strftime("%H:%M del %d/%m"))
         self.log(f"--- {motivo}: riprovo alle {dt.datetime.fromtimestamp(prossimo):%H:%M}")
+        subito = self.d / "riprova"
+        subito.unlink(missing_ok=True)          # una richiesta vecchia non accorcia questa attesa
         while time.time() < prossimo:
             if self.fermato():
                 return False
-            time.sleep(5)
+            if subito.exists():                 # «Riprova ora» dalla pagina
+                subito.unlink(missing_ok=True)
+                self.log("--- nuovo tentativo anticipato su richiesta")
+                return True
+            time.sleep(min(5, max(0.5, prossimo - time.time())))
         return True
 
     def esegui(self):
@@ -313,6 +333,7 @@ class Esecutore:
             if self.fermato():
                 return self.aggiorna(stato="fermata", messaggio="Ricerca fermata su richiesta.")
             self.aggiorna(stato="in corso", tentativo=self.stato.get("tentativo", 0) + 1, prossimo_tentativo=None,
+                          prossimo_ts=None,
                           messaggio="", avanzamento="")
             # pochi passaggi che falliscono sempre (risposte del modello malformate): dopo due tentativi senza
             # progressi la risposta si scrive lo stesso, segnalandoli; con molti passaggi rimasti si aspetta

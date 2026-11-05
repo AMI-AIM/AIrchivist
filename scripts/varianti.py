@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Nuove varianti dei nomi proposte dal modello durante la lettura dei passaggi: elenco, aggiunta a entities.ini,
-scarto. Si usa dalla chat con lo strumento "varianti" del server MCP.
+scarto. Si usa con lo strumento "varianti" (strumenti.py).
 
 Vengono mostrate solo le forme che compaiono davvero nel testo del passaggio da cui sono state proposte.
 Dopo aver aggiunto varianti si rifà la ricerca: troverà i nuovi passaggi, e quelli già letti non verranno

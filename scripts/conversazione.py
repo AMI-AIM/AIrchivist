@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Conversazione sulle fonti: una conversazione libera con il modello scelto, che usa gli strumenti del
-motore (strumenti.py, gli stessi del server MCP, con le stesse istruzioni) e non legge le fonti da sé. È un'aggiunta al percorso
+motore (strumenti.py, con le istruzioni di istruzioni.py) e non legge le fonti da sé. È un'aggiunta al percorso
 guidato dell'interfaccia, non la sua alternativa: i modelli deboli inventano riferimenti quando ricostruiscono una
 risposta, perciò ogni citazione della risposta si controlla sui risultati degli strumenti della conversazione.
 
@@ -10,7 +10,7 @@ Servizi: compatibili OpenAI (anche FreeLLMAPI), API di Anthropic, Ollama. Prima 
 uno strumento finto dice se il modello sa usare gli strumenti; se no, la conversazione resta disattivata con la
 spiegazione e resta il percorso guidato.
 
-Strumenti: tutti quelli di strumenti.py tranne guida (le istruzioni arrivano come messaggio di sistema), modello,
+Strumenti: tutti quelli di strumenti.py tranne modello,
 importa e serie, che nell'interfaccia hanno i loro menu e la scheda «Importazioni». ricerca (azione attendi) aspetta
 pochi secondi: la ricerca avviata da qui si segue nel riquadro della ricerca. Con sola_lettura gli strumenti che
 scrivono restituiscono una risposta simulata (prove dei modelli: nulla entra nell'archivio delle letture).
@@ -40,7 +40,7 @@ sys.path.insert(0, str(CARTELLA))
 
 from llm import LLM, ErroreModello, LimiteRaggiunto   # noqa: E402
 
-ESCLUSI = {"guida", "modello", "importa", "serie"}
+ESCLUSI = {"modello", "importa", "serie"}
 SCRIVONO = {("schede", "crea"), ("ricerca", "avvia"), ("ricerca", "ferma"), ("varianti", "aggiungi"),
             ("varianti", "scarta"), ("correggi_passaggio", None)}
 MASSIMO_PASSI = 8            # chiamate al modello per ogni domanda dell'utente
@@ -173,6 +173,8 @@ class Conversazione:
         intest = {"Authorization": f"Bearer {self.llm.chiave}"} if self.llm.chiave else {}
         r, intestazioni = self.llm._post(self.llm.url, corpo, intest)
         self.llm.ultimo_modello = (intestazioni.get("x-routed-via") or r.get("model") or self.llm.modello).strip()
+        u = r.get("usage") or {}
+        self.llm._registra_consumo(u.get("prompt_tokens"), u.get("completion_tokens"))
         msg = ((r.get("choices") or [{}])[0].get("message")) or {}
         chiamate = [{"id": tc.get("id") or f"chiamata_{n}", "nome": (tc.get("function") or {}).get("name", ""),
                      "argomenti": _argomenti((tc.get("function") or {}).get("arguments"))}
@@ -188,6 +190,8 @@ class Conversazione:
         r, _ = self.llm._post(self.llm.url, corpo, {"x-api-key": self.llm.chiave,
                                                     "anthropic-version": "2023-06-01"})
         self.llm.ultimo_modello = r.get("model") or self.llm.modello
+        u = r.get("usage") or {}
+        self.llm._registra_consumo(u.get("input_tokens"), u.get("output_tokens"), u.get("cache_read_input_tokens"))
         blocchi = r.get("content") or []
         testo = "".join(b.get("text", "") for b in blocchi if b.get("type") == "text")
         chiamate = [{"id": b.get("id"), "nome": b.get("name", ""), "argomenti": _argomenti(b.get("input"))}
@@ -204,6 +208,7 @@ class Conversazione:
                                                                 "parameters": s["schema"]}} for s in strumenti_]
         r, _ = self.llm._post(self.llm.url + "/api/chat", corpo, {})
         self.llm.ultimo_modello = r.get("model") or self.llm.modello
+        self.llm._registra_consumo(r.get("prompt_eval_count"), r.get("eval_count"))
         msg = r.get("message") or {}
         chiamate = [{"id": f"chiamata_{n}", "nome": (tc.get("function") or {}).get("name", ""),
                      "argomenti": _argomenti((tc.get("function") or {}).get("arguments"))}
@@ -237,7 +242,7 @@ class Conversazione:
 
     # ------------------------------------------------------------ strumenti
     def esegui(self, nome, argomenti):
-        """Testo del risultato di uno strumento, come lo riceve anche un client MCP (accorciato entro il limite)."""
+        """Testo del risultato di uno strumento, accorciato entro il limite ([conversazione] max_caratteri)."""
         if nome in ESCLUSI or nome not in self.motore.STRUMENTI:
             return json.dumps({"errore": f"Strumento non disponibile in questa conversazione: {nome}."},
                               ensure_ascii=False)

@@ -67,6 +67,11 @@ SCHEMA_FINALE = {
 
 
 # ---------------------------------------------------------------- riferimenti
+
+def _passaggi(n):
+    """«1 passaggio», «3 passaggi»: le risposte si leggono come testo, non come conteggi."""
+    return f"{n} passaggio" if n == 1 else f"{n} passaggi"
+
 def data_it(iso):
     from citazioni import data_it as data_citazione          # anche le date al mese: «novembre 1971»
     return data_citazione(iso) or iso
@@ -163,7 +168,7 @@ def elenco_modelli(voci, campo):
             conta[p["da"]] += 1
     if len(conta) == 1:
         return next(iter(conta))
-    return "; ".join(f"{m} ({n} passaggi)" for m, n in conta.most_common())
+    return "; ".join(f"{m} ({_passaggi(n)})" for m, n in conta.most_common())
 
 
 DATI = None          # cartella delle fonti, impostata in main(): serve a indicare la riga esatta delle citazioni
@@ -347,13 +352,16 @@ def righe_modelli_limiti(classificati, misurati):
         return m + (f" (anche come {', '.join(altri[m])})" if altri.get(m) else "")
 
     def stato(m):
-        return ("misurato su passaggi verificati a mano di queste fonti" if any(misurato(x, misurati) for x in gruppi[m])
-                else "non misurato su queste fonti (valutazione.py misura --profili)")
+        # chi legge la risposta è uno storico: niente comandi da terminale, solo che cosa sappiamo del modello
+        return ("misurato su passaggi verificati a mano di queste fonti"
+                if any(misurato(x, misurati) for x in gruppi[m])
+                else "non misurato su queste fonti: la sua affidabilità qui non è ancora stata verificata")
     if len(conta) == 1:
         m, n = next(iter(conta.items()))
-        return [f"- I passaggi ({n}) sono stati letti dal modello {nome(m)}: {stato(m)}."]
+        return [f"- {'Il passaggio (1) è stato letto' if n == 1 else f'I passaggi ({n}) sono stati letti'} "
+                f"dal modello {nome(m)}: {stato(m)}."]
     return ["- I passaggi sono stati letti da modelli diversi, che possono decidere in modo diverso sugli stessi "
-            "casi: " + "; ".join(f"{nome(m)}, {n} passaggi, {stato(m)}" for m, n in conta.most_common()) + "."]
+            "casi: " + "; ".join(f"{nome(m)}, {_passaggi(n)}, {stato(m)}" for m, n in conta.most_common()) + "."]
 
 
 def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None, classificati=None, risultati=None):
@@ -362,7 +370,8 @@ def sez_limiti(docs, incerti, scartati, problemi, modello, problemi_mod=None, cl
     for p in problemi_mod or []:
         righe.append(f"- *Problema interpretativo:* {p['testo']} {''.join(f'[{r}]' for r in p['rif'])}")
     if incerti:
-        righe.append(f"- {len(incerti)} passaggi classificati come **incerti**, da controllare a mano: "
+        righe.append(f"- {_passaggi(len(incerti))} {'classificato' if len(incerti) == 1 else 'classificati'} "
+                     "come **incerti**, da controllare a mano: "
                      + "; ".join(riferimento(c) for c in incerti[:30]) + " (file e righe nella sezione 8)")
     import profili
     senza_data = [d for d in docs if not d.get("data_interna")
@@ -554,12 +563,13 @@ def avviso_non_letti(cart, out):
     if not n:
         return out
     k = max(i for i, r in enumerate(out) if r.startswith("## 5.")) + 2
-    return out[:k] + [f"- **{n} passaggi trovati non sono stati letti dal modello** (errori ripetuti del "
+    return out[:k] + [f"- **{_passaggi(n)} {'trovato non è stato letto' if n == 1 else 'trovati non sono stati letti'} "
+                      "dal modello** (errori ripetuti del "
                       "servizio): mancano da questa risposta. Rifacendo la domanda vengono letti."] + out[k:]
 
 
 def avviso_sintesi(errore):
-    """Avviso in testa alla risposta quando la sintesi del modello manca (il marcatore lo legge il server MCP)."""
+    """Avviso in testa alla risposta quando la sintesi del modello manca (il marcatore lo leggono gli strumenti, strumenti.py)."""
     if not errore:
         return []
     return ["<!-- sintesi: non generata -->",
@@ -643,7 +653,7 @@ def main():
     out += avviso_sintesi(errore_sintesi)
     if args.domanda:
         out += [f"*Domanda:* {args.domanda}", ""]
-    out += [f"*Generato il {dt.date.today().isoformat()} — documenti pertinenti: {len(docs)}.*", ""]
+    out += [f"*Generato il {data_it(dt.date.today().isoformat())} — documenti pertinenti: {len(docs)}.*", ""]
     out += sez_documenti(docs)
     out += sez_passaggi(docs, m_analisi)
     out += ["## 3. Dati espliciti", ""]

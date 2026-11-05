@@ -3,8 +3,9 @@
 Dove stanno i file dell'utente: configurazione, profili dei modelli, progetti (applicazione installabile, fase 1).
 
 Due modi di funzionare:
-- sviluppo (repository o copia scaricata, il modo di sempre): configurazione in scripts/config.ini, profili in
-  scripts/models.ini, progetti nuovi in projects/ accanto al motore;
+- sviluppo (repository o copia scaricata, il modo di sempre): valori predefiniti in scripts/config.ini (sotto git,
+  non si modifica), scelte dell'utente in scripts/config.utente.ini (fuori da git, letto dopo e quindi prevalente),
+  profili in scripts/models.ini, progetti nuovi in projects/ accanto al motore;
 - installato: c'è scripts/installazione.ini (lo mette l'installatore) o la variabile d'ambiente PRESSMARK_DATI.
   La cartella del programma non si modifica: scripts/config.ini porta solo i valori predefiniti, le scelte
   dell'utente vanno nel config.ini della cartella dei dati, letto dopo e quindi prevalente; models.ini e le copie
@@ -28,6 +29,7 @@ from pathlib import Path
 
 CARTELLA = Path(__file__).resolve().parent
 CONFIG_BASE = CARTELLA / "config.ini"
+CONFIG_SVILUPPO = CARTELLA / "config.utente.ini"   # le scelte dell'utente nel modo sviluppo (fuori da git)
 FILE_INSTALLAZIONE = CARTELLA / "installazione.ini"
 VARIABILE_DATI = "PRESSMARK_DATI"
 NOME = "Pressmark"
@@ -85,8 +87,8 @@ def cartella_dati():
 
 
 def file_config():
-    """Il config.ini in cui si scrivono le scelte dell'utente (progetto, modello)."""
-    return cartella_dati() / "config.ini"
+    """Il file in cui si scrivono le scelte dell'utente (progetto, modello): mai il config.ini del programma."""
+    return cartella_dati() / "config.ini" if installato() else CONFIG_SVILUPPO
 
 
 def file_profili():
@@ -95,10 +97,10 @@ def file_profili():
 
 
 def file_letti(path=None):
-    """I file .ini da leggere, nell'ordine (l'ultimo prevale). Da installato, il config.ini dell'utente si legge
-    sopra i valori predefiniti del programma; un file indicato a mano (prove, --config) si legge da solo."""
+    """I file .ini da leggere, nell'ordine (l'ultimo prevale). Il file delle scelte dell'utente si legge sopra i
+    valori predefiniti del programma; un file indicato a mano (prove, --config) si legge da solo."""
     f = Path(path) if path else file_config()
-    if installato() and f.resolve() == file_config().resolve() and f.resolve() != CONFIG_BASE.resolve():
+    if f.resolve() == file_config().resolve() and f.resolve() != CONFIG_BASE.resolve():
         return [CONFIG_BASE, f]
     return [f]
 

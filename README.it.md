@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/marchio/pressmark-logotipo-scuro.svg">
-    <img src="assets/marchio/pressmark-logotipo-chiaro.svg" alt="Pressmark" width="360">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/pressmark-logotipo-scuro.svg">
+    <img src="assets/pressmark-logotipo-chiaro.svg" alt="Pressmark" width="360">
   </picture>
 </h1>
 
@@ -88,8 +88,8 @@ collegamento, e ti dice quali modelli sono stati misurati sulle tue fonti.
 4. **La risposta**: un documento da leggere, stampare o conservare, con la risposta in testa e dopo le prove su cui
    si fonda.
 
-Le domande si possono fare anche da un client di chat come Jan, Claude Desktop o LM Studio: Pressmark include un
-server MCP con gli stessi strumenti, e la «Preparazione» lo collega per te.
+Si possono fare anche domande libere nella conversazione sulle fonti dell'interfaccia: il suo modello usa gli stessi
+strumenti, e ogni citazione che dà si controlla su ciò che hanno restituito.
 
 ## Documentazione
 
@@ -97,8 +97,8 @@ server MCP con gli stessi strumenti, e la «Preparazione» lo collega per te.
 - [Guida d'uso](docs/user_guide.it.md): tutto nel dettaglio, compresa la riga di comando.
 - [Problemi frequenti](docs/troubleshooting.it.md): i problemi più comuni e come risolverli.
 
-L'interfaccia per ora è in italiano, e in italiano sono anche le traduzioni dei passaggi. Le guide ci sono in
-italiano e in inglese.
+L'interfaccia è in italiano e in inglese (Impostazioni → Generale → «Lingua dell'interfaccia»); le traduzioni dei
+passaggi sono in italiano. Le guide ci sono in italiano e in inglese.
 
 ## Sviluppo
 
@@ -114,5 +114,5 @@ ricerca stanno fuori dal controllo di versione: il repository contiene solo l'ap
 ## Licenza
 
 Copyright (C) 2026 Ivan Masci. Pressmark è software libero con licenza GNU Affero General Public License, versione 3
-([`LICENSE`](LICENSE)). Chi offre una versione modificata come servizio in rete, anche come server MCP usato da altri,
+([`LICENSE`](LICENSE)). Chi offre una versione modificata come servizio in rete usato da altri,
 deve renderne disponibile il codice. La licenza non riguarda le tue fonti, che restano soggette ai propri diritti.

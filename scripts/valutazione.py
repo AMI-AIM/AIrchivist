@@ -27,7 +27,7 @@ Procedura (ogni insieme sta in results/evaluation/<nome>/):
        senza archivio, in una cartella di prova) e sull'estrazione. Scrive misure_<data>.md. --modelli: nomi dei
        modelli del router (FreeLLMAPI); --profili: profili di modello di models.ini, di qualsiasi servizio.
        Ogni misura registra il profilo con cui è fatta (nome, servizio, modello: modelli_<data>.jsonl), così
-       installa.py modello elenca e lo strumento MCP «modello» sanno se un profilo è misurato su queste fonti.
+       installa.py modello elenca e lo strumento «modello» sanno se un profilo è misurato su queste fonti.
 
 Metriche: richiamo = pertinenti veri trovati come «sì» o «incerto» / pertinenti veri; precisione = «sì»
 davvero pertinenti / «sì». Intervalli di confidenza al 95% (Wilson). Un «incerto» del riferimento non entra

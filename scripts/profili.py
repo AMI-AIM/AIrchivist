@@ -78,7 +78,7 @@ def file_serie():
 
 def tutti(ricarica=False):
     """{nome della serie: campi} dal series.ini del progetto; nessuna serie se non c'è ancora un progetto (primo
-    avvio dell'interfaccia o del server MCP: il progetto si crea dopo)."""
+    avvio dell'interfaccia: il progetto si crea dopo)."""
     from progetto import NessunProgetto
     global _PROFILI
     if _PROFILI is None or ricarica:

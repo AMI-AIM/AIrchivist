@@ -93,7 +93,7 @@ class Servizio(BaseHTTPRequestHandler):
 
 class ServerFinto:
     """Il minimo degli strumenti del motore che la conversazione usa."""
-    STRUMENTI = {n: None for n in ("guida", "schede", "passaggi_archivio", "ricerca", "importa", "modello", "serie")}
+    STRUMENTI = {n: None for n in ("schede", "passaggi_archivio", "ricerca", "importa", "modello", "serie")}
 
     def __init__(self):
         self.chiamate = []
@@ -225,7 +225,7 @@ class Conversazione(unittest.TestCase):
         self.assertEqual([x["stato"] for x in voce["citazioni"]], ["esatta", "non trovata", "non trovata"])
         self.assertEqual(voce["verifica"], {"esatte": 1, "corrispondenti": 0, "non_trovate": 2})
         self.assertEqual([m["ruolo"] for m in c.storia], ["utente", "modello"])
-        # strumenti offerti al modello: non guida, modello, importa, serie; istruzioni del server come sistema
+        # strumenti offerti al modello: non modello, importa, serie; istruzioni del server come sistema
         richiesta = Servizio.richieste[0]
         self.assertEqual({t["function"]["name"] for t in richiesta["tools"]},
                          {"schede", "passaggi_archivio", "ricerca"})

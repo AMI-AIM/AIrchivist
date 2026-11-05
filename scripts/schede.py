@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Schede delle entità (entities.ini): lettura, ricerca di un nome, aggiunta di una scheda nuova.
-Usato dal server MCP (mcp_server.py).
+Usato dagli strumenti del motore (strumenti.py).
 """
 import configparser
 import datetime as dt

@@ -19,6 +19,10 @@
   --scorrimento: #c9c5b8;            /* barre di scorrimento: la levetta, e al passaggio */
   --scorrimento-sopra: #a9a597;
   color-scheme: light;               /* controlli del sistema (menu, caselle) nei colori del tema */
+  /* curve del movimento: le curve predefinite del browser sono troppo deboli per l'interfaccia */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);    /* pannelli che arrivano di lato */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -75,8 +79,11 @@ button {
   border-radius: 6px;
   padding: .35rem .8rem;
   cursor: pointer;
+  /* la pressione risponde subito; il passaggio cambia colore piano, ma breve: succede decine di volte al giorno */
+  transition: transform 160ms var(--ease-out), background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 button:hover:not(:disabled) { border-color: var(--accento); }
+button:active:not(:disabled) { transform: scale(.97); }
 button:disabled { opacity: .5; cursor: default; }
 /* anello del fuoco nei colori dell'app, solo da tastiera */
 :focus-visible { outline: 2px solid var(--accento); outline-offset: 2px; }
@@ -97,8 +104,9 @@ label.casella, .riga label { display: inline-flex; align-items: center; gap: .35
 .solo-lettori { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
-/* ---------------------------------------------- impianto da client di chat: barra, filo, pannello */
-.app { display: grid; grid-template-columns: 15.5rem minmax(0, 1fr) auto; height: 100vh; }
+/* ---------------------------------------------- impianto a conversazione: barra, filo, pannello */
+/* le larghezze di barra e pannello si scelgono trascinandone il bordo (app.js mette le variabili su :root) */
+.app { display: grid; grid-template-columns: var(--larghezza-barra, 15.5rem) minmax(0, 1fr) auto; height: 100vh; }
 .app.barra-chiusa { grid-template-columns: 3.25rem minmax(0, 1fr) auto; }
 svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round;
   stroke-linejoin: round; flex: none; }
@@ -107,12 +115,15 @@ button.icona { display: inline-grid; place-items: center; width: 2rem; height: 2
 button.icona:hover:not(:disabled) { background: var(--sopra); color: var(--testo); }
 .spazio { flex: 1; }
 
-.fianco { display: flex; flex-direction: column; gap: .15rem; padding: .6rem .5rem; background: var(--barra);
+.fianco { position: relative; display: flex; flex-direction: column; gap: .15rem; padding: .6rem .5rem; background: var(--barra);
   border-right: 1px solid var(--bordo); min-height: 0; }
 .barra-testa { display: flex; align-items: center; justify-content: space-between; padding: 0 0 .5rem .5rem; }
 .marchio { display: block; line-height: 0; }
 .marchio img { display: block; height: 1.05rem; width: auto; }   /* il logotipo, alto come il testo della barra */
-select.scelta-progetto { width: 100%; margin: 0 0 .5rem; }
+.riga-progetto { display: flex; align-items: center; gap: .25rem; margin: 0 0 .5rem; }
+select.scelta-progetto { flex: 1; min-width: 0; }
+/* una scelta fatta con le frecce e non ancora confermata (Invio o uscendo dal menu) */
+select.in-sospeso { border-style: dashed; border-color: var(--accento); }
 button.voce-barra { position: relative; display: flex; align-items: center; gap: .55rem; width: 100%; border: 0; background: none;
   padding: .45rem .5rem; border-radius: 6px; text-align: left; color: var(--testo); }
 button.voce-barra:hover:not(:disabled) { background: var(--sopra); }
@@ -120,11 +131,43 @@ button.voce-barra:hover:not(:disabled) { background: var(--sopra); }
 .titoletto { font: 600 .75rem/1.3 system-ui, sans-serif; color: var(--tenue); letter-spacing: .02em;
   margin: 0 .5rem .3rem; }
 .elenco-recenti { list-style: none; margin: 0; padding: 0; }
-button.voce-recente { display: block; width: 100%; border: 0; background: none; text-align: left;
-  padding: .38rem .5rem; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  color: var(--testo); font-size: .92rem; }
+/* una voce dei recenti: il nome in testa, sotto la domanda, lo stato e l'ora, più piccoli e tenui */
+button.voce-recente { display: flex; flex-direction: column; gap: .05rem; width: 100%; border: 0; background: none;
+  text-align: left; padding: .32rem .5rem; border-radius: 6px; color: var(--testo); font-size: .92rem; }
+button.voce-recente > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.voce-recente .dettaglio { color: var(--tenue); font-size: .78rem; line-height: 1.3; }
+button.voce-recente .dettaglio:empty { display: none; }
 button.voce-recente:hover:not(:disabled), button.voce-recente[aria-current] { background: var(--sopra); }
-button.voce-recente[aria-current] { font-weight: 600; }
+button.voce-recente[aria-current] .titolo { font-weight: 600; }
+input.filtro-recenti { width: calc(100% - 1rem); margin: 0 .5rem .4rem; font-size: .85rem; padding: .25rem .45rem; }
+/* una riga dei recenti: la voce e, a destra, il pulsante delle azioni (visibile al passaggio o al fuoco) */
+.riga-recente { position: relative; }
+.riga-recente.mai-avviata .titolo { color: var(--tenue); font-weight: 400; }   /* scritta e mai cercata: in secondo piano */
+.riga-recente > button.voce-recente { padding-right: 2rem; }
+button.altro-recente { position: absolute; top: .2rem; right: .15rem; width: 1.7rem; height: 1.7rem; opacity: 0; }
+.riga-recente:hover > button.altro-recente, button.altro-recente:focus-visible,
+button.altro-recente[aria-expanded=true] { opacity: 1; }
+.azioni-recente { display: flex; flex-wrap: wrap; gap: .3rem; padding: .2rem .5rem .45rem; }
+.azioni-recente button { font-size: .82rem; padding: .15rem .6rem; }
+.azioni-recente input[type=text] { flex: 1 1 100%; font-size: .85rem; }
+/* più ricerche sulla stessa entità: il nome si apre sulle singole ricerche, rientrate */
+.entita-recente summary.voce-recente { display: flex; flex-direction: column; gap: .05rem; list-style: none;
+  cursor: pointer; margin: 0; padding: .32rem .5rem .32rem 1.25rem; border-radius: 6px; color: var(--testo);
+  font-size: .92rem; position: relative; }
+.entita-recente summary.voce-recente::-webkit-details-marker { display: none; }
+.entita-recente summary.voce-recente > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entita-recente summary.voce-recente .dettaglio { color: var(--tenue); font-size: .78rem; line-height: 1.3; }
+.entita-recente summary.voce-recente:hover { background: var(--sopra); }
+/* la freccia del gruppo: un angolo disegnato che ruota quando si apre */
+.entita-recente summary.voce-recente::before { content: ""; position: absolute; left: .5rem; top: .75rem;
+  width: .38rem; height: .38rem; border-right: 1.5px solid var(--tenue); border-bottom: 1.5px solid var(--tenue);
+  transform: rotate(-45deg); transition: transform 160ms var(--ease-out); }
+.entita-recente details[open] > summary.voce-recente::before { transform: rotate(45deg); }
+.sottovoci { list-style: none; margin: 0 0 .2rem .7rem; padding: 0 0 0 .3rem; border-left: 1px solid var(--bordo); }
+.elenco-recenti .gruppo-recenti { font-size: .75rem; color: var(--tenue); padding: .7rem .5rem .15rem; }
+.elenco-recenti .gruppo-recenti:first-child { padding-top: .1rem; }
+/* le righe larghe della barra: una pressione appena più lieve, che su tutta la larghezza si nota di più */
+button.voce-barra:active:not(:disabled), button.voce-recente:active:not(:disabled) { transform: scale(.98); }
 .elenco-recenti .nota { padding: .4rem .5rem; margin: 0; }
 .barra-piede { border-top: 1px solid var(--bordo); padding-top: .4rem; display: flex; flex-direction: column; }
 .barra-chiusa .fianco > :not(.barra-testa), .barra-chiusa .marchio { display: none; }
@@ -136,8 +179,19 @@ button.voce-recente[aria-current] { font-weight: 600; }
 .messaggi { display: flex; flex-direction: column; gap: 1.4rem; padding-bottom: 1.5rem; }
 .vuoto { padding-top: 22vh; text-align: center; }
 .vuoto h1 { font: 400 1.8rem/1.25 Georgia, "Noto Serif", serif; margin: 0 0 .4rem; }
-.suggerimenti { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; margin-top: 1.2rem; }
+.vuoto-modi { margin: .9rem auto 0; max-width: 34rem; color: var(--tenue); font-size: .92rem; }
+.vuoto-modi strong { color: var(--testo); font-weight: 600; }
+.suggerimenti { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: center; align-items: center;
+  margin-top: 1.2rem; }
+.suggerimenti-guida { color: var(--tenue); font-size: .85rem; margin-right: .2rem; }
+/* i suggerimenti sono pulsanti: il contorno dei campi (3:1) li stacca dal fondo in entrambi i temi */
+.suggerimenti button.chip { border-color: var(--bordo-campo); color: var(--testo); }
+.suggerimenti button.chip:hover { background: var(--sopra); border-color: var(--accento); }
 
+/* un messaggio nuovo entra appena da sotto; riaprendo un filo salvato (.ripristino) i messaggi sono già lì */
+.messaggi > .msg { transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out); }
+@starting-style { .messaggi > .msg { opacity: 0; transform: translateY(8px); } }
+.messaggi.ripristino > .msg, .messaggi.ripristino .documento > * { transition: none; }
 .msg p { margin: 0 0 .5rem; }
 .msg > :last-child { margin-bottom: 0; }
 .msg.utente { align-self: flex-end; max-width: 85%; background: var(--bolla); border-radius: 16px;
@@ -148,8 +202,60 @@ button.voce-recente[aria-current] { font-weight: 600; }
 .msg.decisa label:has(> input[type=text]) {
   display: none; }
 .msg.errore p, .msg .attenzione { color: var(--male); }
+/* una scheda già decisa e ridotta a una riga: resta come traccia della scelta, senza peso */
+.msg.scheda.ridotta { background: none; border: 0; padding: 0 .1rem; }
+.msg .traccia { margin: 0; color: var(--tenue); font-size: .9rem; }
+.msg .traccia button.discreto { margin-left: .4rem; font-size: inherit; }
+/* ciò che sta ancora arrivando (un conto, una ricerca delle forme) */
+.in-attesa { color: var(--tenue); font-style: italic; }
 .msg .riga { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: .6rem; }
 .msg.ricerca .titolo-ricerca { margin-bottom: .2rem; }
+/* le tre fasi della ricerca: quella in corso in testo pieno, le fatte con il segno, le prossime tenui */
+.tappe-ricerca { list-style: none; display: flex; flex-wrap: wrap; gap: .2rem 1.1rem; margin: .35rem 0 .45rem;
+  padding: 0; font-size: .85rem; color: var(--tenue); counter-reset: tappa; }
+.tappe-ricerca > li { counter-increment: tappa; display: inline-flex; align-items: baseline; gap: .35rem; }
+.tappe-ricerca > li::before { content: counter(tappa); font-variant-numeric: tabular-nums; font-size: .75rem;
+  min-width: 1.15rem; height: 1.15rem; line-height: 1.05rem; text-align: center; border-radius: 50%;
+  border: 1px solid var(--bordo-campo); }
+.tappe-ricerca > li.in-corso { color: var(--testo); font-weight: 600; }
+.tappe-ricerca > li.in-corso::before { border-color: var(--accento); background: var(--accento); color: var(--accento-testo); }
+.tappe-ricerca > li.fatta::before { content: ""; border-color: var(--ok); background: var(--ok) center / .7rem no-repeat
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) {
+  .tappe-ricerca > li.fatta::before { background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b1b19' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E"); }
+}
+.tappe-ricerca > li.fermata { color: var(--male); }
+.tappe-ricerca > li.fermata::before { border-color: var(--male); }
+.stato-ricerca { font-variant-numeric: tabular-nums; }
+.dettaglio-ricerca { font-size: .82rem; overflow-wrap: anywhere; }
+.rimedi-ricerca { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+/* attesa delle quote: il conto alla rovescia, in ocra (un'attesa, non un errore), e «Riprova ora» accanto */
+.attesa-quota { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .8rem; margin: .35rem 0 0;
+  font-size: .9rem; }
+.conto-quota { color: var(--attesa); font-variant-numeric: tabular-nums; }
+/* lettura dal vivo: le ultime decisioni del modello, la più recente in cima; ✓ e – dicono la pertinenza anche
+   senza colore. Un clic apre la fonte */
+.letture-vive { list-style: none; margin: .55rem 0 0; padding: 0; border-top: 1px solid var(--bordo); font-size: .85rem; }
+.letture-vive > li { display: grid; grid-template-columns: 1.1rem minmax(0, 1fr); column-gap: .3rem;
+  padding: .3rem .2rem; border-bottom: 1px solid var(--bordo); cursor: pointer; border-radius: 4px; }
+.letture-vive > li:hover { background: var(--sopra); }
+.letture-vive .segno { grid-row: span 2; font-weight: 700; text-align: center; color: var(--tenue); }
+.letture-vive > li.si .segno { color: var(--ok); }
+.letture-vive > li.incerto .segno { color: var(--attesa); }
+.letture-vive .testa-lettura { display: flex; gap: .6rem; min-width: 0; }
+.letture-vive .fonte-lettura { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.letture-vive > li.no .fonte-lettura { color: var(--tenue); }
+.letture-vive .data-lettura { margin-left: auto; color: var(--tenue); font-variant-numeric: tabular-nums;
+  white-space: nowrap; }
+.letture-vive .traduzione-lettura { grid-column: 2; color: var(--tenue); font-family: Georgia, "Noto Serif", serif;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+/* una lettura nuova scende al suo posto; da tastiera o con il movimento ridotto compare e basta */
+.letture-vive > li { transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out); }
+@starting-style { .letture-vive > li { opacity: .55; transform: translateY(-4px); } }
+html[data-tastiera] .letture-vive > li { transition: none; }
+@media (prefers-reduced-motion: reduce) { .letture-vive > li { transition: opacity 240ms ease; }
+  @starting-style { .letture-vive > li { transform: none; } } }
 /* la risposta nel filo: il documento come testo della pagina, nella voce serif dei documenti */
 .documento { font: 1.04rem/1.62 Georgia, "Noto Serif", "Songti SC", "SimSun", serif; overflow-wrap: break-word; }
 .documento h1, .documento .via-nel-filo { display: none; }
@@ -164,7 +270,10 @@ button.voce-recente[aria-current] { font-weight: 600; }
 .documento th, .documento td { border: 1px solid var(--bordo); padding: .3rem .45rem; text-align: left; vertical-align: top; }
 .documento code { font: .85em Consolas, "Courier New", monospace; overflow-wrap: anywhere; }
 .documento a { color: var(--accento); text-decoration: none; }
-.documento a.rimando { white-space: nowrap; border-radius: 3px; padding: 0 .08em; }
+/* i rimandi: sottolineati a puntini (non solo il colore li distingue, anche nel tema scuro) e con un'area di clic
+   più larga del solo numero, senza spostare il testo */
+.documento a.rimando { white-space: nowrap; border-radius: 3px; padding: .15em .22em; margin: -.15em -.14em;
+  text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .documento a.rimando:hover, .documento a.rimando:focus-visible { background: var(--avviso); }
 .documento details { margin: .4rem 0; }
 .documento details > summary { cursor: pointer; font: 600 .88rem/1.4 system-ui, sans-serif; color: var(--tenue);
@@ -178,11 +287,53 @@ button.voce-recente[aria-current] { font-weight: 600; }
 /* anteprima di un rimando: il riferimento e l'inizio della traduzione */
 .anteprima { position: fixed; z-index: 10; max-width: 26rem; padding: .6rem .8rem; background: var(--superficie);
   border: 1px solid var(--bordo); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .12), 0 1px 4px rgba(0, 0, 0, .08);
-  font-size: .88rem; line-height: 1.45; pointer-events: none; }
+  font-size: .88rem; line-height: 1.45; pointer-events: none;
+  /* cresce dal rimando (l'origine la mette app.js); le anteprime successive, a catena, arrivano senza movimento */
+  transition: opacity 125ms var(--ease-out), transform 125ms var(--ease-out); }
+@starting-style { .anteprima { opacity: 0; transform: scale(.97); } }
+.anteprima.subito { transition: none; }
 .anteprima p { margin: 0 0 .35rem; }
 .anteprima p:last-child { margin: 0; }
 .anteprima .riferimento { font-weight: 600; }
-.azioni-risposta { display: flex; gap: 1.2rem; align-items: baseline; margin-top: .6rem; font-size: .9rem; }
+.azioni-risposta { display: flex; gap: 1.1rem; align-items: center; margin-top: .7rem; font-size: .9rem; }
+/* l'azione principale sotto una risposta: le sue fonti */
+button.fonti-risposta { border: 1px solid var(--bordo-campo); border-radius: 999px; padding: .3rem .85rem;
+  background: var(--superficie); color: var(--testo); font-size: .88rem; }
+button.fonti-risposta:hover { border-color: var(--accento); }
+.azioni-risposta a { color: var(--tenue); text-underline-offset: 2px; }
+.azioni-risposta a:hover { color: var(--testo); }
+/* Esporta: un piccolo menu che scende sotto la sua voce; le voci sono collegamenti di scaricamento */
+.menu-esporta { position: relative; }
+.menu-esporta > summary { color: var(--tenue); cursor: pointer; list-style: none; text-decoration: underline;
+  text-underline-offset: 2px; }
+.menu-esporta > summary::-webkit-details-marker { display: none; }
+.menu-esporta > summary::after { content: ""; display: inline-block; width: .35rem; height: .35rem; margin-left: .4rem;
+  border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-.15rem) rotate(45deg); }
+.menu-esporta > summary:hover, .menu-esporta[open] > summary { color: var(--testo); }
+.menu-esporta > ul { position: absolute; z-index: 5; left: 0; top: calc(100% + .35rem); margin: 0; padding: .3rem;
+  list-style: none; min-width: 17rem; background: var(--superficie); border: 1px solid var(--bordo); border-radius: 10px;
+  transform-origin: top left; transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out); }
+@starting-style { .menu-esporta[open] > ul { opacity: 0; transform: scale(.97); } }
+html[data-tastiera] .menu-esporta > ul { transition: none; }
+@media (prefers-reduced-motion: reduce) { .menu-esporta > ul { transition: opacity 160ms ease; }
+  @starting-style { .menu-esporta[open] > ul { transform: none; } } }
+.menu-esporta li a { display: block; padding: .4rem .55rem .1rem; color: var(--testo); text-decoration: none;
+  border-radius: 6px 6px 0 0; }
+.menu-esporta li .nota { display: block; padding: 0 .55rem .4rem; font-size: .78rem; }
+.menu-esporta li:hover, .menu-esporta li:focus-within { background: var(--sopra); border-radius: 6px; }
+/* confronto con la risposta precedente sulla stessa entità */
+.confronto { margin: 0 0 .9rem; font-size: .9rem; }
+.confronto > .nota { margin: 0; }
+.confronto-dettagli { border: 1px solid var(--bordo); border-radius: 8px; padding: .5rem .8rem; background: var(--superficie); }
+.confronto-dettagli > summary { cursor: pointer; }
+.confronto-dettagli h4 { font-size: .85rem; margin: .7rem 0 .25rem; color: var(--tenue); font-weight: 600; }
+.confronto-dettagli ul { margin: 0; padding-left: 1.2rem; }
+.confronto-dettagli > a { display: inline-block; margin-top: .6rem; color: var(--accento); }
+.due-risposte { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.due-risposte .documento-breve { font: .92rem/1.55 Georgia, "Noto Serif", serif; margin: 0; }
+@media (max-width: 800px) { .due-risposte { grid-template-columns: 1fr; } }
+.segno-nuovo { font-size: .72rem; font-weight: 600; letter-spacing: .02em; vertical-align: super; margin-left: .15rem;
+  color: var(--ok); font-family: system-ui, sans-serif; }
 .chip-riga { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0; }
 button.chip, span.chip { border: 1px solid var(--bordo); border-radius: 999px; padding: .25rem .75rem;
   background: var(--superficie); font-size: .9rem; }
@@ -198,21 +349,68 @@ span.chip.statico { background: none; }
   line-height: 1.5; color: inherit; padding: .1rem 0; max-height: 200px; }
 .composer-riga { display: flex; align-items: center; gap: .4rem; margin-top: .35rem; }
 .chip-filtri { font-size: .8rem; color: var(--tenue); }
+/* consumo di oggi accanto al modello: una nota piccola e tenue; il dettaglio sale sopra la casella */
+.consumo { position: relative; }
+.consumo > summary { list-style: none; cursor: pointer; font-size: .78rem; color: var(--tenue); padding: .2rem .45rem;
+  border-radius: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.consumo > summary::-webkit-details-marker { display: none; }
+.consumo > summary:hover, .consumo[open] > summary { background: var(--sopra); color: var(--testo); }
+.consumo-dettaglio { position: absolute; z-index: 6; right: 0; bottom: calc(100% + .5rem); width: min(22rem, 80vw);
+  padding: .7rem .9rem; background: var(--superficie); border: 1px solid var(--bordo); border-radius: 10px;
+  font-size: .85rem; transform-origin: bottom right;
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out); }
+@starting-style { .consumo[open] .consumo-dettaglio { opacity: 0; transform: scale(.97); } }
+html[data-tastiera] .consumo-dettaglio { transition: none; }
+@media (prefers-reduced-motion: reduce) { .consumo-dettaglio { transition: opacity 160ms ease; }
+  @starting-style { .consumo[open] .consumo-dettaglio { transform: none; } } }
+.consumo-dettaglio dl { margin: 0; }
+.consumo-dettaglio h4 { font-size: .75rem; font-weight: 600; letter-spacing: .02em; color: var(--tenue); margin: .7rem 0 .2rem; }
+.consumo-servizi { list-style: none; margin: 0; padding: 0; }
+.consumo-servizi li { display: flex; justify-content: space-between; gap: .8rem; padding: .2rem 0;
+  border-bottom: 1px solid var(--bordo); }
+.consumo-servizi .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.consumo-servizi .conto { color: var(--tenue); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.consumo-dettaglio > .nota { margin: .6rem 0 0; font-size: .78rem; }
 /* il modello in uso: un menu quieto, con i soli modelli disponibili raggruppati per fornitore */
 .modello-scelta { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; }
-.modello-scelta select { border: 0; background: none; color: var(--tenue); max-width: 16rem; font-size: .85rem;
-  padding: .2rem; border-radius: 6px; }
-.modello-scelta select:hover { background: var(--sopra); color: var(--testo); }
+/* il menu stretto sul suo testo (la freccia accanto al nome, non in fondo a uno spazio vuoto) e con un contorno al
+   passaggio: si legge come un controllo, non come una didascalia */
+.modello-scelta select { field-sizing: content; border: 1px solid transparent; background: none; color: var(--tenue);
+  max-width: 18rem; font-size: .85rem; padding: .2rem .35rem; border-radius: 6px; }
+.modello-scelta select:hover, .modello-scelta select:focus-visible { background: var(--sopra); color: var(--testo);
+  border-color: var(--bordo); }
 .modello-scelta select option, .modello-scelta select optgroup { color: var(--testo); background: var(--superficie); }
 button.invia { width: 2rem; height: 2rem; padding: 0; border-radius: 50%; display: inline-grid; place-items: center;
   background: var(--accento); color: var(--accento-testo); border-color: var(--accento); }
 button.invia.ferma { background: var(--testo); border-color: var(--testo); color: var(--sfondo); }
+button.invia:active:not(:disabled) { transform: scale(.94); }
+/* Invia e Ferma si danno il cambio: quello che compare arriva sfocato e chiaro, così lo scambio si legge come uno */
+button.invia { transition: transform 160ms var(--ease-out), background-color 150ms ease, color 150ms ease,
+  opacity 150ms ease, filter 150ms ease; }
+@starting-style { button.invia { opacity: 0; filter: blur(2px); } }
 .filtri { background: var(--superficie); border: 1px solid var(--bordo); border-radius: 12px; padding: .7rem .9rem;
   margin-bottom: .5rem; }
-.filtri fieldset { margin: .4rem 0 0; }
+/* nel riquadro dei filtri le serie sono un gruppo, non un altro riquadro: niente cornice del browser, la legenda
+   come le etichette dei campi accanto */
+.filtri fieldset { margin: .6rem 0 0; padding: 0; border: 0; min-width: 0; }
+.filtri legend { padding: 0; margin-bottom: .3rem; font-size: .85rem; color: var(--tenue); }
 
-.laterale { width: clamp(24rem, 36vw, 42rem); border-left: 1px solid var(--bordo); background: var(--superficie);
-  display: flex; flex-direction: column; min-height: 0; }
+.laterale { position: relative; width: var(--larghezza-laterale, clamp(24rem, 36vw, 42rem));
+  border-left: 1px solid var(--bordo); background: var(--superficie); display: flex; flex-direction: column;
+  min-height: 0; }
+
+/* la maniglia sul bordo: una striscia larga quanto basta per prenderla, che si accende al passaggio, al fuoco e
+   mentre si trascina; il bordo disegnato resta quello di sempre */
+.maniglia { position: absolute; top: 0; bottom: 0; width: 9px; z-index: 5; cursor: col-resize; touch-action: none; }
+.fianco > .maniglia { right: -5px; }
+.laterale > .maniglia { left: -5px; }
+.maniglia::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px; border-radius: 2px;
+  background: var(--accento); opacity: 0; transition: opacity 120ms ease; }
+.maniglia:hover::after, html.trascina-bordo .maniglia:active::after { opacity: .6; transition-delay: 80ms; }
+.maniglia:focus-visible { outline: 0; }
+.maniglia:focus-visible::after { opacity: 1; }
+/* durante il trascinamento: niente selezione di testo e il cursore resta quello del bordo ovunque passi il mouse */
+html.trascina-bordo, html.trascina-bordo * { cursor: col-resize !important; user-select: none; }
 .laterale-testa { display: flex; align-items: center; gap: .5rem; border-bottom: 1px solid var(--bordo);
   padding-right: .5rem; }
 .vista { flex: 1; overflow: auto; padding: 1.5rem; }
@@ -220,13 +418,16 @@ button.invia.ferma { background: var(--testo); border-color: var(--testo); color
 .torna-thread { margin-bottom: .8rem; }
 .pallino { flex: none; width: .7rem; height: .7rem; border-radius: 50%; background: var(--bordo); display: inline-block; }
 .pallino.ok { background: var(--ok); }
-.pallino.male { background: var(--male); }
+.pallino.male { background: transparent; box-shadow: inset 0 0 0 2px var(--male); }   /* vuoto: non solo il colore */
 .pallino.attesa { background: var(--attesa); }
 
-.avviso { background: var(--avviso); border-bottom: 1px solid var(--bordo); padding: .5rem 1.5rem; }
-.avviso.errore { color: var(--male); }
+.avviso { display: flex; align-items: center; gap: 1rem; background: var(--avviso); border-bottom: 1px solid var(--bordo);
+  padding: .35rem .6rem .35rem 1.5rem; }
+.avviso > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.avviso button.icona { color: var(--testo); }
+.avviso.errore > span { color: var(--male); }
 
-.schede { display: flex; gap: 1.1rem; padding: 0 1rem; flex-wrap: wrap; }
+.schede { flex: 1; display: flex; gap: 1.1rem; padding: 0 1rem; flex-wrap: wrap; }   /* la × va sul bordo destro */
 .schede button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
   padding: .6rem 0 .5rem; color: var(--tenue); margin-bottom: -1px; }
 .schede button:hover:not(:disabled) { color: var(--testo); }
@@ -240,14 +441,44 @@ fieldset label { display: inline-flex; gap: .3rem; margin-right: .8rem; }
 .forma { border-top: 1px solid var(--bordo); padding: .5rem 0; }
 .forma .testa { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
 .forma .conto { color: var(--tenue); }
-.forma .attenzione { color: var(--male); font-size: .9rem; }
+.forma .attenzione { color: var(--attesa); font-size: .9rem; }   /* un consiglio sulla forma, non un errore */
 .forma blockquote { margin: .3rem 0 0 1.4rem; color: var(--tenue); font-size: .88rem; }
 .forma select { font-size: .85rem; padding: .1rem .3rem; }
+/* le forme trovate come chip da accendere: la casella vera resta dentro (invisibile ma raggiungibile), il chip
+   acceso si riempie di ruggine; il segno ✓ e il peso dicono lo stato anche senza colore */
+.forme-chip { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
+label.chip-forma { position: relative; display: inline-flex; align-items: baseline; gap: .4rem; margin: 0;
+  padding: .25rem .75rem; border: 1px solid var(--bordo-campo); border-radius: 999px; background: var(--superficie);
+  cursor: pointer; font-size: .92rem; transition: background-color 140ms ease, border-color 140ms ease; }
+label.chip-forma input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+label.chip-forma::before { content: ""; width: .5rem; flex: none; align-self: center; }
+label.chip-forma:has(input:checked) { background: var(--accento); border-color: var(--accento); color: var(--accento-testo);
+  font-weight: 600; }
+label.chip-forma:has(input:checked)::before { content: "✓"; width: auto; }
+label.chip-forma .conto { color: var(--tenue); font-weight: 400; font-size: .8rem; font-variant-numeric: tabular-nums; }
+label.chip-forma:has(input:checked) .conto { color: inherit; opacity: .85; }
+label.chip-forma.ambigua .nome-forma { text-decoration: underline dashed; text-underline-offset: 3px; }
+label.chip-forma .segno-attenzione { color: var(--attesa); font-weight: 700; }
+label.chip-forma:has(input:checked) .segno-attenzione { color: inherit; }
+label.chip-forma:hover { border-color: var(--accento); }
+label.chip-forma:has(input:focus-visible) { outline: 2px solid var(--accento); outline-offset: 2px; }
+label.chip-forma.attiva:not(:has(input:checked)) { background: var(--sopra); }
+.forme-scartate { margin: .2rem 0 .5rem; }
+.forme-scartate > summary { color: var(--tenue); font-size: .88rem; cursor: pointer; }
+.forme-dettagli { min-height: 4.5rem; border-top: 1px solid var(--bordo); padding: .45rem 0 .2rem; }
+.dettaglio-forma .testa { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
+.dettaglio-forma .conto { color: var(--tenue); }
+.dettaglio-forma .attenzione { color: var(--attesa); font-size: .9rem; }
+.dettaglio-forma blockquote { margin: .35rem 0 0 1.4rem; color: var(--tenue); font: .9rem/1.55 Georgia, "Noto Serif", serif; }
+.dettaglio-forma .riferimento-esempio { margin-left: 1.4rem; font-size: .8rem; }
+.tasti-forme { font-size: .8rem; margin-top: -.2rem; }
 
 .titolo-ricerca { font-weight: 600; }
 .barra { height: .5rem; background: var(--sfondo); border: 1px solid var(--bordo); border-radius: 4px;
   overflow: hidden; margin: .4rem 0; }
-.barra > div { height: 100%; width: 0; background: var(--accento); transition: width .4s; }
+/* la barra si riempie con transform (niente ricalcolo dell'impaginazione a ogni fotogramma); app.js mette scaleX */
+.barra > div { height: 100%; width: 100%; background: var(--accento); transform: scaleX(0); transform-origin: left;
+  transition: transform 300ms var(--ease-out); }
 .elenco { list-style: none; padding: 0; margin: 0 0 1.2rem; }
 .elenco li { border-bottom: 1px solid var(--bordo); padding: .45rem 0; display: flex; flex-direction: column;
   gap: .1rem; }
@@ -273,6 +504,20 @@ label.scelta-scheda { display: flex; margin: 0 0 .3rem; }
 
 /* tabella di revisione */
 .tabella-revisione { margin-top: .4rem; }
+/* qualità dell'OCR: in fondo alla vista, separata dai tre passi dell'importazione da una riga sottile */
+.salute-ocr { margin-top: 1.6rem; padding-top: .6rem; border-top: 1px solid var(--bordo); }
+.salute-ocr h3 { margin: .4rem 0 .3rem; }
+.elenco-ocr { list-style: none; margin: .5rem 0 0; padding: 0; }
+.elenco-ocr > li { padding: .55rem 0; border-bottom: 1px solid var(--bordo); }
+.elenco-ocr .testa { display: flex; flex-wrap: wrap; gap: .2rem .8rem; align-items: baseline; }
+.elenco-ocr .apri-passaggio { background: none; border: 0; padding: 0; color: var(--accento); text-align: left; }
+.elenco-ocr .apri-passaggio:hover { text-decoration: underline; text-underline-offset: 2px; }
+.elenco-ocr .motivi-ocr { color: var(--attesa); font-size: .88rem; margin: .15rem 0 .3rem; }
+.elenco-ocr .motivi-ocr::before { content: "! "; font-weight: 700; }
+.elenco-ocr .riga { display: flex; flex-wrap: wrap; gap: .4rem .8rem; align-items: center; }
+.elenco-ocr select { font-size: .85rem; }
+.elenco-ocr > li.rifatto .motivi-ocr { color: var(--tenue); }
+.esito-ocr-ok::before { content: "✓ "; color: var(--ok); font-weight: 700; }
 .tabella-revisione .scorrimento { overflow: auto; max-height: 26rem; border: 1px solid var(--bordo);
   border-radius: 6px; background: var(--superficie); }
 .tabella-revisione table.revisione { border-collapse: collapse; width: 100%; font-size: .85rem; }
@@ -291,7 +536,11 @@ label.scelta-scheda { display: flex; margin: 0 0 .3rem; }
 .conv-messaggio .testo { white-space: pre-wrap; overflow-wrap: anywhere; }
 .conv-messaggio .dettagli { color: var(--tenue); font-size: .82rem; margin-top: .35rem; }
 .citazione { border-bottom: 2px solid var(--ok); cursor: help; }
-.citazione.non-trovata { border-bottom-color: var(--male); color: var(--male); }
+.citazione.non-trovata { border-bottom-color: var(--male); border-bottom-style: dashed; color: var(--male); }
+/* il segno dopo la citazione: spunta se trovata, cerchio con il punto esclamativo se no (non solo il colore) */
+.segno-citazione svg { width: .85em; height: .85em; margin-left: .15em; vertical-align: -.08em; stroke-width: 2.25;
+  color: var(--ok); }
+.non-trovata .segno-citazione svg { color: var(--male); }
 .citazione.con-passaggio { cursor: pointer; }
 .conv-passaggio { border-left: 3px solid var(--ok); margin: .4rem 0 0; padding: .2rem .6rem; font-size: .88rem; }
 .conv-passaggio p { margin: .2rem 0; }
@@ -315,8 +564,17 @@ label.scelta-scheda { display: flex; margin: 0 0 .3rem; }
 .scheda-tecnica dd { margin: 0; overflow-wrap: anywhere; }
 button.discreto { border: 0; background: none; padding: .2rem 0; color: var(--accento); }
 button.discreto:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 2px; }
-.fonte-testo { margin-top: .2rem; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif;
-  border: 1px solid var(--bordo); border-radius: 6px; background: var(--superficie); padding: .4rem 0; }
+button.discreto:disabled { color: var(--tenue); }
+/* le scorciatoie, nell'Aiuto delle Impostazioni */
+.scorciatoie { grid-column: 1 / -1; display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem;
+  margin: .4rem 0 0; font-size: .9rem; }
+.scorciatoie dt { white-space: nowrap; }
+.scorciatoie dd { margin: 0; color: var(--tenue); }
+kbd { font-family: inherit; font-size: .8rem; font-weight: 500; line-height: 1; padding: .15rem .4rem; border: 1px solid var(--bordo-campo); border-bottom-width: 2px;
+  border-radius: 4px; background: var(--sfondo); color: var(--testo); }
+.fonte-testo { position: relative; margin-top: .2rem; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif;
+  border: 1px solid var(--bordo); border-radius: 6px; background: var(--superficie); padding: .4rem 0;
+  max-height: 62vh; overflow: auto; }   /* scorre da sé: la testa del visore resta in vista */
 .riga-fonte { display: flex; gap: .6rem; padding: 0 .6rem; }
 .riga-fonte .n { color: var(--tenue); min-width: 3.2em; text-align: right; font: .75rem/1.9 system-ui, sans-serif;
   user-select: none; flex: none; }
@@ -333,7 +591,7 @@ table.passaggi th { position: sticky; top: 0; background: var(--sfondo); }
 table.passaggi tr.gruppo th { position: static; background: none; padding-top: 1rem; font-weight: 600;
   cursor: default; }
 table.passaggi tr.gruppo th .etichetta { display: block; margin-top: .15rem; font-weight: 400; }
-table.passaggi .letto-da { color: var(--tenue); white-space: nowrap; }
+table.passaggi .letto-da { color: var(--tenue); font-size: .8rem; min-width: 5.5rem; overflow-wrap: anywhere; }   /* nomi lunghi dei modelli: vanno a capo invece di spingere la colonna fuori dal pannello */
 table.passaggi tbody tr:not(.gruppo) { cursor: pointer; }
 table.passaggi tbody tr:not(.gruppo):hover { background: var(--sfondo); }
 table.passaggi .traduzione { max-width: 28rem; }
@@ -344,19 +602,93 @@ table.passaggi .apri-passaggio { background: none; border: 0; border-radius: 3px
   text-align: left; text-decoration: underline; text-underline-offset: 2px; }
 table.passaggi .no .apri-passaggio { color: var(--tenue); }
 #passaggi-filtro, #gl-filtro { width: 100%; }
+#passaggi-strumenti #passaggi-filtro { flex: 1 1 12rem; width: auto; }
+/* la riga scelta con j/k: il fuoco si vede come contorno dentro la riga, senza spostare nulla */
+table.passaggi tbody tr:focus-visible { outline: none; box-shadow: inset 2px 0 0 var(--accento); background: var(--sopra); }
+table.passaggi .n-citato { color: var(--tenue); font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.passaggi .letto-da.a-mano { color: var(--testo); font-style: italic; }
+/* la pertinenza è un pulsante (un clic la corregge): un contorno di campo la dice cliccabile, a riposo resta piccola */
+table.passaggi button.pertinenza { padding: 0 .45rem; font-size: .8rem; border-color: var(--bordo-campo);
+  border-radius: 999px; min-width: 2.4rem; }
+table.passaggi .no button.pertinenza { color: var(--tenue); }
+table.passaggi .correggi-traduzione { font-size: .78rem; padding: .1rem 0 0; opacity: 0; }
+table.passaggi tr:hover .correggi-traduzione, table.passaggi .correggi-traduzione:focus-visible,
+table.passaggi tr:focus-within .correggi-traduzione { opacity: 1; }
+@media (hover: none) { table.passaggi .correggi-traduzione { opacity: 1; } }
+table.passaggi textarea.traduzione-modifica { width: 100%; min-width: 14rem; font: .9rem/1.45 Georgia, "Noto Serif", serif;
+  background: var(--superficie); color: var(--testo); border: 1px solid var(--bordo-campo); border-radius: 6px;
+  padding: .35rem .5rem; resize: vertical; }
+table.passaggi td .riga { display: flex; gap: .4rem; margin-top: .35rem; }
+/* linea del tempo dei passaggi: una colonna per anno (o mese), alta quanto i passaggi letti; la parte bassa,
+   piena, sono i pertinenti. Un periodo scelto prende il contorno color ruggine */
+.faccette { margin: .6rem 0 0; }
+.linea-tempo { margin: 0 0 .3rem; }
+.barre-tempo { display: flex; align-items: flex-end; gap: 2px; height: 3.2rem; border-bottom: 1px solid var(--bordo); }
+.barre-tempo .periodo { flex: 1 1 0; min-width: 3px; max-width: 2.2rem; height: 100%; padding: 0; border: 0;
+  border-radius: 3px 3px 0 0; background: none; display: flex; align-items: flex-end; }
+.barre-tempo .periodo:disabled { cursor: default; opacity: 1; }
+.barre-tempo .colonna { display: block; width: 100%; height: calc(var(--alto) * 100%); min-height: 2px;
+  border-radius: 2px 2px 0 0; background: linear-gradient(to top, var(--tenue) calc(var(--pieno) * 100%),
+  var(--bordo) calc(var(--pieno) * 100%)); }
+.barre-tempo .periodo:not(:disabled):hover .colonna { background: linear-gradient(to top, var(--testo) calc(var(--pieno) * 100%),
+  var(--bordo-campo) calc(var(--pieno) * 100%)); }
+.barre-tempo .periodo[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--accento); }
+.barre-tempo .periodo[aria-pressed="true"] .colonna { background: linear-gradient(to top, var(--accento) calc(var(--pieno) * 100%),
+  var(--bordo-campo) calc(var(--pieno) * 100%)); }
+.asse-tempo { display: flex; justify-content: space-between; font-size: .75rem; color: var(--tenue);
+  font-variant-numeric: tabular-nums; margin-top: .15rem; }
+.faccette > .nota { margin: 0 0 .3rem; font-size: .8rem; }
+.faccetta { align-items: center; margin: .35rem 0; }
+.etichetta-faccetta { font-size: .75rem; font-weight: 600; letter-spacing: .02em; color: var(--tenue); margin-right: .2rem; }
+.faccetta button.chip { font-size: .8rem; padding: .1rem .6rem; border-color: var(--bordo-campo); }
+.faccetta button.chip .conto-chip { color: var(--tenue); font-variant-numeric: tabular-nums; }
+.faccetta button.chip[aria-pressed="true"] { background: var(--sopra); border-color: var(--accento); font-weight: 600; }
+.conto-passaggi { display: flex; flex-wrap: wrap; gap: .3rem 1rem; align-items: baseline; margin: .3rem 0 0; }
+.conto-passaggi:has(> [hidden] + [hidden]) { display: none; }
 .voce-glossario { border-bottom: 1px solid var(--bordo); padding: .35rem 0; }
 .voce-glossario summary { cursor: pointer; font-weight: 600; }
 .voce-glossario dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .8rem; margin: .4rem 0 .2rem;
   font-size: .88rem; }
 .voce-glossario dt { color: var(--tenue); }
 .voce-glossario dd { margin: 0; overflow-wrap: anywhere; }
+.voce-glossario > button { margin: .2rem 0 .4rem; font-size: .85rem; padding: .2rem .7rem; }
 
 a { color: var(--accento); }
 
 dialog { border: 1px solid var(--bordo); border-radius: 10px; background: var(--superficie); color: var(--testo);
   width: min(32rem, 92vw); }
-dialog::backdrop { background: rgba(0, 0, 0, .35); }
+/* i dialoghi si aprono dal centro (non hanno un punto d'origine); la chiusura è più rapida dell'apertura */
+dialog { opacity: 0; transform: scale(.96);
+  transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out),
+    overlay 150ms allow-discrete, display 150ms allow-discrete; }
+dialog[open] { opacity: 1; transform: none; transition-duration: 200ms; }
+@starting-style { dialog[open] { opacity: 0; transform: scale(.96); } }
+dialog::backdrop { background: rgba(0, 0, 0, 0);
+  transition: background-color 150ms ease, overlay 150ms allow-discrete, display 150ms allow-discrete; }
+dialog[open]::backdrop { background: rgba(0, 0, 0, .35); transition-duration: 200ms; }
+@starting-style { dialog[open]::backdrop { background: rgba(0, 0, 0, 0); } }
 dialog.largo { width: min(44rem, 94vw); }
+/* comandi (Ctrl+K): in alto come una barra di ricerca, non al centro: si scrive subito e i risultati scendono */
+dialog.comandi { width: min(36rem, 92vw); margin-top: 14vh; padding: 0; overflow: hidden; }
+dialog.comandi #cm-cerca { width: 100%; border: 0; border-bottom: 1px solid var(--bordo); border-radius: 0;
+  padding: .8rem 1rem; font-size: 1rem; background: var(--superficie); }
+dialog.comandi #cm-cerca:focus-visible { outline: none; box-shadow: inset 0 -2px 0 var(--accento); }
+#cm-elenco { list-style: none; margin: 0; padding: .35rem; max-height: min(24rem, 56vh); overflow: auto; }
+#cm-elenco .gruppo-comandi { font-size: .75rem; font-weight: 600; letter-spacing: .02em; color: var(--tenue);
+  padding: .5rem .55rem .2rem; }
+#cm-elenco .comando { display: flex; align-items: baseline; gap: .6rem; padding: .4rem .55rem; border-radius: 6px;
+  cursor: pointer; }
+#cm-elenco .comando[aria-selected="true"] { background: var(--sopra); box-shadow: inset 2px 0 0 var(--accento); }
+#cm-elenco .testo-comando { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#cm-elenco .dettaglio-comando { color: var(--tenue); font-size: .82rem; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; flex: 1; }
+#cm-elenco kbd { margin-left: auto; flex: none; }
+#cm-elenco .vuoto-comandi { padding: .6rem .55rem; }
+.piede-comandi { margin: 0; padding: .45rem 1rem; border-top: 1px solid var(--bordo); font-size: .78rem; }
+.elenco-tasti { display: grid; grid-template-columns: max-content 1fr; gap: .45rem 1rem; margin: .4rem 0 1rem;
+  align-items: baseline; }
+.elenco-tasti dt { white-space: nowrap; }
+.elenco-tasti dd { margin: 0; }
 
 /* preparazione */
 .passi-avvio { list-style: none; padding: 0; margin: .4rem 0 1rem; }
@@ -393,6 +725,17 @@ dialog.largo { width: min(44rem, 94vw); }
 .fornitore-nav .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fornitore-nav:not(.pronto) .nome, .fornitore-nav:not(.pronto) svg.logo { color: var(--tenue); }
 .fornitore-nav .costo { font-size: .72rem; color: var(--tenue); font-weight: 400; }
+.altri-fornitori summary { display: flex; align-items: center; padding: .45rem .5rem; margin: 0; border-radius: 6px;
+  color: var(--tenue); font-size: .85rem; cursor: pointer; list-style: none; }
+.altri-fornitori summary:hover { background: var(--sopra); color: var(--testo); }
+.altri-fornitori summary::-webkit-details-marker { display: none; }
+.altri-fornitori summary::before { content: ""; display: block; width: .38rem; height: .38rem; margin: 0 .6rem 0 .25rem; flex: none;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg);
+  transition: transform 160ms var(--ease-out); }
+.altri-fornitori details[open] > summary::before { transform: rotate(45deg); }
+.altri-fornitori details { margin: 0; }
+.altri-fornitori details > .cfg-voci { margin-top: .1rem; }
+.modello-voce .azione span.segno:not(.ok) { color: var(--tenue); font-size: .85rem; }
 .segno-pronto { width: .45rem; height: .45rem; border-radius: 50%; flex: none; }
 .segno-pronto.si { background: var(--ok); }
 h2.con-logo .costo-titolo { font-size: .78rem; font-weight: 400; margin-left: .3rem; }
@@ -449,7 +792,8 @@ h2.con-logo svg.logo { width: 1.5rem; height: 1.5rem; }
 .esito { font-size: .85rem; }
 /* interruttore: una levetta che scorre; acceso nel colore dell'app, il fuoco come gli altri controlli */
 button.interruttore { position: relative; width: 2.3rem; height: 1.3rem; padding: 0; border-radius: 999px;
-  border: 1px solid var(--bordo-campo); background: var(--bordo); flex: none; transition: background .15s ease-out; }
+  border: 1px solid var(--bordo-campo); background: var(--bordo); flex: none;
+  transition: transform 160ms var(--ease-out), background-color 150ms var(--ease-out), border-color 120ms ease; }
 button.interruttore .levetta { position: absolute; top: .12rem; left: .14rem; width: .95rem; height: .95rem;
   border-radius: 50%; background: var(--superficie); box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
   transition: transform .15s ease-out; }
@@ -457,6 +801,10 @@ button.interruttore[aria-checked=true] { background: var(--accento); border-colo
 button.interruttore[aria-checked=true] .levetta { transform: translateX(1rem); }
 button.interruttore:hover:not(:disabled) { border-color: var(--accento); }
 @media (prefers-reduced-motion: reduce) { button.interruttore, button.interruttore .levetta { transition: none; } }
+/* meno movimento vuol dire niente spostamenti né ingrandimenti, ma le dissolvenze e i colori restano */
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled), dialog, .anteprima, .messaggi > .msg { transform: none !important; }
+}
 .modello-voce.spento .nome, .modello-voce.spento .profilo, .modello-voce.spento .misura { color: var(--tenue); }
 .modello-voce.spento .nome { font-weight: 400; }
 .impostazione > .esito { grid-column: 1 / -1; }
@@ -514,3 +862,82 @@ button.pericolo:hover:not(:disabled) { border-color: var(--male); }
 }
 dialog menu { display: flex; justify-content: flex-end; align-items: center; gap: .5rem; padding: 0;
   margin: 1rem 0 0; }
+
+/* ---------------------------------------------- movimento: entrate di viste, pannelli e stati
+   Ogni entrata dice qualcosa: dove si è arrivati (viste, pannello, sezioni), che cosa è nuovo (risposta, avviso),
+   che cosa sta succedendo (collegamento, avanzamento). Ciò che si apre da tastiera arriva fermo: html[data-tastiera]
+   lo mette app.js all'ultimo tasto premuto e lo toglie al primo clic. */
+
+/* le viste al posto del filo: salgono appena e si schiariscono */
+.thread, .vista, .impostazioni, .composer { transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
+@starting-style { .thread, .vista, .impostazioni, .composer { opacity: 0; transform: translateY(6px); } }
+
+/* il pannello delle fonti arriva da destra, da dove sta */
+.laterale { transition: opacity 260ms var(--ease-drawer), transform 260ms var(--ease-drawer); }
+@starting-style { .laterale { opacity: 0; transform: translateX(24px); } }
+
+/* schede del pannello e sezioni delle Impostazioni: il contenuto nuovo si schiarisce al suo posto */
+.pannello { transition: opacity 160ms ease; }
+@starting-style { .pannello { opacity: 0; } }
+.cfg-sezione { transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
+@starting-style { .cfg-sezione { opacity: 0; transform: translateY(4px); } }
+
+/* la pagina vuota: titolo, progetto e suggerimenti uno dopo l'altro */
+.vuoto > *, .suggerimenti > * { transition: opacity 320ms var(--ease-out), transform 320ms var(--ease-out); }
+/* si parte già leggibili: il titolo non passa mai per un grigio sotto il contrasto minimo */
+@starting-style { .vuoto > *, .suggerimenti > * { opacity: .55; transform: translateY(6px); } }
+.vuoto > :nth-child(2) { transition-delay: 50ms; }
+.suggerimenti > :nth-child(1) { transition-delay: 100ms; }
+.suggerimenti > :nth-child(2) { transition-delay: 140ms; }
+.suggerimenti > :nth-child(3) { transition-delay: 180ms; }
+.suggerimenti > :nth-child(4) { transition-delay: 220ms; }
+.suggerimenti > :nth-child(n+5) { transition-delay: 260ms; }
+
+/* la risposta si compone a blocchi: i primi in cascata, il resto insieme subito dopo */
+.documento > * { transition: opacity 280ms var(--ease-out), transform 280ms var(--ease-out); }
+@starting-style { .documento > * { opacity: 0; transform: translateY(6px); } }
+.documento > :nth-child(2) { transition-delay: 40ms; }
+.documento > :nth-child(3) { transition-delay: 80ms; }
+.documento > :nth-child(4) { transition-delay: 120ms; }
+.documento > :nth-child(5) { transition-delay: 160ms; }
+.documento > :nth-child(6) { transition-delay: 200ms; }
+.documento > :nth-child(n+7) { transition-delay: 240ms; }
+
+/* l'avviso scende dalla testa */
+.avviso { transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
+@starting-style { .avviso { opacity: 0; transform: translateY(-6px); } }
+
+/* le sezioni che si aprono: il contenuto si schiarisce invece di comparire di colpo */
+details::details-content { opacity: 0; transition: opacity 200ms ease, content-visibility 200ms allow-discrete; }
+details[open]::details-content { opacity: 1; }
+
+/* il pallino del collegamento: pulsa mentre prova, e quando arriva l'esito manda un'onda nel suo colore */
+.pallino { transition: background-color 200ms ease; }
+.pallino.ok { color: var(--ok); }
+.pallino.male { color: var(--male); }
+.pallino.attesa { animation: pulsa 1s ease-in-out infinite alternate; }
+.pallino.ok, .pallino.male { animation: onda 600ms var(--ease-out); }
+@keyframes pulsa { from { opacity: 1; } to { opacity: .35; } }
+@keyframes onda {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent); }
+  to { box-shadow: 0 0 0 7px color-mix(in srgb, currentColor 0%, transparent); }
+}
+
+/* la barra mentre lavora: un riflesso la percorre, così si vede che è viva anche quando il numero sta fermo */
+.barra > div { position: relative; overflow: hidden; }
+.barra:not([aria-valuenow="100"]):not([aria-valuenow="0"]) > div::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accento-testo) 35%, transparent), transparent);
+  animation: riflesso 1.4s linear infinite; }
+@keyframes riflesso { to { transform: translateX(100%); } }
+
+/* da tastiera le viste, il pannello, le schede e le sezioni arrivano subito */
+html[data-tastiera] :is(.thread, .vista, .impostazioni, .composer, .laterale, .pannello, .cfg-sezione,
+  .vuoto > *, .suggerimenti > *) { transition: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .thread, .vista, .impostazioni, .composer, .laterale, .cfg-sezione, .vuoto > *, .suggerimenti > *,
+  .documento > *, .avviso { transform: none !important; }
+  .pallino.ok, .pallino.male, .barra > div::after { animation: none; }
+  .barra > div::after { display: none; }
+}

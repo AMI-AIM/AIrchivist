@@ -5,10 +5,12 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+// date e ore nella lingua dell'interfaccia (i18n.js): in inglese, giorno e mese all'europea
+const LOCALE = window.Lingua && window.Lingua.lingua === "en" ? "en-GB" : "it-IT";
 const stato = { attesa: null, attesaImporta: null, ultimaRisposta: "", doc: null, cachePassaggi: {}, glossario: null,
   fonte: null, thread: null, ricercaEl: null, filoRicerca: null, inCorso: false, convNuova: true, attesaChi: null,
   recenti: [], fili: [], nDocumenti: 0, codaSalvataggi: Promise.resolve(), elenchi: {}, filtroElenco: {},
-  elencoIntero: {}, azioniProfilo: null, rinomina: null };
+  elencoIntero: {}, azioniProfilo: null, rinomina: null, recentiAperti: new Set() };
 
 async function api(percorso, dati) {
   const opzioni = { credentials: "same-origin" };
@@ -32,8 +34,9 @@ async function api(percorso, dati) {
 
 function avviso(testo, errore = false) {
   const a = $("avviso");
-  const uguale = !a.hidden && a.textContent === testo && a.classList.contains("errore") === errore;
-  a.textContent = testo || "";
+  const t = $("avviso-testo");
+  const uguale = !a.hidden && t.textContent === testo && a.classList.contains("errore") === errore;
+  t.textContent = testo || "";
   a.hidden = !testo;
   a.classList.toggle("errore", errore);
   if (testo && !uguale) annuncia(testo, errore);    // lo stesso avviso rimesso (cambiaModello) non si ripete
@@ -67,7 +70,7 @@ function mostra(id, visibile) { $(id).hidden = !visibile; }
 function senzaMarkdown(testo) { return (testo || "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*\s][^*]*)\*/g, "$1"); }
 
 // ------------------------------------------------------------------ viste, pannello laterale, barra
-// La pagina è un client di chat: a sinistra la barra (progetto, recenti, glossario, importazioni, preparazione),
+// La pagina è impostata come una conversazione: a sinistra la barra (progetto, recenti, glossario, importazioni, preparazione),
 // al centro il filo della ricerca con la casella in basso, a destra il pannello (fonte, passaggi, glossario) che si
 // apre quando serve. L'importazione è una vista intera al posto del filo.
 function apriScheda(nome) {
@@ -80,18 +83,139 @@ function apriScheda(nome) {
   document.querySelectorAll(".pannello").forEach((p) => { p.hidden = p.dataset.pannello !== nome; });
   if (nome === "passaggi") caricaPassaggi();
   if (nome === "glossario") caricaGlossario();
+  segnaPulsantiPannello();
+}
+
+// la scheda del pannello che si vede ora; "" se il pannello è chiuso
+function schedaAperta() {
+  if ($("laterale").hidden) return "";
+  const b = document.querySelector(".schede button.attiva");
+  return b ? b.dataset.scheda : "";
+}
+
+// i pulsanti che aprono il pannello (Glossario nella barra) dicono se la loro scheda è aperta
+function segnaPulsantiPannello() {
+  const aperta = schedaAperta();
+  document.querySelectorAll("[data-pannello-apri]").forEach((b) => {
+    b.setAttribute("aria-expanded", String(aperta === b.dataset.pannelloApri));
+  });
 }
 
 function apriLaterale(nome) {
   mostra("laterale", true);
   apriScheda(nome);
+  segnaManiglia("laterale");
+  // la risposta non deve stringersi sotto i 30rem (circa 60 caratteri di Georgia): in una finestra stretta la barra
+  // dei recenti si chiude finché il pannello resta aperto, come nelle Impostazioni, senza cambiare la scelta ricordata
+  const centro = document.querySelector(".centro");
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  if (centro && centro.offsetWidth < 30 * rem && !$("app").classList.contains("barra-chiusa")) {
+    barraLaterale(false, false);
+    stato.barraDaRiaprirePannello = true;
+  }
+}
+
+// un pulsante del pannello apre la sua scheda; premuto di nuovo con la scheda già aperta, chiude il pannello
+function alternaLaterale(nome) {
+  if (schedaAperta() === nome) chiudiLaterale();
+  else apriLaterale(nome);
 }
 
 function chiudiLaterale() {
   if ($("laterale").hidden) return;
   const dentro = $("laterale").contains(document.activeElement);
   mostra("laterale", false);
+  segnaPulsantiPannello();
+  if (stato.barraDaRiaprirePannello) {
+    stato.barraDaRiaprirePannello = false;
+    barraLaterale(true, false);
+  }
   if (dentro) $("testo").focus();
+}
+
+// ------------------------------------------------- larghezza della barra e del pannello, trascinandone il bordo
+// Il bordo interno di ciascuno è una maniglia: si trascina col mouse, o con le frecce dalla tastiera (Maiusc: passi
+// più lunghi); un doppio clic torna alla larghezza di partenza. La larghezza scelta si ricorda in questo browser.
+const LARGHEZZE = {
+  barra: { variabile: "--larghezza-barra", min: 180, max: 440, verso: 1 },      // bordo a destra: si allarga verso destra
+  laterale: { variabile: "--larghezza-laterale", min: 320, max: 1100, verso: -1 }, // bordo a sinistra: verso sinistra
+};
+const CENTRO_MINIMO = 420;          // il filo della ricerca resta sempre leggibile
+
+function limitaLarghezza(chi, px) {
+  const l = LARGHEZZE[chi];
+  const altro = chi === "barra" ? ($("laterale").hidden ? 0 : $("laterale").offsetWidth) : $("app").querySelector(".fianco").offsetWidth;
+  const spazio = window.innerWidth - altro - CENTRO_MINIMO;
+  return Math.round(Math.max(l.min, Math.min(l.max, spazio, px)));
+}
+
+function mettiLarghezza(chi, px, ricordaScelta = true) {
+  const m = $("maniglia-" + chi);
+  if (px === null) {
+    document.documentElement.style.removeProperty(LARGHEZZE[chi].variabile);
+    if (ricordaScelta) ricorda("larghezza-" + chi, "");
+  } else {
+    px = limitaLarghezza(chi, px);
+    document.documentElement.style.setProperty(LARGHEZZE[chi].variabile, px + "px");
+    if (ricordaScelta) ricorda("larghezza-" + chi, String(px));
+  }
+  segnaManiglia(chi);
+}
+
+// il valore della maniglia per i lettori di schermo: i pixel, e a parole la parte della finestra
+function segnaManiglia(chi) {
+  const m = $("maniglia-" + chi);
+  const ora = (chi === "barra" ? $("app").querySelector(".fianco") : $("laterale")).offsetWidth;
+  if (!ora) return;
+  m.setAttribute("aria-valuenow", String(ora));
+  m.setAttribute("aria-valuetext", `${Math.round((ora / window.innerWidth) * 100)}% della finestra`);
+}
+
+function preparaManiglia(chi) {
+  const m = $("maniglia-" + chi);
+  const l = LARGHEZZE[chi];
+  const elemento = () => (chi === "barra" ? $("app").querySelector(".fianco") : $("laterale"));
+  m.setAttribute("aria-valuemin", String(l.min));
+  m.setAttribute("aria-valuemax", String(l.max));
+  m.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    m.setPointerCapture(e.pointerId);
+    const x0 = e.clientX;
+    const w0 = elemento().offsetWidth;
+    document.documentElement.classList.add("trascina-bordo");
+    const muovi = (ev) => mettiLarghezza(chi, w0 + (ev.clientX - x0) * l.verso, false);
+    const lascia = () => {
+      m.removeEventListener("pointermove", muovi);
+      document.documentElement.classList.remove("trascina-bordo");
+      mettiLarghezza(chi, elemento().offsetWidth);              // ricordata solo a trascinamento finito
+    };
+    m.addEventListener("pointermove", muovi);
+    m.addEventListener("pointerup", lascia, { once: true });
+    m.addEventListener("pointercancel", lascia, { once: true });
+  });
+  m.addEventListener("dblclick", () => mettiLarghezza(chi, null));
+  m.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); mettiLarghezza(chi, null); return; }   // come il doppio clic
+    const passo = e.shiftKey ? 64 : 16;
+    const d = { ArrowRight: passo, ArrowLeft: -passo }[e.key];
+    if (d === undefined) return;
+    e.preventDefault();
+    mettiLarghezza(chi, elemento().offsetWidth + d * l.verso);
+  });
+  const salvata = parseInt(ricordato("larghezza-" + chi), 10);
+  if (salvata) document.documentElement.style.setProperty(l.variabile, salvata + "px");
+  requestAnimationFrame(() => segnaManiglia(chi));
+}
+
+// una finestra rimpicciolita non deve schiacciare il filo: le larghezze scelte si riducono quanto serve
+function rispettaLarghezze() {
+  for (const chi of Object.keys(LARGHEZZE)) {
+    if (document.documentElement.style.getPropertyValue(LARGHEZZE[chi].variabile)) {
+      const el_ = chi === "barra" ? $("app").querySelector(".fianco") : $("laterale");
+      if (el_.offsetWidth) mettiLarghezza(chi, el_.offsetWidth, false);
+    }
+  }
 }
 
 function mostraVista(nome) {
@@ -137,8 +261,13 @@ function tastiSchede(e) {
 function tastiFinestra(e) {
   if (document.querySelector("dialog[open]")) return;
   const ctrl = e.ctrlKey || e.metaKey;
-  if (ctrl && e.key.toLowerCase() === "n") { e.preventDefault(); nuovoThread(); }
-  else if (ctrl && e.key.toLowerCase() === "b") { e.preventDefault(); barraLaterale($("app").classList.contains("barra-chiusa")); }
+  if (ctrl && e.key.toLowerCase() === "k") { e.preventDefault(); apriComandi(); }
+  else if (ctrl && e.key.toLowerCase() === "n") { e.preventDefault(); nuovoThread(); }
+  else if (ctrl && e.key.toLowerCase() === "b") {
+    e.preventDefault();
+    stato.barraDaRiaprirePannello = false;
+    barraLaterale($("app").classList.contains("barra-chiusa"));
+  }
   else if (ctrl && e.key === ",") { e.preventDefault(); apriImpostazioniRicordate(); }
   else if (e.key === "Escape" && !$("laterale").hidden) chiudiLaterale();
   else if (e.key === "Escape" && !$("vista-impostazioni").hidden) { mostraVista("thread"); $("testo").focus(); }
@@ -178,9 +307,11 @@ async function arricchisciDocumento(radice, doc, pref) {
     for (let s = h.nextElementSibling; s && s.tagName !== "H2"; s = s.nextElementSibling) out.push(s);
     return out;
   };
-  const chiudi = (h, testo) => {
-    const det = el("details");
-    det.append(el("summary", testo), ...sezione(h));
+  const chiudi = (h, testo, classe) => {
+    const dentro = sezione(h);
+    if (!dentro.some((x) => x.textContent.trim())) { dentro.forEach((x) => x.remove()); h.remove(); return; }  // niente da aprire
+    const det = el("details", null, classe || "");
+    det.append(el("summary", testo), ...dentro);
     h.replaceWith(det);
   };
   titoli.forEach((h) => {
@@ -196,6 +327,9 @@ async function arricchisciDocumento(radice, doc, pref) {
     for (let s = prima; s; s = s.nextElementSibling) resto.push(s);
     prima.before(prove);
     prove.append(el("summary", `Prove: documenti, passaggi${passaggi ? ` (${passaggi})` : ""}, dati e inferenze`), ...resto);
+    // file e righe del corpus servono a chi verifica, non a chi legge: dentro le prove, chiusi a parte
+    const tecnici = [...prove.querySelectorAll(":scope > h2")].find((h) => /^Dati tecnici/.test(h.textContent.trim()));
+    if (tecnici) chiudi(tecnici, "Dettagli tecnici: file e righe nel corpus", "dettagli-tecnici");
   }
   let r;
   try { r = await datiPassaggi(doc); } catch (e) { return; }
@@ -226,10 +360,14 @@ async function arricchisciDocumento(radice, doc, pref) {
     const n = (/\d+/.exec(a.textContent) || [])[0];
     const v = r.rimandi[n];
     if (!v) return;
+    // «[7]» letto così non dice che cosa apre: numero, fonte (accorciata) e pagina
+    const rif = String(v.riferimento || "").replace(/\s+/g, " ").trim();
+    const breve = rif.length > 110 ? rif.slice(0, 108).replace(/\s+\S*$/, "") + "…" : rif;
+    a.setAttribute("aria-label", [`Passaggio ${n}`, breve, v.pagina ? `p. ${v.pagina}` : ""].filter(Boolean).join(", "));
     a.addEventListener("click", (e) => { e.preventDefault(); nascondiAnteprima(); apri(v, v.pagina); });
     const mostraA = () => mostraAnteprima(a, v, radice, pref, n);
-    a.addEventListener("mouseenter", mostraA);
-    a.addEventListener("focus", mostraA);
+    a.addEventListener("mouseenter", () => anteprimaDopo(mostraA));
+    a.addEventListener("focus", mostraA);                 // da tastiera subito: chi ci arriva l'ha cercata
     a.addEventListener("mouseleave", nascondiAnteprima);
     a.addEventListener("blur", nascondiAnteprima);
   });
@@ -267,7 +405,7 @@ async function apriFonte(file, riga, pagina, citata, origine) {
   const img = $("fonte-img");
   if (r.immagine && img.getAttribute("src") !== r.immagine) img.src = r.immagine;
   img.hidden = !r.immagine;
-  img.alt = `Pagina ${r.pagine[r.pagina - 1].etichetta} dell'originale`;
+  img.alt = `Pagina ${r.pagine[r.pagina - 1].etichetta} dell'originale` + (r.titolo ? `: ${r.titolo}` : "");
   const trascrizione = $("fonte-trascrizione");
   if (!r.immagine || !stato.fonteAperta) trascrizione.open = !r.immagine;
   $("fonte-trascrizione-titolo").textContent = r.immagine ? "Testo trascritto" :
@@ -309,6 +447,7 @@ async function apriFonte(file, riga, pagina, citata, origine) {
     const testo = r.righe.slice(i, i + 3).map((x) => x.testo).filter((t) => t.trim() && !/^\s*\[\[/.test(t));
     estratto.append(el("span", `Riga ${r.evidenzia}`, "etichetta"), el("p", testo.join(" ")));
   }
+  // l'estratto serve sopra l'immagine della pagina; senza immagine la riga è già evidenziata nel testo trascritto
   estratto.hidden = !evidenziata || !r.immagine;
 
   apriLaterale("fonte");
@@ -317,8 +456,12 @@ async function apriFonte(file, riga, pagina, citata, origine) {
   if ((fuoco && fuoco.tagName === "IFRAME") || (fuoco && fuoco !== document.body && !fuoco.offsetParent)) {
     $("p-fonte").focus({ preventScroll: true });
   }
-  if (evidenziata && trascrizione.open && !r.immagine) evidenziata.scrollIntoView({ block: "center" });
-  else $("p-fonte").scrollTop = 0;
+  // la testa del visore (titolo, citazione, pagine) resta in vista: scorre il solo testo trascritto, che ha la sua
+  // altezza, fino alla riga citata
+  $("p-fonte").scrollTop = 0;
+  if (evidenziata && trascrizione.open) {
+    requestAnimationFrame(() => { box.scrollTop = evidenziata.offsetTop - box.clientHeight / 2 + evidenziata.offsetHeight / 2; });
+  }
 }
 
 // pressioni rapide si sommano: si parte dalla pagina già chiesta, non da quella ancora mostrata
@@ -345,28 +488,35 @@ async function caricaPassaggi() {
   if (!stato.doc) {
     t.replaceChildren();
     mostra("passaggi-strumenti", false);
+    mostra("passaggi-faccette", false);
     $("passaggi-nota").textContent = "Apri una risposta (o una ricerca dai recenti): qui compaiono i suoi passaggi.";
     return;
   }
   let r;
   try { r = await datiPassaggi(); } catch (e) { $("passaggi-nota").textContent = e.message; return; }
-  const ricerca = !!stato.doc.ricerca;
+  stato.passaggiDati = r;
+  // «letti»: i passaggi letti dalla ricerca (anche per una risposta salvata, se la sua ricerca c'è ancora): si
+  // filtrano, si correggono, hanno la linea del tempo. Altrimenti solo quelli citati nella risposta
+  const letti = !!r.tutti;
+  const citati = r.passaggi.filter((p) => p.n).length;
   const documenti = new Set(r.passaggi.map((p) => p.file)).size;
-  $("passaggi-nota").textContent = ricerca
-    ? `${r.passaggi.length} passaggi letti in questa ricerca, in ${documenti} documenti.`
-    : `${r.passaggi.length} passaggi citati nella risposta.`;
+  $("passaggi-nota").textContent = letti
+    ? `${r.passaggi.length} ${r.passaggi.length === 1 ? "passaggio letto" : "passaggi letti"} in ` +
+      `${documenti} ${documenti === 1 ? "documento" : "documenti"}` +
+      (citati ? `, ${citati} ${citati === 1 ? "citato" : "citati"} nella risposta.` : ".") +
+      " Un clic su «sì» o «no» corregge la pertinenza."
+    : `${r.passaggi.length} ${r.passaggi.length === 1 ? "passaggio citato" : "passaggi citati"} nella risposta.`;
   mostra("passaggi-strumenti", r.passaggi.length > 0);
-  $("passaggi-pertinenti").closest("label").hidden = !ricerca;
-  // per una ricerca: un gruppo per documento (la citazione una volta sola), poi i suoi passaggi
-  const colonne = ricerca
-    ? [["pagina", "Pagina"], ["pertinente", "Pertinente"], ["traduzione", "Traduzione"], ["letto_da", "Letto da"]]
-    : [["n", "n."], ["fonte", "Fonte"]];
+  $("passaggi-pertinenti").closest("label").hidden = !letti;
+  $("passaggi-citati").closest("label").hidden = !(letti && citati);
+  // per i letti: un gruppo per documento (la citazione una volta sola), poi i suoi passaggi
+  const colonne = colonnePassaggi(letti, citati > 0);
   const testa = el("tr");
   for (const [, nome] of colonne) testa.append(el("th", nome));
   const corpo = document.createElement("tbody");
   let gruppo = null;
   r.passaggi.forEach((p) => {
-    if (ricerca && p.file !== (gruppo && gruppo.dataset.file)) {
+    if (letti && p.file !== (gruppo && gruppo.dataset.file)) {
       gruppo = el("tr", null, "gruppo");
       gruppo.dataset.file = p.file;
       const th = el("th", null);
@@ -376,50 +526,322 @@ async function caricaPassaggi() {
       gruppo.append(th);
       corpo.append(gruppo);
     }
-    const tr = el("tr");
-    const apri = () => apriFonte(p.file, p.riga, null, null, "passaggi");
-    for (const [k] of colonne) {
-      const td = el("td");
-      if (k === "pagina" || k === "fonte") {        // il pulsante porta la riga anche alla tastiera
-        const etichetta = k === "fonte" ? senzaMarkdown(p.fonte) : p.pagina ? `p. ${p.pagina}` : `riga ${p.riga}`;
-        const b = el("button", etichetta, "apri-passaggio");
-        b.type = "button";
-        b.addEventListener("click", (e) => { e.stopPropagation(); apri(); });
-        td.append(b);
-      } else if (k === "traduzione") {              // quattro righe; il testo intero al passaggio del mouse
-        td.className = "traduzione";
-        td.append(el("div", p[k] || "", "taglia"));
-        td.title = p[k] || "";
-      } else if (k === "letto_da") {                // l'ultimo pezzo dell'identificativo; quello intero nel titolo
-        td.textContent = (p[k] || "").split("/").pop();
-        td.title = p[k] || "";
-        td.className = "letto-da";
-      } else {
-        td.textContent = p[k] || "";
-      }
-      tr.append(td);
-    }
-    if (ricerca && p.pertinente !== "sì") tr.classList.add("no");
-    tr.dataset.cerca = Object.values(p).join(" ").toLowerCase();
-    tr.dataset.file = p.file;
-    tr.addEventListener("click", apri);
-    corpo.append(tr);
+    corpo.append(rigaPassaggio(p, colonne, letti));
   });
   const intestazione = document.createElement("thead");
   intestazione.append(testa);
   t.replaceChildren(intestazione, corpo);
+  disegnaFaccette(letti ? r.passaggi : []);
   filtraPassaggi();
 }
 
+function colonnePassaggi(letti, citati) {
+  // «Dove»: «p. 47» se la pagina è nota, altrimenti «riga 117»
+  return letti
+    ? [...(citati ? [["n", "n."]] : []), ["pagina", "Dove"], ["pertinente", "Pertinente"], ["traduzione", "Traduzione"],
+       ["letto_da", "Letto da"]]
+    : [["n", "n."], ["fonte", "Fonte"]];
+}
+
+function rigaPassaggio(p, colonne, letti) {
+  const tr = el("tr");
+  tr.tabIndex = -1;                                  // j/k e le frecce ci portano il fuoco (tastiPassaggi)
+  const apri = () => apriFonte(p.file, p.riga, null, null, "passaggi");
+  for (const [k] of colonne) {
+    const td = el("td");
+    if (k === "pagina" || k === "fonte") {        // il pulsante porta la riga anche alla tastiera
+      const etichetta = k === "fonte" ? senzaMarkdown(p.fonte) : p.pagina ? `p. ${p.pagina}` : `riga ${p.riga}`;
+      const b = el("button", etichetta, "apri-passaggio");
+      b.type = "button";
+      b.addEventListener("click", (e) => { e.stopPropagation(); apri(); });
+      td.append(b);
+    } else if (k === "pertinente" && letti && p.id) {
+      td.append(pulsantePertinenza(p, tr));
+    } else if (k === "traduzione") {              // quattro righe; il testo intero al passaggio del mouse
+      td.className = "traduzione";
+      td.append(el("div", p[k] || "", "taglia"));
+      td.title = p[k] || "";
+      if (letti && p.id && p.pertinente === "sì") {
+        const modifica = el("button", "Correggi", "discreto correggi-traduzione");
+        modifica.type = "button";
+        modifica.setAttribute("aria-label", "Correggi la traduzione");
+        modifica.addEventListener("click", (e) => { e.stopPropagation(); correggiTraduzione(p, td); });
+        td.append(modifica);
+      }
+    } else if (k === "letto_da") {                // l'ultimo pezzo dell'identificativo; quello intero nel titolo
+      td.textContent = p.corretto ? "a mano" : (p[k] || "").split("/").pop();
+      td.title = p.corretto ? "Corretto a mano" : p[k] || "";
+      td.className = "letto-da" + (p.corretto ? " a-mano" : "");
+    } else if (k === "n") {
+      td.textContent = p.n ? `[${p.n}]` : "";
+      td.className = "n-citato";
+    } else {
+      td.textContent = p[k] || "";
+    }
+    tr.append(td);
+  }
+  if (letti && p.pertinente !== "sì") tr.classList.add("no");
+  tr.dataset.cerca = Object.values(p).join(" ").toLowerCase();
+  tr.dataset.file = p.file;
+  tr.dataset.anno = (p.data || "").slice(0, 4);
+  tr.dataset.mese = (p.data || "").slice(0, 7);
+  tr.dataset.serie = p.serie || "";
+  tr.dataset.lingua = p.lingua || "";
+  if (p.n) tr.dataset.citato = "1";
+  tr.addEventListener("click", apri);
+  tr._passaggio = p;
+  return tr;
+}
+
+// la pertinenza come pulsante: un clic la capovolge (sì ↔ no; «incerto» diventa sì) e la scrive come correzione
+function pulsantePertinenza(p, tr) {
+  const b = el("button", p.pertinente || "?", "pertinenza");
+  b.type = "button";
+  const altro = p.pertinente === "sì" ? "no" : "sì";
+  b.title = `Correggi: ${altro === "sì" ? "pertinente" : "non pertinente"} (R)`;
+  b.setAttribute("aria-label", `Pertinente: ${p.pertinente || "non deciso"}. Correggi in ${altro}`);
+  b.addEventListener("click", (e) => { e.stopPropagation(); correggiPertinenza(p, tr); });
+  return b;
+}
+
+async function correggiPassaggio(p, modifiche) {
+  const ricerca = stato.passaggiDati && stato.passaggiDati.ricerca;
+  if (!ricerca) throw new Error("Questa risposta non ha più la sua ricerca: non si può correggere da qui.");
+  const r = await api("/api/passaggio/correggi", Object.assign({ ricerca, id: p.id }, modifiche));
+  const n = p.n;
+  Object.assign(p, r.passaggio);                  // l'oggetto è quello in cache: la prossima apertura lo vede già
+  if (n) p.n = n;
+  return r;
+}
+
+async function correggiPertinenza(p, tr) {
+  const nuovo = p.pertinente === "sì" ? "no" : "sì";
+  try {
+    const r = await correggiPassaggio(p, { pertinente: nuovo });
+    sostituisciRiga(tr, p);
+    annuncia(`Passaggio segnato come ${nuovo === "sì" ? "pertinente" : "non pertinente"}.`);
+    if (!stato.notaCorrezione) { avviso(r.nota); stato.notaCorrezione = true; }
+  } catch (e) {
+    avviso(e.message, true);
+  }
+}
+
+function correggiTraduzione(p, td) {
+  const area = document.createElement("textarea");
+  area.value = p.traduzione || "";
+  area.rows = 4;
+  area.setAttribute("aria-label", "Traduzione corretta");
+  area.className = "traduzione-modifica";
+  const salva = el("button", "Salva", "primario");
+  const annulla = el("button", "Annulla");
+  salva.type = annulla.type = "button";
+  const riga = el("div", null, "riga");
+  riga.append(salva, annulla);
+  const tr = td.closest("tr");
+  td.replaceChildren(area, riga);
+  td.addEventListener("click", (e) => e.stopPropagation());
+  area.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") annulla.click();
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) salva.click();
+  });
+  annulla.addEventListener("click", (e) => { e.stopPropagation(); sostituisciRiga(tr, p); });
+  salva.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const testo = area.value.trim();
+    if (!testo || testo === (p.traduzione || "").trim()) { sostituisciRiga(tr, p); return; }
+    salva.disabled = true;
+    try {
+      await correggiPassaggio(p, { traduzione: testo });
+      sostituisciRiga(tr, p);
+      annuncia("Traduzione corretta.");
+    } catch (err) {
+      salva.disabled = false;
+      avviso(err.message, true);
+    }
+  });
+  area.focus();
+}
+
+// la riga ridisegnata con i dati nuovi, al suo posto e con il fuoco se lo aveva
+function sostituisciRiga(tr, p) {
+  const r = stato.passaggiDati;
+  const nuova = rigaPassaggio(p, colonnePassaggi(true, r.passaggi.some((x) => x.n)), true);
+  const aveva = tr.contains(document.activeElement);
+  tr.replaceWith(nuova);
+  if (aveva) nuova.focus();
+  disegnaFaccette(r.passaggi, true);
+  filtraPassaggi();
+}
+
+// ---------------------------------------- linea del tempo e faccette dei passaggi
+// Quante volte il nome compare nel tempo, per anno (o per mese se gli anni sono al più tre): una barra per periodo,
+// la parte pertinente piena. Un clic sceglie il periodo; serie e lingue sono pulsanti da accendere e spegnere.
+function filtroPassaggiVuoto() { return { periodo: "", serie: new Set(), lingue: new Set() }; }
+
+function nomePeriodo(k, lungo) {
+  if (k.length === 4) return k;
+  return new Date(+k.slice(0, 4), +k.slice(5) - 1).toLocaleDateString(LOCALE,
+    { month: lungo ? "long" : "short", year: "numeric" });
+}
+
+function disegnaFaccette(passaggi, conserva = false) {
+  const box = $("passaggi-faccette");
+  if (!conserva || !stato.filtroP) stato.filtroP = filtroPassaggiVuoto();
+  const f = stato.filtroP;
+  box.replaceChildren();
+  const datati = passaggi.filter((p) => /^\d{4}/.test(p.data || ""));
+  box.hidden = passaggi.length < 2;
+  if (box.hidden) return;
+  const anni = [...new Set(datati.map((p) => +p.data.slice(0, 4)))].sort((a, b) => a - b);
+  if (anni.length) {
+    const mensile = anni[anni.length - 1] - anni[0] < 3 && datati.every((p) => /^\d{4}-\d{2}/.test(p.data));
+    const chiave = (p) => (mensile ? p.data.slice(0, 7) : p.data.slice(0, 4));
+    let periodi = [];
+    for (let a = anni[0]; a <= anni[anni.length - 1]; a++) {
+      if (mensile) for (let m = 1; m <= 12; m++) periodi.push(`${a}-${String(m).padStart(2, "0")}`);
+      else periodi.push(String(a));
+    }
+    if (mensile) {
+      const usati = datati.map(chiave).sort();
+      periodi = periodi.filter((k) => k >= usati[0] && k <= usati[usati.length - 1]);
+    }
+    const conti = Object.fromEntries(periodi.map((k) => [k, { tutti: 0, si: 0 }]));
+    for (const p of datati) {
+      const c = conti[chiave(p)];
+      if (c) { c.tutti++; if (p.pertinente === "sì") c.si++; }
+    }
+    const massimo = Math.max(1, ...Object.values(conti).map((c) => c.tutti));
+    const tempo = el("div", null, "linea-tempo");
+    tempo.setAttribute("role", "group");
+    tempo.setAttribute("aria-label", `Passaggi per ${mensile ? "mese" : "anno"}: scegli un periodo`);
+    tempo.dataset.mensile = mensile ? "1" : "";
+    const barre = el("div", null, "barre-tempo");
+    for (const k of periodi) {
+      const c = conti[k];
+      const b = el("button", null, "periodo");
+      b.type = "button";
+      b.dataset.periodo = k;
+      b.disabled = !c.tutti;
+      b.setAttribute("aria-pressed", String(f.periodo === k));
+      const nome = nomePeriodo(k, true);
+      b.setAttribute("aria-label", `${nome}: ${c.tutti} ${c.tutti === 1 ? "passaggio" : "passaggi"}, ${c.si} pertinenti`);
+      b.title = `${nome}: ${c.tutti} letti, ${c.si} pertinenti`;
+      const colonna = el("span", null, "colonna");
+      colonna.style.setProperty("--alto", String(c.tutti / massimo));
+      colonna.style.setProperty("--pieno", String(c.tutti ? c.si / c.tutti : 0));
+      b.append(colonna);
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        f.periodo = f.periodo === k ? "" : k;
+        barre.querySelectorAll(".periodo").forEach((x) => x.setAttribute("aria-pressed", String(f.periodo === x.dataset.periodo)));
+        filtraPassaggi();
+      });
+      barre.append(b);
+    }
+    const asse = el("div", null, "asse-tempo");
+    asse.append(el("span", nomePeriodo(periodi[0])), el("span", periodi.length > 1 ? nomePeriodo(periodi[periodi.length - 1]) : ""));
+    asse.setAttribute("aria-hidden", "true");
+    tempo.append(barre, asse);
+    box.append(tempo);
+    const senzaData = passaggi.length - datati.length;
+    if (senzaData) box.append(el("p", `${senzaData} ${senzaData === 1 ? "passaggio" : "passaggi"} senza data.`, "nota"));
+  }
+  const gruppoChip = (titolo, valori, scelti, nomeDi) => {
+    if (valori.length < 2) return;
+    const riga = el("div", null, "chip-riga faccetta");
+    riga.setAttribute("role", "group");
+    riga.setAttribute("aria-label", titolo);
+    riga.append(el("span", titolo, "etichetta-faccetta"));
+    for (const [v, n] of valori) {
+      const b = el("button", null, "chip");
+      b.type = "button";
+      b.append(document.createTextNode(nomeDi(v) + " "), el("span", String(n), "conto-chip"));
+      b.setAttribute("aria-pressed", String(scelti.has(v)));
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (scelti.has(v)) scelti.delete(v); else scelti.add(v);
+        b.setAttribute("aria-pressed", String(scelti.has(v)));
+        filtraPassaggi();
+      });
+      riga.append(b);
+    }
+    box.append(riga);
+  };
+  const conta = (k) => [...passaggi.reduce((m, p) => m.set(p[k] || "", (m.get(p[k] || "") || 0) + 1), new Map())]
+    .filter(([v]) => v).sort((a, b) => b[1] - a[1]);
+  gruppoChip("Serie", conta("serie"), f.serie, (v) => senzaMarkdown(v));
+  gruppoChip("Lingua", conta("lingua"), f.lingue, (v) => NOMI_LINGUE[v] || v);
+}
+
+const NOMI_LINGUE = { it: "italiano", en: "inglese", fr: "francese", de: "tedesco", es: "spagnolo", pt: "portoghese",
+  sq: "albanese", zh: "cinese", ru: "russo", el: "greco", ar: "arabo", he: "ebraico" };
+
 function filtraPassaggi() {
-  const f = $("passaggi-filtro").value.trim().toLowerCase();
-  const solo = $("passaggi-pertinenti").checked && !!(stato.doc && stato.doc.ricerca);
+  const testo = $("passaggi-filtro").value.trim().toLowerCase();
+  const letti = !!(stato.passaggiDati && stato.passaggiDati.tutti);
+  const solo = $("passaggi-pertinenti").checked && letti;
+  const soloCitati = $("passaggi-citati").checked && letti;
+  const f = stato.filtroP || filtroPassaggiVuoto();
+  const mensile = !!document.querySelector("#passaggi-faccette .linea-tempo[data-mensile='1']");
   const visibili = new Set();
+  let n = 0;
   $("passaggi-tabella").querySelectorAll("tbody tr:not(.gruppo)").forEach((tr) => {
-    tr.hidden = (!!f && !tr.dataset.cerca.includes(f)) || (solo && tr.classList.contains("no"));
-    if (!tr.hidden) visibili.add(tr.dataset.file);
+    const d = tr.dataset;
+    tr.hidden = (!!testo && !d.cerca.includes(testo)) || (solo && tr.classList.contains("no")) ||
+      (soloCitati && !d.citato) ||
+      (!!f.periodo && (mensile ? d.mese : d.anno) !== f.periodo) ||
+      (f.serie.size > 0 && !f.serie.has(d.serie)) || (f.lingue.size > 0 && !f.lingue.has(d.lingua));
+    if (!tr.hidden) { visibili.add(d.file); n++; }
   });
   $("passaggi-tabella").querySelectorAll("tbody tr.gruppo").forEach((g) => { g.hidden = !visibili.has(g.dataset.file); });
+  const filtrato = !!(testo || solo || soloCitati || f.periodo || f.serie.size || f.lingue.size);
+  const conto = $("passaggi-conto");
+  conto.hidden = !filtrato;
+  conto.textContent = filtrato ? `${n} ${n === 1 ? "passaggio mostrato" : "passaggi mostrati"}` : "";
+  $("passaggi-azzera").hidden = !(f.periodo || f.serie.size || f.lingue.size);
+}
+
+function azzeraFaccette() {
+  stato.filtroP = filtroPassaggiVuoto();
+  if (stato.passaggiDati) disegnaFaccette(stato.passaggiDati.tutti ? stato.passaggiDati.passaggi : [], true);
+  filtraPassaggi();
+}
+
+// j/k (o le frecce dentro la tabella) tra le righe visibili; Invio o O apre la fonte; R capovolge la pertinenza
+function tastiPassaggi(e) {
+  if (e.target.closest("input, textarea, select") || e.ctrlKey || e.metaKey || e.altKey) return;
+  const righe = [...$("passaggi-tabella").querySelectorAll("tbody tr:not(.gruppo):not([hidden])")];
+  if (!righe.length) return;
+  const ora = e.target.closest("tbody tr:not(.gruppo)");
+  const i = righe.indexOf(ora);
+  const tasto = e.key.toLowerCase();
+  const su = tasto === "k" || (ora && e.key === "ArrowUp");
+  const giu = tasto === "j" || (ora && e.key === "ArrowDown");
+  if (su || giu) {
+    e.preventDefault();
+    const j = i < 0 ? 0 : Math.max(0, Math.min(righe.length - 1, i + (giu ? 1 : -1)));
+    righe[j].focus();
+    righe[j].scrollIntoView({ block: "nearest" });
+  } else if (ora && (tasto === "o" || (e.key === "Enter" && e.target === ora))) {
+    e.preventDefault();
+    ora.click();
+  } else if (ora && tasto === "r" && ora._passaggio && ora._passaggio.id && stato.passaggiDati.tutti) {
+    e.preventDefault();
+    correggiPertinenza(ora._passaggio, ora);
+  }
+}
+
+// i campi delle schede e dei profili delle serie hanno nomi da file (forme_ambigue): nel glossario si leggono in
+// italiano; un campo che qui non c'è perde solo i trattini bassi
+const ETICHETTE_CAMPI = { tipo: "Tipo", varianti: "Forme del nome", forme_ambigue: "Forme ambigue",
+  contesto: "Contesto", note: "Note", sigla: "Sigla", lingua: "Lingua", lingue: "Lingue", luogo: "Luogo",
+  editore: "Editore", periodicita: "Periodicità", formato: "Formato", citazione: "Citazione",
+  chicago: "Citazione (Chicago)", nome_completo: "Nome completo" };
+function etichettaCampo(k) {
+  if (ETICHETTE_CAMPI[k]) return ETICHETTE_CAMPI[k];
+  const t = String(k).replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 async function caricaGlossario() {
@@ -427,7 +849,7 @@ async function caricaGlossario() {
   let r;
   try { r = await api("/api/glossario"); } catch (e) { avviso(e.message, true); return; }
   stato.glossario = r;
-  const voci = (box, elenco) => {
+  const voci = (box, elenco, cercabili) => {
     box.replaceChildren();
     for (const v of elenco) {
       const d = el("details", null, "voce-glossario");
@@ -435,15 +857,24 @@ async function caricaGlossario() {
       const dl = el("dl");
       for (const [k, val] of Object.entries(v.campi)) {
         if (!String(val).trim()) continue;
-        dl.append(el("dt", k), el("dd", val));
+        dl.append(el("dt", etichettaCampo(k)), el("dd", val));
       }
       d.append(dl);
+      // da una scheda del glossario si parte con la ricerca guidata su quel nome (riepilogo e avvio come sempre)
+      if (cercabili) {
+        d.append(pulsante(`Cerca «${v.nome}» nelle fonti`, () => {
+          if (stato.inCorso) { avviso("C'è già una ricerca in corso: aspetta che finisca.", true); return; }
+          nuovoThread();
+          $("testo").value = v.nome;
+          invia();
+        }));
+      }
       d.dataset.cerca = (v.nome + " " + Object.values(v.campi).join(" ")).toLowerCase();
       box.append(d);
     }
     if (!elenco.length) box.append(el("p", "Nessuna.", "nota"));
   };
-  voci($("gl-schede"), r.schede);
+  voci($("gl-schede"), r.schede, true);
   voci($("gl-serie"), r.serie);
   $("gl-n-schede").textContent = `(${r.schede.length})`;
   $("gl-n-serie").textContent = `(${r.serie.length})`;
@@ -484,7 +915,6 @@ async function caricaTutto() {
     o.title = p.cartella;
     sel.append(o);
   }
-  sel.append(new Option("Nuovo progetto…", NUOVO));
   sel.dataset.attuale = s.progetto ? s.progetto.cartella : "";
   sel.title = s.progetto ? `${s.progetto.nome}: ${s.progetto.cartella}` : "Nessun progetto in uso";
   disegnaProgetti();
@@ -508,7 +938,35 @@ function apriNuovoProgetto() {
   $("d-progetto").showModal();
 }
 
-const NUOVO = "__nuovo__";      // voce «Nuovo progetto…» del menu dei progetti
+// Un menu che cambia progetto o modello fa qualcosa di pesante (chiude il filo, prova il collegamento): da tastiera le
+// frecce sul menu chiuso scorrono le voci senza agire, e la scelta vale con Invio o quando il fuoco lascia il menu.
+// Con il mouse (menu aperto, clic su una voce) vale subito.
+function sceltaConConferma(sel, agisci) {
+  let sospesa = false;
+  const conferma_ = () => {
+    sospesa = false;
+    sel.classList.remove("in-sospeso");
+    if (sel.value !== sel.dataset.attuale) agisci();
+  };
+  sel.addEventListener("keydown", (e) => {
+    if (e.altKey || e.key === " " || e.key === "F4") return;          // aprono la tendina: lì la scelta è esplicita
+    if (e.key === "Enter") { if (sospesa) { e.preventDefault(); conferma_(); } return; }
+    if (e.key === "Escape" && sospesa) {
+      e.preventDefault();
+      e.stopPropagation();
+      sospesa = false;
+      sel.classList.remove("in-sospeso");
+      sel.value = sel.dataset.attuale;
+      return;
+    }
+    if (/^(Arrow|Home|End|Page)/.test(e.key) || e.key.length === 1) sospesa = true;
+  });
+  sel.addEventListener("change", () => {
+    if (sospesa) { sel.classList.toggle("in-sospeso", sel.value !== sel.dataset.attuale); return; }
+    agisci();
+  });
+  sel.addEventListener("blur", () => { if (sospesa) conferma_(); });
+}
 
 // i progetti nella sezione Generale delle Impostazioni: il cambio è un'azione esplicita, con conferma se c'è una
 // ricerca aperta (la conversazione resta tra i Recenti del progetto di prima)
@@ -519,7 +977,11 @@ function disegnaProgetti() {
     const testa = el("div", null, "testa");
     testa.append(el("span", p.nome, "nome"));
     if (p.descrizione) testa.append(el("span", p.descrizione, "profilo"));
-    li.append(testa, el("span", p.cartella, "cartella"));
+    // la cartella per intero è lunga e uguale in testa per tutti: si vedono le ultime due parti, il resto nel titolo
+    const parti_ = String(p.cartella || "").split(/[\\/]+/).filter(Boolean);
+    const cartella = el("span", parti_.length > 2 ? "…\\" + parti_.slice(-2).join("\\") : p.cartella, "cartella");
+    cartella.title = p.cartella;
+    li.append(testa, cartella);
     const azione = el("div", null, "azione");
     if (p.in_uso) azione.append(el("span", "in uso", "segno ok"));
     else {
@@ -542,10 +1004,6 @@ function sceltaProgetto() {
   const sel = $("progetto");
   const scelto = sel.value;
   sel.value = sel.dataset.attuale;
-  if (scelto === NUOVO) {
-    apriNuovoProgetto();
-    return;
-  }
   const p = (stato.progetti || []).find((x) => x.cartella === scelto);
   if (p && !p.in_uso) cambiaProgetto(p);
 }
@@ -793,7 +1251,13 @@ function rigaModello(p, unico, conInterruttori = false) {
   if (p.modello && p.modello !== p.nome) testa.append(el("span", p.nome, "profilo"));
   li.append(testa);
   const misura = p.misurato && p.misurato !== "no";
-  li.append(el("span", misura ? "misurato su queste fonti" : "non misurato", "misura" + (misura ? " si" : "")));
+  // «misurato»: la qualità del modello è stata provata con la valutazione su queste fonti. Solo allora la riga lo
+  // dice: «non ancora provata» starebbe su quasi tutti i modelli e non aiuterebbe a scegliere
+  if (misura) {
+    const segnoMisura = el("span", "qualità provata su queste fonti", "misura si");
+    segnoMisura.title = "La valutazione confronta le letture del modello con un campione controllato a mano.";
+    li.append(segnoMisura);
+  }
   const azione = el("div", null, "azione");
   const occupato = Boolean(stato.esitoModello && stato.esitoModello.attesa);
   if (conInterruttori) {
@@ -803,13 +1267,18 @@ function rigaModello(p, unico, conInterruttori = false) {
   if (p.nome === unico) {
     li.classList.add("in-uso");
     azione.append(el("span", "in uso", "segno ok"));
+  } else if ((stato.fornitori || []).some((x) => x.id === p.fornitore.id && x.pronto === false)) {
+    // il fornitore non risponde: il motivo al posto di un «Usa» che fallirebbe
+    azione.append(el("span", "non risponde", "segno"));
   } else {
     const b = pulsante("Usa", () => usaModello(p.nome));
     const f = (stato.fornitori || []).find((x) => x.id === p.fornitore.id);
     b.disabled = occupato || Boolean(p.bloccato) || Boolean(f && f.pronto === false);   // fallirebbe comunque
     if (p.bloccato) b.title = "Non si può usare: " + p.bloccato;
     if (f && f.pronto === false) b.title = `${f.nome} non risponde`;
-    b.setAttribute("aria-label", `Usa ${p.modello || p.nome} (${p.fornitore.nome})`);
+    // due profili dello stesso modello (due catene di un router) si distinguono per il nome del profilo
+    b.setAttribute("aria-label", `Usa ${p.modello || p.nome} (${p.fornitore.nome}` +
+      (p.modello && p.modello !== p.nome ? `, profilo ${p.nome})` : ")"));
     azione.append(b);
   }
   const aperto = stato.azioniProfilo === p.nome;
@@ -1001,8 +1470,10 @@ function disegnaModelli() {
     const testa = el("div", null, "cfg-testa");
     testa.append(h, apri);
     r.append(testa);
+    // in rosso solo se un suo modello è in uso: un servizio facoltativo spento non è un guasto
+    const inUso = f.profili.some((p) => p.in_uso_per && p.in_uso_per.length);
     if (f.pronto === false) r.append(el("p", SE_SPENTO[f.id] || `${f.nome} non risponde: i suoi modelli non funzionano finché ` +
-      "non torna raggiungibile.", "nota attenzione-testo"));
+      "non torna raggiungibile.", inUso ? "nota attenzione-testo" : "nota"));
     r.append(elencoModelli(sceglibili(f), unico));
     parti.push(r);
   }
@@ -1043,7 +1514,26 @@ function disegnaFornitoriNav() {
   };
   const tutti = stato.fornitori || [];
   ridisegna($("cfg-locali"), tutti.filter((f) => f.locale).map(voce));
-  ridisegna($("cfg-remoti"), tutti.filter((f) => !f.locale).sort((a, b) => a.nome.localeCompare(b.nome)).map(voce));
+  // online: in vista quelli già impostati (con la chiave, anche spenti) e quello aperto; gli altri, da attivare,
+  // stanno sotto «Altri fornitori», che resta chiuso finché non serve
+  const remoti = tutti.filter((f) => !f.locale).sort((a, b) => a.nome.localeCompare(b.nome));
+  const impostato = (f) => f.attivo || f.spento || f.chiave_spenta || f.chiave === "presente" ||
+    (stato.sezione === "fornitore" && stato.fornitoreAperto === f.id);
+  const altri = remoti.filter((f) => !impostato(f));
+  const righe = remoti.filter(impostato).map(voce);
+  if (altri.length) {
+    const li = el("li", null, "altri-fornitori");
+    const d = el("details");
+    d.open = Boolean(stato.altriFornitoriAperti);
+    d.addEventListener("toggle", () => { stato.altriFornitoriAperti = d.open; });
+    d.append(el("summary", `Altri fornitori (${altri.length})`, "voce-barra"));
+    const ul = el("ul", null, "cfg-voci");
+    ul.append(...altri.map(voce));
+    d.append(ul);
+    li.append(d);
+    righe.push(li);
+  }
+  ridisegna($("cfg-remoti"), righe);
 }
 
 function impostazione(titolo, descrizione, controllo) {
@@ -1067,7 +1557,9 @@ function riquadroChiave(f) {
   const etichettaStato = f.spento ? "fornitore spento" : f.chiave_spenta ? "chiave spenta" :
     f.attivo ? "attivo" : "non attivo";
   r.append(impostazione("Stato", desc, el("span", etichettaStato, "stato-fornitore" + (f.attivo ? " si" : ""))));
-  if (f.chiave === "presente" || f.chiave_spenta) {
+  // per smettere di usare un fornitore basta il suo interruttore qui sopra: quello della chiave si mostra solo se
+  // la chiave è già spenta (da prima, o da un altro fornitore con la stessa variabile), per poterla riaccendere
+  if (f.chiave_spenta) {
     const riga = impostazione("Usa la chiave", f.chiave_spenta ?
       `Spenta: Pressmark la ignora e i modelli di ${f.nome} non si possono scegliere. Resta nella variabile ` +
       `${f.chiave_env}.` : `Pressmark usa la chiave di ${f.chiave_env}.`,
@@ -1326,7 +1818,6 @@ function disegnaFornitore() {
 
 // il menu della casella: solo i modelli disponibili (fornitore attivo e pronto, modello acceso), per fornitore; con
 // ruoli che usano modelli diversi, o un modello in uso non più disponibile, la prima voce dice com'è adesso
-const IMPOSTAZIONI_MODELLI = "__impostazioni__";
 
 function menuModelli(unico) {
   const sel = $("modello");
@@ -1350,17 +1841,18 @@ function menuModelli(unico) {
     og.label = f.nome;
     for (const p of profili) {
       // due profili possono usare lo stesso modello (due catene di un router): il nome del profilo li distingue
-      const doppio = profili.filter((x) => x.modello === p.modello).length > 1;
-      const o = new Option(doppio ? `${p.modello} (${p.nome})` : p.modello || p.nome, p.nome, false, p.nome === unico);
-      o.title = `${f.nome}: ${p.modello}` + (p.misurato && p.misurato !== "no" ? " · misurato su queste fonti" : "");
+      // un nome di profilo fatto in automatico (fornitore-modello-2) non dice nulla: basta il numero
+      const gemelli = profili.filter((x) => x.modello === p.modello);
+      const automatico = /^[a-z0-9-]+-\d+$/.test(p.nome) || p.nome.startsWith(f.id + "-");
+      const etichetta = gemelli.length < 2 ? p.modello || p.nome :
+        automatico ? `${p.modello} · profilo ${gemelli.indexOf(p) + 1}` : `${p.modello} (${p.nome})`;
+      const o = new Option(etichetta, p.nome, false, p.nome === unico);
+      o.title = `${f.nome}: ${p.modello} · profilo ${p.nome}` +
+        (p.misurato && p.misurato !== "no" ? " · misurato su queste fonti" : "");
       og.append(o);
     }
     sel.append(og);
   }
-  const altro = el("optgroup");
-  altro.label = "—";
-  altro.append(new Option("Fornitori e modelli…", IMPOSTAZIONI_MODELLI));
-  sel.append(altro);
   sel.dataset.attuale = sel.value;
   sel.title = unico ? nomeModello(unico) : "";
 }
@@ -1370,10 +1862,6 @@ async function sceltaModello() {
   const sel = $("modello");
   const scelto = sel.value;
   sel.value = sel.dataset.attuale;
-  if (scelto === IMPOSTAZIONI_MODELLI) {
-    apriImpostazioni("modelli");
-    return;
-  }
   if (!scelto || scelto === modelloUnico()) return;
   sel.disabled = true;
   avviso(`Prova di collegamento con «${scelto}»…`);
@@ -1453,7 +1941,7 @@ async function aggiungiModello(evento) {
 }
 
 // ------------------------------------------------------------------ impostazioni
-// Una pagina con le sezioni a sinistra (generale, modelli, chat, lingue OCR, ambiente) e i fornitori dei modelli,
+// Una pagina con le sezioni a sinistra (generale, modelli, lingue OCR, ambiente) e i fornitori dei modelli,
 // ognuno con la sua pagina. La «Preparazione» è il primo riquadro della sezione Generale.
 const SEGNI = { ok: "✓", manca: "✗", facoltativo: "–", info: "" };
 
@@ -1484,7 +1972,7 @@ function mostraSezione(nome, fornitore) {
     else b.removeAttribute("aria-current");
   }
   $("cfg-contenuto").scrollTop = 0;
-  if (nome === "generale" || nome === "chat") caricaAvvio();
+  if (nome === "generale") caricaAvvio();
   else if (nome === "modelli") disegnaModelli();
   else if (nome === "fornitore") disegnaFornitore();
   else if (nome === "ocr") caricaLingue();
@@ -1494,7 +1982,7 @@ function mostraSezione(nome, fornitore) {
 // dalla barra e da Ctrl+,: l'ultima sezione vista (un fornitore solo se c'è ancora)
 function apriImpostazioniRicordate() {
   const r = ricordato("sezione");
-  const sezioni = ["generale", "modelli", "chat", "ocr", "ambiente"];
+  const sezioni = ["generale", "modelli", "ocr", "ambiente"];
   if (r.startsWith("fornitore:") && (stato.fornitori || []).some((f) => f.id === r.slice(10))) {
     apriImpostazioni("fornitore", r.slice(10));
   } else {
@@ -1502,9 +1990,9 @@ function apriImpostazioniRicordate() {
   }
 }
 
-// dopo un passo fatto da un dialogo (progetto, modello, chat) la pagina mostra lo stato nuovo
+// dopo un passo fatto da un dialogo (progetto, modello) la pagina mostra lo stato nuovo
 function aggiornaAvvio() {
-  if (!$("vista-impostazioni").hidden && (stato.sezione === "generale" || stato.sezione === "chat")) caricaAvvio();
+  if (!$("vista-impostazioni").hidden && stato.sezione === "generale") caricaAvvio();
 }
 
 async function caricaAvvio() {
@@ -1519,10 +2007,10 @@ async function caricaAvvio() {
     "Tutto il necessario è pronto: puoi cercare. I passi facoltativi si fanno quando vuoi." :
     "Prima di cercare servono un progetto e un modello. Ogni passo si fa da qui, senza terminale.";
   const azioni = {
-    progetto: (p) => [pulsante("Nuovo progetto…", apriNuovoProgetto, !p.fatto)],
+    // con un progetto già pronto il pulsante sta solo nel riquadro Progetti, qui sopra
+    progetto: (p) => (p.fatto ? [] : [pulsante("Nuovo progetto…", apriNuovoProgetto, true)]),
     modello: (p) => [pulsante(p.fatto ? "Cambia…" : "Scegli…", () => mostraSezione("modelli"), !p.fatto)],
     fonti: () => [pulsante("Importa…", () => mostraVista("importazioni"))],
-    chat: () => [pulsante("Collega…", () => mostraSezione("chat"))],
   };
   const progettoFatto = r.passi.find((p) => p.id === "progetto").fatto;
   ridisegna($("av-passi"), r.passi.map((p) => {
@@ -1532,18 +2020,9 @@ async function caricaAvvio() {
       el("span", p.titolo + (p.facoltativo ? " (facoltativo)" : ""), "titolo"));
     const a = el("div", null, "azioni");
     // il modello e le fonti appartengono a un progetto: senza progetto si comincia da quello
-    if (progettoFatto || p.id === "progetto" || p.id === "chat") a.append(...azioni[p.id](p));
+    if (progettoFatto || p.id === "progetto") a.append(...azioni[p.id](p));
     li.append(a, el("span", p.dettaglio, "dettaglio"));
     return li;
-  }));
-  ridisegna($("cfg-client"), r.chat.map((c) => {
-    const stato_ = c.collegato ? el("span", "collegato ✓", "segno ok") :
-      c.da_aggiornare ? "Voce da aggiornare: un'altra copia del programma o altre impostazioni." :
-      !c.presente ? "Non trovato su questo computer." : "Non collegato.";
-    const azione = c.presente || c.collegato ? pulsante(c.collegato ? "Controlla…" : "Collega…", () => apriClient(c.id)) :
-      null;
-    if (azione) azione.setAttribute("aria-label", (c.collegato ? "Controlla " : "Collega ") + c.nome);
-    return impostazione(c.nome, stato_, azione);
   }));
   return r;
 }
@@ -1697,58 +2176,6 @@ async function scaricaLingue(codici) {
   }
 }
 
-let clientAperto = "";
-async function apriClient(nome) {
-  clientAperto = nome;
-  const m = $("cl-messaggi");
-  m.hidden = true;
-  $("cl-modifiche").replaceChildren();
-  $("cl-scrivi").hidden = true;
-  $("d-client").showModal();
-  let c;
-  try {
-    c = await api("/api/client?nome=" + encodeURIComponent(nome));
-  } catch (e) {
-    m.textContent = e.message;
-    m.hidden = false;
-    return;
-  }
-  $("cl-titolo").textContent = `Collega ${c.nome}`;
-  $("cl-file").textContent = `File di configurazione: ${c.file}` + (c.esiste ? "" : " (non esiste ancora: lo creo)");
-  $("cl-modifiche").replaceChildren(...c.modifiche.map((x) => el("li", x)),
-    el("li", `Il programma di chat avvierà: ${c.avvia}`, "nota"));
-  if (c.errore) {
-    m.textContent = c.errore;
-    m.hidden = false;
-    return;
-  }
-  if (c.aperto && !c.gia) {
-    m.textContent = `${c.nome} è aperto: chiudilo (anche dall'icona accanto all'orologio), poi riapri questa finestra.`;
-    m.hidden = false;
-    return;
-  }
-  $("cl-scrivi").textContent = c.gia ? "Prova il collegamento" : "Scrivi le modifiche";
-  $("cl-scrivi").hidden = false;
-}
-
-async function collegaClient(evento) {
-  evento.preventDefault();
-  const m = $("cl-messaggi");
-  m.hidden = false;
-  m.textContent = "Scrivo la configurazione e provo il server come lo avvierà il programma di chat…";
-  $("cl-scrivi").disabled = true;
-  try {
-    const r = await api("/api/client", { nome: clientAperto });
-    m.textContent = r.messaggi.join("\n") + (r.prova ? "" : "\nLa prova del server non è riuscita: vedi sopra.");
-    $("cl-scrivi").hidden = true;
-    aggiornaAvvio();
-  } catch (e) {
-    m.textContent = e.message;
-  } finally {
-    $("cl-scrivi").disabled = false;
-  }
-}
-
 // azioni costose o che non si annullano: un dialogo con Annulla in evidenza come uscita (Esc chiude)
 function conferma(titolo, testo, azione) {
   const d = $("d-conferma");
@@ -1808,13 +2235,18 @@ function filtriScelti() {
 }
 
 // i filtri attivi, come etichetta accanto al pulsante: si vedono senza aprire il riquadro
-function riassumiFiltri() {
-  const f = filtriScelti();
+function descriviFiltri(f) {
+  if (!f) return "";
   const parti = [];
   if (f.dal || f.al) parti.push(`${f.dal || "…"}–${f.al || "…"}`);
-  if (f.fonti.length) parti.push(f.fonti.length === 1 ? f.fonti[0] : `${f.fonti.length} serie`);
+  const fonti = f.fonti || [];
+  if (fonti.length) parti.push(fonti.length === 1 ? fonti[0] : `${fonti.length} serie`);
   if (f.evoluzione) parti.push("evoluzione");
-  $("filtri-riassunto").textContent = parti.join(" · ");
+  return parti.join(" · ");
+}
+
+function riassumiFiltri() {
+  $("filtri-riassunto").textContent = descriviFiltri(filtriScelti());
   if (stato.aggiornaRiepilogo) stato.aggiornaRiepilogo();     // il riepilogo della scheda aperta segue i filtri
 }
 
@@ -1825,24 +2257,142 @@ function alternaFiltri() {
   if (aperto) $("dal").focus();
 }
 
-// riepilogo prima di avviare: cosa cerca, dove, con quale modello; la ricerca chiama il modello per ogni passaggio
-// le forme si vedono già sopra (etichette o caselle): qui la domanda e il resto
-function riepilogo(domanda, righe) {
+// il costo del modello in uso, dal suo fornitore (gratuito, piano gratuito, a consumo); null con modelli per ruolo
+function costoModello() {
+  const p = modelloUnico() && profiloDi(modelloUnico());
+  return p ? { fornitore: p.fornitore.nome, costo: COSTI[p.fornitore.id] || "" } : null;
+}
+
+function notaCosto(c) {
+  const base = "Il modello legge ogni passaggio trovato: più righe, più tempo.";
+  if (!c || !c.costo) return base + " Con un servizio a pagamento, anche più costo.";
+  if (c.costo === "gratuito") return `${base} Con ${c.fornitore} non si paga nulla.`;
+  if (c.costo === "piano gratuito") return `${base} Rientra nel piano gratuito di ${c.fornitore}: se le quote ` +
+    "finiscono, la ricerca aspetta e riprende da sola.";
+  return `${base} ${c.fornitore} si paga a consumo: ogni passaggio letto ha un costo.`;
+}
+
+// le righe delle forme con i filtri scelti: una domanda per combinazione, ricordata (le caselle si spuntano spesso)
+const contiRighe = new Map();
+function contaRighe(varianti) {
+  const f = filtriScelti();
+  const chiave = JSON.stringify([[...varianti].sort(), f.dal, f.al, [...f.fonti].sort()]);
+  if (!contiRighe.has(chiave)) {
+    const p = api("/api/righe", { varianti, dal: f.dal, al: f.al, fonti: f.fonti });
+    p.catch(() => contiRighe.delete(chiave));
+    contiRighe.set(chiave, p);
+  }
+  return contiRighe.get(chiave);
+}
+
+// i fornitori a consumo tra i modelli in uso (anche con un modello diverso per ruolo): per loro l'avvio si conferma
+function fornitoriAConsumo() {
+  const nomi = new Set();
+  for (const nome of new Set(Object.values(stato.inUso || {}))) {
+    const p = profiloDi(nome);
+    if (p && COSTI[p.fornitore.id] === "a consumo") nomi.add(p.fornitore.nome);
+  }
+  return [...nomi];
+}
+
+// le ricerche già fatte su un'entità e il ritmo del progetto (da /api/precedenti); si richiede dopo ogni ricerca
+const precedentiDi = new Map();
+function precedenti(entita) {
+  if (!precedentiDi.has(entita)) {
+    const p = api("/api/precedenti", { entita });
+    p.catch(() => precedentiDi.delete(entita));
+    precedentiDi.set(entita, p);
+  }
+  return precedentiDi.get(entita);
+}
+
+function quandoBreve(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString(LOCALE, { day: "numeric", month: "short" }) + " alle " +
+    d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+}
+
+// la durata attesa: i passaggi nuovi (righe meno quelli già letti) al ritmo delle ricerche passate; senza passaggi
+// nuovi resta la sintesi, che dura più o meno come l'ultima volta
+function stimaDurata(righe, p) {
+  if (!p || !p.minuti_per_passaggio) return "";
+  const nuovi = Math.max(0, righe - (p.letti || 0));
+  let min = Math.round(nuovi * p.minuti_per_passaggio);
+  if (p.ultima) min = Math.max(min, nuovi ? 0 : p.ultima.minuti);
+  min = Math.max(1, min);
+  return `circa ${min < 60 ? min + " min" : Math.round(min / 6) / 10 + " ore"}, dalle ricerche passate del progetto`;
+}
+
+// riepilogo prima di avviare: cosa cerca, dove, con quale modello, su quante righe, quanto dura e a che costo. Le
+// forme si vedono già sopra (etichette). opz.varianti: le forme da contare; opz.entita: per le ricerche precedenti;
+// opz.alConto(n, precedenti): per il pulsante che dice la portata e per la conferma
+function riepilogo(domanda, opz = {}) {
   const f = filtriScelti();
   const dl = el("dl", null, "riepilogo");
+  const c = costoModello();
   const voci = [
     ...(domanda ? [["Domanda", domanda]] : []),
     ["Periodo", f.dal || f.al ? `${f.dal || "…"}–${f.al || "…"}` : "tutto"],
     ["Serie", f.fonti.length ? f.fonti.join("; ") : "tutte"],
     ["Modello", modelloUnico() ? nomeModello(modelloUnico()) : "modelli diversi per ruolo"],
   ];
+  if (c && c.costo) voci.push(["Costo", c.costo]);
   if (f.evoluzione) voci.push(["Modo", "evoluzione anno per anno"]);
-  if (righe) voci.push(["Nelle fonti", `${righe} righe con queste forme`]);
   for (const [k, v] of voci) dl.append(el("dt", k), el("dd", v));
   const box = el("div", null, "riepilogo-box");
-  box.append(dl, el("p", "Il modello legge ogni passaggio trovato: con molti passaggi la ricerca dura a lungo e, " +
-    "con un servizio a pagamento, ha un costo.", "nota"));
+  box.append(dl, el("p", notaCosto(c), "nota"));
+  if (!opz.varianti) return box;
+  const dd = el("dd", "conto le righe…", "in-attesa");
+  dl.append(el("dt", "Nelle fonti"), dd);
+  const turno = stato.turnoConto = (stato.turnoConto || 0) + 1;    // conta solo l'ultimo riepilogo chiesto
+  const prec = opz.entita ? precedenti(opz.entita).catch(() => null) : Promise.resolve(null);
+  const mostraConto = async (n) => {
+    dd.classList.remove("in-attesa");
+    dd.textContent = n === 1 ? "1 riga con queste forme" : `${n} righe con queste forme`;
+    const p = await prec;
+    if (p && p.letti) dl.append(el("dt", "Già letti"), el("dd", `${p.letti} passaggi di ricerche precedenti: si riusano`));
+    if (p && p.ultima) dl.append(el("dt", "Ultima ricerca"), el("dd", `${quandoBreve(p.ultima.quando)}, durata ${p.ultima.minuti} min`));
+    const durata = stimaDurata(n, p);
+    if (durata) dl.append(el("dt", "Durata"), el("dd", durata));
+    const richieste = stimaRichieste(n, p);
+    if (richieste) dl.append(el("dt", "Richieste"), el("dd", richieste));
+    if (opz.alConto && turno === stato.turnoConto) opz.alConto(n, p);
+  };
+  if (!opz.varianti.length) { mostraConto(0); return box; }
+  contaRighe(opz.varianti).then((r) => {
+    if (r.righe === null || r.righe === undefined) { dd.classList.remove("in-attesa"); dd.textContent = r.nota || "non contate"; return; }
+    mostraConto(r.righe);
+  }, () => { dd.classList.remove("in-attesa"); dd.textContent = "conto non riuscito"; });
   return box;
+}
+
+// prima di creare una scheda: solo ciò che si crea (le forme e le righe che le contengono), non la ricerca dopo
+function riepilogoScheda(varianti, ambigue, righe, tipo) {
+  const dl = el("dl", null, "riepilogo");
+  const voci = [
+    ["Forme", varianti.length ? varianti.join("; ") : "nessuna spuntata"],
+    ...(ambigue.length ? [["Ambigue", ambigue.join("; ")]] : []),
+    ["Tipo", tipo],
+    ["Nelle fonti", varianti.length > 1 ? `circa ${righe} righe (una riga con due forme conta due volte)` :
+      `${righe} righe`],
+  ];
+  for (const [k, v] of voci) dl.append(el("dt", k), el("dd", v));
+  const box = el("div", null, "riepilogo-box");
+  box.append(dl, el("p", "La scheda entra nel glossario. La ricerca si avvia nel passo dopo, con il suo riepilogo.",
+    "nota"));
+  return box;
+}
+
+// il pulsante dice su quante righe parte la ricerca
+function portata(b, testo, n) {
+  b.textContent = n ? `${testo} su ${n === 1 ? "1 riga" : n + " righe"}` : testo;
+}
+
+// una scheda decisa che non serve più rileggere (scartata, sostituita): resta una riga che dice che cosa è successo
+function riduciScheda(m, testo) {
+  m.replaceChildren(el("p", testo, "traccia"));
+  m.classList.add("decisa", "ridotta");
 }
 
 // --------------------------------------------- messaggi
@@ -1953,15 +2503,19 @@ function chiediChi(testo, candidati) {
     "Di chi o di che cosa cerchi le menzioni? Scrivi il nome qui sotto."));
   const scelte = el("div", null, "chip-riga");
   for (const nome of candidati) {
-    scelte.append(pulsanteMsg(nome, () => { chiudiScheda(m); stato.attesaChi = null; formeDelNome(nome, testo); }, "chip"));
+    scelte.append(pulsanteMsg(nome, () => {
+      riduciScheda(m, `Scheda scelta: «${nome}».`);
+      stato.attesaChi = null;
+      formeDelNome(nome, testo);
+    }, "chip"));
   }
-  const libera = pulsanteMsg("Fai la domanda al modello, senza ricerca guidata", () => {
-    chiudiScheda(m);
+  const libera = pulsanteMsg("Fai la domanda al modello, senza scegliere una scheda", () => {
+    riduciScheda(m, "Domanda al modello, senza una scheda.");
     stato.attesaChi = null;
     seguito(testo, true);
   }, "discreto");
   m.append(scelte, libera);
-  stato.attesaChi = (nome) => { chiudiScheda(m); return formeDelNome(nome, testo); };
+  stato.attesaChi = (nome) => { riduciScheda(m, `Cerco «${nome}».`); return formeDelNome(nome, testo); };
   $("testo").placeholder = "Il nome della persona, del partito, della testata…";
   annuncia("Di chi parli? Scegli una scheda o scrivi il nome.");
   $("testo").focus();
@@ -1977,7 +2531,8 @@ async function formeDelNome(entita, testo) {
   try {
     r = await api("/api/entita", { nome: entita });
   } catch (e) {
-    messaggio("assistente errore", el("p", e.message));
+    const m = messaggio("assistente errore", el("p", e.message));
+    m.append(pulsanteMsg("Riprova", () => { m.remove(); formeDelNome(entita, testo); }, "discreto"));
     return;
   }
   if (!r.schede.length) return esploraForme(entita, domanda);
@@ -1985,9 +2540,13 @@ async function formeDelNome(entita, testo) {
   const scelta = { scheda: r.schede[0] };
   const sommario = el("div");
   const forme = el("div", null, "chip-riga");
+  const conto = { righe: null, precedenti: null };
   const aggiorna = () => {
     forme.replaceChildren(...scelta.scheda.varianti.map((v) => el("span", v, "chip statico")));
-    sommario.replaceChildren(riepilogo(domanda));
+    portata(avvia, "Avvia la ricerca");
+    conto.righe = null;
+    sommario.replaceChildren(riepilogo(domanda, { varianti: scelta.scheda.varianti, entita: scelta.scheda.nome,
+      alConto: (n, p) => { Object.assign(conto, { righe: n, precedenti: p }); portata(avvia, "Avvia la ricerca", n); } }));
   };
   m.append(el("p", r.schede.length > 1 ? "Più schede corrispondono: scegli quella giusta." :
     `Cerco «${r.schede[0].nome}» in queste forme del nome:`));
@@ -2005,9 +2564,31 @@ async function formeDelNome(entita, testo) {
     });
     m.append(gruppo);
   }
-  const avvia = pulsanteMsg("Avvia la ricerca", () => { chiudiScheda(m); avviaRicerca(scelta.scheda.nome, domanda); }, "primario");
+  const avvia = pulsanteMsg("Avvia la ricerca", async () => {
+    // con un servizio a consumo l'avvio costa: si conferma, dicendo quanto lavoro aspetta il modello
+    const aConsumo = fornitoriAConsumo();
+    if (aConsumo.length) {
+      const letti = (conto.precedenti && conto.precedenti.letti) || 0;
+      const portata_ = conto.righe === null ? "le righe con queste forme" :
+        `${conto.righe} righe con queste forme` + (letti ? `, di cui circa ${letti} già lette che si riusano` : "");
+      if (!await conferma(`Avviare la ricerca con ${aConsumo.join(" e ")}?`, `${aConsumo.join(" e ")} si paga a ` +
+        `consumo: il modello legge ${portata_}, e ogni passaggio letto ha un costo.`, "Avvia la ricerca")) return;
+    }
+    chiudiScheda(m);
+    avviaRicerca(scelta.scheda.nome, domanda);
+  }, "primario");
   m.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.type === "radio") avvia.click(); });
-  const altra = pulsanteMsg("Non è questa: cerca le forme", () => { chiudiScheda(m); esploraForme(entita, domanda); }, "discreto");
+  const altra = pulsanteMsg("È un omonimo: cerca altre forme", () => {
+    const scartata = scelta.scheda.nome;
+    riduciScheda(m, `Scheda «${scartata}» scartata: cerco altre forme nelle fonti.`);
+    const nuova = esploraForme(entita, domanda, scartata);
+    // ripensamento: la scheda scartata torna com'era, e la ricerca delle forme si toglie
+    m.querySelector(".traccia").append(" ", pulsanteMsg("Era quella giusta", () => {
+      nuova.remove();
+      m.remove();
+      formeDelNome(entita, testo);
+    }, "discreto"));
+  }, "discreto");
   aggiorna();
   stato.aggiornaRiepilogo = () => { if (!m.classList.contains("decisa")) aggiorna(); };
   const azioni = el("div", null, "riga");
@@ -2017,38 +2598,66 @@ async function formeDelNome(entita, testo) {
   scorriInFondo();
 }
 
-function esploraForme(entita, domanda) {
+// scartata: il nome della scheda che l'utente ha detto non essere quella giusta (un omonimo, di solito)
+function esploraForme(entita, domanda, scartata) {
   const m = messaggio("assistente scheda");
-  m.append(el("p", `Non c'è ancora una scheda per «${entita}»: cerco nelle fonti le forme attestate.`));
-  const campo = (etichetta, segnaposto) => {
+  m.append(el("p", scartata ? `Cerco nelle fonti altre forme di «${entita}», per una scheda nuova.` :
+    `Non c'è ancora una scheda per «${entita}»: cerco nelle fonti le forme attestate.`));
+  const campo = (etichetta, segnaposto, valore = "") => {
     const l = el("label", etichetta);
     const i = document.createElement("input");
     i.type = "text";
     i.placeholder = segnaposto;
+    i.value = valore;
     l.append(i);
     return [l, i];
   };
+  // un omonimo ha bisogno di un nome suo: due schede non possono chiamarsi allo stesso modo
+  // il campo parte vuoto: con lo stesso nome si finirebbe dritti nella scheda che si è appena scartata
+  const [ln, nome] = scartata ? campo("Nome della scheda nuova", `per esempio «${entita} (1900–1964)»`) : [null, null];
+  const omonimo = [];
+  if (ln) {
+    const spiega = el("p", `«${scartata}» esiste già: dai alla scheda nuova un nome che la distingua, con le date o ` +
+      "il ruolo.", "nota spiega-nome");
+    spiega.id = "spiega-nome-" + Date.now();
+    nome.setAttribute("aria-describedby", spiega.id);
+    omonimo.push(ln, spiega);
+  }
   const [li, indizi] = campo("Indizi (facoltativi)", "paese, partito… separati da ;");
   const [lc, candidate] = campo("Altre forme da verificare (facoltative)", "per esempio una trascrizione; separate da ;");
   const esito = el("div");
   const cerca = pulsanteMsg("Cerca le forme nelle fonti", async () => {
     cerca.disabled = true;
-    esito.replaceChildren(el("p", "Cerco le forme nelle fonti…", "nota"));
+    // la ricerca delle forme scorre tutte le fonti: i secondi che passano dicono che sta lavorando
+    const inizio = Date.now();
+    const attesa = el("p", "Cerco le forme in tutte le fonti: di solito servono da 10 a 30 secondi.", "nota in-attesa");
+    esito.replaceChildren(attesa);
+    const orologio = setInterval(() => {
+      attesa.textContent = "Cerco le forme in tutte le fonti (di solito da 10 a 30 secondi)… " +
+        `${Math.round((Date.now() - inizio) / 1000)} s`;
+    }, 1000);
     try {
       const r = await api("/api/esplora", { nome: entita, indizi: indizi.value, candidate: candidate.value });
-      mostraFormeTrovate(m, esito, r, entita, domanda);
+      mostraFormeTrovate(m, esito, r, entita, domanda, nome);
+      // trovate le forme, la ricerca si rifà solo cambiando gli indizi: il pulsante diventa secondario
+      cerca.textContent = "Cerca di nuovo con questi indizi";
+      cerca.className = "discreto";
     } catch (e) {
-      esito.replaceChildren(el("p", e.message, "attenzione"));
+      esito.replaceChildren(el("p", e.message + " Puoi riprovare con lo stesso pulsante.", "attenzione"));
     } finally {
+      clearInterval(orologio);
       cerca.disabled = false;
       scorriInFondo();
     }
+    // il pulsante premuto si era spento e il fuoco era caduto sulla pagina: passa alla prima forma trovata
+    (esito.querySelector("input.sceglie") || cerca).focus({ preventScroll: true });
   }, "primario");
-  m.append(li, lc, cerca, esito);
-  indizi.focus();
+  m.append(...omonimo, li, lc, cerca, esito);
+  (nome || indizi).focus();
+  return m;
 }
 
-function mostraFormeTrovate(m, box, r, entita, domanda) {
+function mostraFormeTrovate(m, box, r, entita, domanda, campoNome) {
   box.replaceChildren();
   if (r.errore) {
     box.append(el("p", r.errore + (r.avanzamento ? ` (${r.avanzamento})` : ""), "attenzione"));
@@ -2060,78 +2669,184 @@ function mostraFormeTrovate(m, box, r, entita, domanda) {
       (r.non_attestate.length ? ` Non attestate: ${r.non_attestate.join("; ")}.` : ""), "nota"));
     return;
   }
-  box.append(el("p", "Spunta le forme che indicano davvero questa entità. «Ambigua»: può indicare anche altro; " +
-    "quei passaggi li controlla sempre il modello.", "nota"));
-  for (const f of r.forme) box.append(rigaForma(f));
+  const spiega = el("p", "Accendi le forme che indicano davvero questa entità; il numero è quante righe delle fonti " +
+    "la contengono. «Ambigua»: la forma può indicare anche altro (un cognome da solo, per esempio), e quei passaggi " +
+    "li controlla sempre il modello.", "nota");
+  const tasti = el("p", "Da tastiera: frecce tra le forme, Spazio accende o spegne, A segna ambigua, Invio crea la scheda.",
+    "nota tasti-forme");
+  box.append(spiega, tasti);
+  // le forme come chip (la casella vera è dentro: Spazio e Tab funzionano da sé); sotto, il dettaglio di quella
+  // scelta con la tastiera o col mouse: esempio, serie e anni, la casella «ambigua»
+  const dettagli = el("div", null, "forme-dettagli");
+  dettagli.setAttribute("aria-live", "polite");
+  const gruppo = (forme, etichetta) => {
+    const g = el("div", null, "forme-chip");
+    g.setAttribute("role", "group");
+    g.setAttribute("aria-label", etichetta);
+    for (const f of forme) {
+      const [chip, d] = formaChip(f);
+      g.append(chip);
+      dettagli.append(d);
+      const mostraDettaglio = () => {
+        dettagli.querySelectorAll(".dettaglio-forma").forEach((x) => { x.hidden = x !== d; });
+        box.querySelectorAll(".chip-forma").forEach((x) => x.classList.toggle("attiva", x === chip));
+      };
+      chip.addEventListener("focusin", mostraDettaglio);
+      chip.addEventListener("pointerenter", mostraDettaglio);
+    }
+    return g;
+  };
+  const nuove = r.forme.filter((f) => !f.scartata_prima);
+  const vecchie = r.forme.filter((f) => f.scartata_prima);
+  if (nuove.length) box.append(gruppo(nuove, "Forme trovate"));
+  if (vecchie.length) {
+    const d = el("details", null, "forme-scartate");
+    d.append(el("summary", `Scartate l'altra volta (${vecchie.length}): restano spente`), gruppo(vecchie, "Forme scartate l'altra volta"));
+    box.append(d);
+  }
+  box.append(dettagli);
+  const primo = dettagli.querySelector(".dettaglio-forma");
+  if (primo) primo.hidden = false;
   if (r.non_attestate.length) box.append(el("p", `Non attestate (non entrano nella scheda): ${r.non_attestate.join("; ")}`, "nota"));
   const sommario = el("div");
   const scelte = () => [...box.querySelectorAll("input.sceglie:checked")].map((c) => c.value);
-  const aggiorna = () => {
-    const righe = r.forme.filter((f) => scelte().includes(f.forma)).reduce((n, f) => n + (f.totale || 0), 0);
-    sommario.replaceChildren(riepilogo(domanda, righe));
-  };
-  box.addEventListener("change", (e) => { if (e.target.classList.contains("sceglie")) aggiorna(); });
   const tipo = document.createElement("select");
   for (const t of ["persona", "organizzazione", "testata", "stato", "altro"]) tipo.append(new Option(t, t));
-  const lt = el("label", "Tipo ");
-  lt.append(tipo);
-  const crea = pulsanteMsg("Crea la scheda e avvia la ricerca", async () => {
+  const aggiorna = () => {
     const varianti = scelte();
     const ambigue = [...box.querySelectorAll("input.ambigua:checked")].map((c) => c.value).filter((f) => varianti.includes(f));
-    if (!varianti.length) { avviso("Spunta almeno una forma del nome.", true); return; }
+    const righe = r.forme.filter((f) => varianti.includes(f.forma)).reduce((n, f) => n + (f.totale || 0), 0);
+    sommario.replaceChildren(riepilogoScheda(varianti, ambigue, righe, tipo.value));
+    box.querySelectorAll(".chip-forma").forEach((c) => {
+      const a = box.querySelector(`input.ambigua[data-i="${c.dataset.i}"]`);
+      c.classList.toggle("ambigua", !!(a && a.checked));
+    });
+  };
+  box.addEventListener("change", (e) => {
+    if (e.target.classList.contains("sceglie") || e.target.classList.contains("ambigua") || e.target === tipo) aggiorna();
+  });
+  const lt = el("label", "Tipo di entità ");
+  lt.append(tipo);
+  // creare la scheda e avviare la ricerca sono due passi: la scheda resta nel glossario anche se non si avvia nulla
+  const crea = pulsanteMsg("Crea la scheda", async () => {
+    const varianti = scelte();
+    const ambigue = [...box.querySelectorAll("input.ambigua:checked")].map((c) => c.value).filter((f) => varianti.includes(f));
+    if (!varianti.length) { avviso("Accendi almeno una forma del nome.", true); return; }
+    if (campoNome && !campoNome.value.trim()) {
+      avviso("Dai un nome alla scheda nuova: deve distinguerla da quella che esiste già.", true);
+      campoNome.focus();
+      return;
+    }
+    const nomeScheda = (campoNome && campoNome.value.trim()) || entita;
+    await caricaGlossario();
+    const doppia = ((stato.glossario && stato.glossario.schede) || []).find((s) => normalizza(s.nome) === normalizza(nomeScheda));
+    if (doppia) {
+      if (!await conferma(`La scheda «${doppia.nome}» esiste già`, "Le forme scelte qui non la cambiano. Puoi " +
+        "cercare con le forme della scheda che c'è, oppure annullare e dare alla scheda nuova un altro nome.",
+        "Usa la scheda esistente")) return;
+      riduciScheda(m, `Uso la scheda esistente «${doppia.nome}».`);
+      return formeDelNome(doppia.nome, domanda || doppia.nome);
+    }
+    crea.disabled = true;
+    // le forme lasciate spente si ricordano: la prossima esplorazione di questo nome non le ripropone accese
+    const scartate = r.forme.map((f) => f.forma).filter((f) => !varianti.includes(f));
     try {
-      const s = await api("/api/scheda", { nome: entita, varianti, forme_ambigue: ambigue, tipo: tipo.value,
-        contesto: r.contesto });
+      const s = await api("/api/scheda", { nome: nomeScheda, varianti, forme_ambigue: ambigue, tipo: tipo.value,
+        contesto: r.contesto, scartate, cercato: entita });
       if (s.avviso) avviso(s.avviso);
       stato.glossario = null;                      // la scheda nuova entra nel glossario
-      chiudiScheda(m);
-      await avviaRicerca(s.scheda || entita, domanda);
+      const creata = s.scheda || nomeScheda;
+      riduciScheda(m, `Scheda «${creata}» creata: ${varianti.length === 1 ? "1 forma" : varianti.length + " forme"}` +
+        (ambigue.length ? `, ${ambigue.length === 1 ? "1 ambigua" : ambigue.length + " ambigue"}.` : "."));
+      annuncia(`Scheda «${creata}» creata.`);
+      await formeDelNome(creata, domanda || creata);
     } catch (e) {
+      crea.disabled = false;
       avviso(e.message, true);
     }
   }, "primario");
+  box.addEventListener("keydown", (e) => tastiForme(e, box, crea));
   aggiorna();
   stato.aggiornaRiepilogo = () => { if (!m.classList.contains("decisa")) aggiorna(); };
   box.append(lt, sommario, crea);
-  annuncia(`${r.forme.length} forme trovate: spunta quelle giuste.`);
+  annuncia(`${r.forme.length} forme trovate: accendi quelle giuste.`);
 }
 
-function rigaForma(f) {
-  const d = el("div", null, "forma");
-  const testa = el("div", null, "testa");
-  const l = el("label", null, "casella");
+// frecce tra le forme (anche quelle scartate, se il loro elenco è aperto), A per «ambigua», Invio per creare
+function tastiForme(e, box, crea) {
+  if (!e.target.classList || !e.target.classList.contains("sceglie")) return;
+  const caselle = [...box.querySelectorAll("input.sceglie")].filter((c) => c.offsetParent !== null);
+  const i = caselle.indexOf(e.target);
+  const passo = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+  if (passo) {
+    e.preventDefault();
+    caselle[(i + passo + caselle.length) % caselle.length].focus();
+  } else if (e.key === "Home" || e.key === "End") {
+    e.preventDefault();
+    caselle[e.key === "Home" ? 0 : caselle.length - 1].focus();
+  } else if (e.key.toLowerCase() === "a" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    const a = box.querySelector(`input.ambigua[data-i="${e.target.dataset.i}"]`);
+    if (a) {
+      a.checked = !a.checked;
+      a.dispatchEvent(new Event("change", { bubbles: true }));
+      annuncia(`${e.target.value}: ${a.checked ? "ambigua" : "non ambigua"}.`);
+    }
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    crea.click();
+  }
+}
+
+// una forma: il chip con la casella che la sceglie, e il suo dettaglio (esempio, serie e anni, «ambigua»)
+let contaForme = 0;
+function formaChip(f) {
+  const i = String(++contaForme);
+  const chip = el("label", null, "chip-forma");
+  chip.dataset.i = i;
   const c = document.createElement("input");
   c.type = "checkbox";
   c.className = "sceglie";
   c.value = f.forma;
   c.checked = f.proposta;
-  l.append(c, el("strong", f.forma));
+  c.dataset.i = i;
+  c.setAttribute("aria-describedby", "dettaglio-forma-" + i);
+  chip.append(c, el("span", f.forma, "nome-forma"), el("span", String(f.totale), "conto"));
+  if (f.attenzione) chip.append(el("span", "!", "segno-attenzione"));
+  const d = el("div", null, "dettaglio-forma");
+  d.id = "dettaglio-forma-" + i;
+  d.hidden = true;
+  const testa = el("div", null, "testa");
+  testa.append(el("strong", f.forma), el("span", `${f.totale} ${f.totale === 1 ? "riga" : "righe"}`, "conto"));
+  if (f.origine && f.origine !== "nelle fonti") testa.append(el("span", f.origine, "conto"));
   const la = el("label", null, "casella");
   const a = document.createElement("input");
   a.type = "checkbox";
   a.className = "ambigua";
   a.value = f.forma;
   a.checked = f.ambigua;
-  a.setAttribute("aria-label", `${f.forma}: ambigua`);
+  a.dataset.i = i;
   la.append(a, document.createTextNode("ambigua"));
-  testa.append(l, el("span", `${f.totale} righe`, "conto"), la);
-  if (f.origine && f.origine !== "nelle fonti") testa.append(el("span", f.origine, "conto"));
+  testa.append(la);
   d.append(testa);
+  if (f.scartata_prima) d.append(el("div", "L'avevi scartata l'altra volta che hai cercato questo nome.", "nota"));
   if (f.attenzione) d.append(el("div", f.attenzione, "attenzione"));
   const serie = Object.entries(f.per_serie_e_anno || {}).map(([s, anni]) =>
-    `${s}: ${Object.entries(anni).map(([a, n]) => `${a} (${n})`).join(", ")}`);
+    `${s}: ${Object.entries(anni).map(([an, n]) => `${an} (${n})`).join(", ")}`);
   if (serie.length) d.append(el("div", serie.join("; "), "nota"));
-  for (const e of f.esempi) {
+  for (const e of (f.esempi || []).slice(0, 1)) {
     const q = el("blockquote", e.testo);
     q.title = e.riferimento;
     d.append(q);
+    if (e.riferimento) d.append(el("div", e.riferimento, "nota riferimento-esempio"));
   }
-  return d;
+  return [chip, d];
 }
 
 // --------------------------------------------- la ricerca e la risposta
-async function avviaRicerca(entita, domanda) {
-  const f = filtriScelti();
+// filtri: quelli di una ricerca da ripetere (Riprova); senza, quelli scelti adesso nel riquadro
+async function avviaRicerca(entita, domanda, filtri) {
+  const f = filtri || filtriScelti();
   try {
     const r = await api("/api/ricerca/avvia", { entita, domanda: domanda || "", dal: f.dal, al: f.al, fonti: f.fonti,
       evoluzione: f.evoluzione });
@@ -2139,7 +2854,7 @@ async function avviaRicerca(entita, domanda) {
     else avviso("");
     const filo = Object.assign(filoCorrente(), { entita, domanda, avviata: true });
     filo.titolo = domanda || entita;
-    registra(filo, { tipo: "ricerca", entita, domanda: domanda || "" });
+    registra(filo, { tipo: "ricerca", entita, domanda: domanda || "", filtri: f });
     stato.filoRicerca = filo;
     stato.ultimaRisposta = "";
     stato.tappaAnnunciata = "";
@@ -2148,8 +2863,20 @@ async function avviaRicerca(entita, domanda) {
     inCorso(true);
     segui();
   } catch (e) {
-    messaggio("assistente errore", el("p", e.message));
+    // la ricerca non è partita: il motivo e, accanto, le due strade (riprovare, o cambiare il modello)
+    const rimedi = el("div", null, "riga rimedi-ricerca");
+    const m = messaggio("assistente errore", el("p", e.message), rimedi);
+    rimedi.append(pulsanteMsg("Riprova", () => { m.remove(); avviaRicerca(entita, domanda, f); }, "primario"),
+      pulsanteMsg("Cambia modello", () => apriImpostazioni("modelli"), "discreto"));
   }
+}
+
+const TAPPE_RICERCA = ["Estrazione", "Lettura dei passaggi", "Risposta"];
+
+// la fine della ricerca come frase (gli stati di lavori.py sono participi: «Ricerca errore» non si legge)
+function fraseFine(s) {
+  return { errore: "La ricerca si è interrotta per un errore.", interrotta: "La ricerca si è interrotta.",
+    fermata: "Ricerca fermata." }[s] || `Ricerca ${s}.`;
 }
 
 // il messaggio dell'avanzamento: si aggiorna sul posto, come una risposta che arriva
@@ -2162,11 +2889,109 @@ function messaggioRicerca(titolo) {
   barra.setAttribute("aria-valuenow", "0");
   const riempi = el("div");
   barra.append(riempi);
-  const m = messaggio("assistente ricerca", el("p", titolo, "titolo-ricerca"), barra,
+  // le tre fasi di ricerca.py, con quella in corso segnata: si vede a che punto è senza leggere la riga di stato
+  const tappe = el("ol", null, "tappe-ricerca");
+  tappe.setAttribute("aria-label", "Fasi della ricerca");
+  tappe.append(...TAPPE_RICERCA.map((t) => el("li", t)));
+  // in attesa delle quote: il conto alla rovescia e «Riprova ora»
+  const quota = el("div", null, "attesa-quota");
+  quota.hidden = true;
+  const conto = el("span", "", "conto-quota");
+  const riprova = pulsanteMsg("Riprova ora", riprovaOra, "discreto");
+  quota.append(conto, riprova);
+  // gli ultimi passaggi letti, mentre il modello legge: che cosa ha deciso e su quale fonte
+  const vive = el("ol", null, "letture-vive");
+  vive.setAttribute("aria-label", "Ultimi passaggi letti");
+  vive.hidden = true;
+  const m = messaggio("assistente ricerca", el("p", titolo, "titolo-ricerca"), tappe, barra,
     el("p", "In partenza…", "nota stato-ricerca"),
+    el("p", "", "nota dettaglio-ricerca"), quota, vive,
     el("p", "Continua anche se chiudi questa pagina.", "nota"));
   stato.ricercaEl = m;
+  stato.righeLette = 0;
+  stato.ritmo = null;
   return m;
+}
+
+// ------------------------------------------------ lettura dal vivo, tempo che resta, attesa delle quote
+const LETTURE_VISIBILI = 6;
+
+// le letture nuove (dal punto in cui si era arrivati) entrano in cima all'elenco; le più vecchie escono
+async function aggiornaLetture(m) {
+  let r;
+  try { r = await api("/api/ricerca/letture?dopo=" + (stato.righeLette || 0)); } catch (e) { return; }
+  const vive = m.querySelector(".letture-vive");
+  if (!vive) return;
+  if (r.azzera) { vive.replaceChildren(); stato.righeLette = 0; }
+  stato.righeLette = r.righe || 0;
+  for (const p of r.letture || []) vive.prepend(rigaLettura(p));
+  while (vive.children.length > LETTURE_VISIBILI) vive.lastChild.remove();
+  vive.hidden = !vive.children.length;
+}
+
+function rigaLettura(p) {
+  const si = p.pertinente === "sì";
+  const li = el("li", null, si ? "si" : p.pertinente === "incerto" ? "incerto" : "no");
+  const segno = el("span", si ? "✓" : p.pertinente === "incerto" ? "?" : "–", "segno");
+  segno.setAttribute("aria-hidden", "true");
+  const testa = el("span", null, "testa-lettura");
+  testa.append(el("span", si ? "pertinente" : p.pertinente === "incerto" ? "incerto" : "non pertinente", "solo-lettori"),
+    el("span", senzaMarkdown(p.fonte) || p.file, "fonte-lettura"), el("span", p.data || "", "data-lettura"));
+  li.append(segno, testa);
+  if (si && p.traduzione) li.append(el("span", p.traduzione, "traduzione-lettura"));
+  if (p.letto_da) li.title = "Letto da " + p.letto_da;
+  li.addEventListener("click", () => apriFonte(p.file, p.riga, null, null, "passaggi"));
+  return li;
+}
+
+// minuti alla fine della lettura, dal ritmo osservato da quando questa pagina la segue (servono due misure)
+function tempoCheResta(l) {
+  if (!l || !l.estratti) return "";
+  const ora = Date.now();
+  if (!stato.ritmo || l.letti < stato.ritmo.letti) stato.ritmo = { t: ora, letti: l.letti };
+  const fatti = l.letti - stato.ritmo.letti;
+  const secondi = (ora - stato.ritmo.t) / 1000;
+  if (fatti < 3 || secondi < 20) return "";
+  const resto = (l.estratti - l.letti) / (fatti / secondi);
+  if (!isFinite(resto) || resto <= 0) return "";
+  return resto < 90 ? "circa un minuto alla fine della lettura" : `circa ${Math.round(resto / 60)} min alla fine della lettura`;
+}
+
+function mostraAttesaQuota(m, r) {
+  const box = m.querySelector(".attesa-quota");
+  if (!box) return;
+  clearInterval(stato.orologioQuota);
+  const ts = r.stato === "in attesa" && r.prossimo_ts ? r.prossimo_ts * 1000 : 0;
+  box.hidden = !ts;
+  if (!ts) return;
+  const conto = box.querySelector(".conto-quota");
+  const segna = () => {
+    const s = Math.max(0, Math.round((ts - Date.now()) / 1000));
+    const ore = new Date(ts).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+    conto.textContent = s ? `Quote finite: riprovo tra ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} (alle ${ore}).`
+      : "Riprovo adesso…";
+  };
+  segna();
+  stato.orologioQuota = setInterval(segna, 1000);
+}
+
+async function riprovaOra() {
+  try {
+    const r = await api("/api/ricerca/riprova", {});
+    avviso(r.nota || "");
+    segui();
+  } catch (e) {
+    avviso(e.message, true);
+  }
+}
+
+function descriviProfili(p) {
+  if (!p || typeof p !== "object") return "";
+  const nomi = { smistamento: "smistamento", analisi: "lettura", sintesi: "risposta" };
+  const parti = Object.entries(p).filter(([, v]) => v).map(([k, v]) => `${nomi[k] || k} ${nomeModello(v)}`);
+  if (!parti.length) return "";
+  const unici = new Set(Object.values(p).filter(Boolean));
+  return unici.size === 1 ? `Modello: ${nomeModello([...unici][0])}.` : `Modelli: ${parti.join(", ")}.`;
 }
 
 function inCorso(si) {
@@ -2210,19 +3035,41 @@ async function mostraRicerca(r, allAvvio) {
   const filo = stato.filoRicerca;
   if (filo && r.id && filo.ricerca !== r.id) { filo.ricerca = r.id; salvaFilo(filo); }   // per ritrovarlo alla riapertura
   const m = stato.ricercaEl;
-  const letti = r.letti ? `${r.letti.letti}/${r.letti.estratti} passaggi letti` : "";
-  const parti = [r.stato, r.fase, letti || r.avanzamento, r.minuti ? `${r.minuti} min` : ""].filter(Boolean);
-  if (r.prossimo_tentativo) parti.push(`nuovo tentativo: ${r.prossimo_tentativo}`);
-  if (r.ultimo_messaggio && !(r.fase && r.ultimo_messaggio.includes(r.fase))) parti.push(r.ultimo_messaggio);
-  m.querySelector(".stato-ricerca").textContent = parti.join(" · ");
+  // la riga di stato dice i numeri che contano (letti, pertinenti finora, minuti); sotto, più tenue, l'ultimo
+  // messaggio della ricerca e l'eventuale nuovo tentativo
+  const f = /(\d)\s*\/\s*3/.exec(r.fase || "");
+  const l = r.letti;
+  const letti = l ? `${l.letti} di ${l.estratti} passaggi letti` +
+    (l.pertinenti !== undefined ? ` · ${l.pertinenti} ${l.pertinenti === 1 ? "pertinente" : "pertinenti"} finora` : "") : "";
+  const faseTesto = f ? "" : r.fase;                         // una fase senza numero si dice per esteso
+  const resta = !r.finito && r.stato !== "in attesa" ? tempoCheResta(l) : "";
+  const parti = [r.stato && r.stato !== "in corso" ? r.stato : "", faseTesto, letti || r.avanzamento,
+    r.minuti ? `${r.minuti} min` : "", resta].filter(Boolean);
+  m.querySelector(".stato-ricerca").textContent = parti.join(" · ") || "In corso…";
+  const dettagli = [];
+  if (r.prossimo_tentativo && !r.prossimo_ts) dettagli.push(`Nuovo tentativo: ${r.prossimo_tentativo}.`);
+  if (r.ultimo_messaggio && !(r.fase && r.ultimo_messaggio.includes(r.fase))) dettagli.push(r.ultimo_messaggio);
+  const modelli = descriviProfili(r.profili);
+  if (modelli) dettagli.push(modelli);
+  const dett = m.querySelector(".dettaglio-ricerca");
+  if (dett) { dett.textContent = dettagli.join(" "); dett.hidden = !dettagli.length; }
+  mostraAttesaQuota(m, r);
+  if (!r.finito && (l || (f && +f[1] >= 2))) aggiornaLetture(m);
+  const tappe = m.querySelectorAll(".tappe-ricerca > li");
+  tappe.forEach((li, i) => {
+    const n = f ? +f[1] - 1 : -1;
+    const completata = r.finito && String(r.stato || "").startsWith("completata");
+    const stato_ = completata || i < n ? "fatta" : i === n ? (r.finito ? "fermata" : "in-corso") : "";
+    li.className = stato_;
+    if (stato_ === "in-corso") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+  });
   // la barra segue le tre fasi (estrazione, lettura, risposta) e, dentro la lettura, i passaggi letti
   const barra = m.querySelector(".barra");
-  const f = /(\d)\s*\/\s*3/.exec(r.fase || "");
   const n = /(\d+)\s*\/\s*(\d+)/.exec(r.avanzamento || "");
   const segna = (p) => {
     const v = Math.round(Math.min(100, Math.max(0, p)));
     barra.setAttribute("aria-valuenow", String(v));
-    barra.firstChild.style.width = v + "%";
+    barra.firstChild.style.transform = `scaleX(${v / 100})`;
   };
   if (f) {
     const fase = +f[1];
@@ -2234,10 +3081,12 @@ async function mostraRicerca(r, allAvvio) {
   const tappa = r.finito ? `fine ${r.stato}` : r.fase || "";
   if (tappa && tappa !== stato.tappaAnnunciata) {
     stato.tappaAnnunciata = tappa;
-    if (!allAvvio) annuncia(r.finito ? `Ricerca ${r.stato}.` : `Ricerca: ${r.fase}.`);
+    if (!allAvvio) annuncia(r.finito ? fraseFine(r.stato) : `Ricerca: ${r.fase}.`);
   }
   inCorso(!r.finito);
   if (!r.finito) { segui(); return; }
+  clearInterval(stato.orologioQuota);
+  aggiornaConsumo();
   segna(100);
   if (r.ultimi_messaggi && r.ultimi_messaggi.length) {
     avviso(`Ricerca ${r.stato}: ${r.ultimi_messaggi.slice(-2).join(" ")}`, true);
@@ -2245,6 +3094,7 @@ async function mostraRicerca(r, allAvvio) {
   if (r.avviso) avviso(r.avviso, true);
   const p = r.risposta_pronta;
   stato.ricercaEl = null;
+  precedentiDi.clear();                      // una ricerca finita cambia i passaggi già letti e la durata attesa
   stato.filoRicerca = null;
   if (p && stato.ultimaRisposta !== r.documento) {
     stato.ultimaRisposta = r.documento;
@@ -2258,7 +3108,19 @@ async function mostraRicerca(r, allAvvio) {
       avviso(`Ricerca finita: «${r.domanda || r.entita}». La trovi tra i recenti.`);
     }
   } else if (m.isConnected) {
-    m.querySelector(".stato-ricerca").textContent = `Ricerca ${r.stato}.`;
+    // senza risposta (errore, quote finite, fermata): che cosa è successo e che cosa si può fare adesso
+    m.querySelector(".stato-ricerca").textContent = fraseFine(r.stato) +
+      (r.messaggio && r.messaggio !== "Ricerca fermata su richiesta." ? ` ${r.messaggio}` : "");
+    m.querySelector(".barra").hidden = true;
+    const riprova = () => {
+      m.remove();
+      avviaRicerca(r.entita, r.domanda || "", r.filtri);
+    };
+    const rimedi = el("div", null, "riga rimedi-ricerca");
+    rimedi.append(pulsanteMsg(r.stato === "fermata" ? "Riprendi la ricerca" : "Riprova", riprova, "primario"));
+    if (r.stato !== "fermata") rimedi.append(pulsanteMsg("Cambia modello", () => apriImpostazioni("modelli"), "discreto"));
+    m.querySelectorAll(".nota:not(.stato-ricerca):not(.dettaglio-ricerca)").forEach((x) => x.remove());
+    m.append(el("p", "I passaggi già letti restano salvati e la nuova ricerca li riusa.", "nota"), rimedi);
   }
   caricaStorico();
 }
@@ -2282,26 +3144,125 @@ function messaggioRisposta(url, pertinenti) {
   const corpo = el("div", null, "documento");
   corpo.append(el("p", "Carico la risposta…", "nota"));
   const azioni = el("div", null, "riga azioni-risposta");
-  azioni.append(pulsanteMsg("Fonti di questa risposta", () => { stato.doc = doc; apriLaterale("passaggi"); }, "discreto"));
-  const a = el("a", "Apri il documento completo");
+  // un'azione sola per le fonti, con il loro numero; il documento completo resta un collegamento secondario.
+  // Premuto di nuovo con i passaggi di questa stessa risposta già aperti, chiude il pannello
+  const n = pertinenti !== null && pertinenti !== undefined && pertinenti !== "" ? String(pertinenti) : "";
+  const fonti = pulsanteMsg(n ? `Fonti (${n} ${n === "1" ? "documento" : "documenti"})` : "Fonti di questa risposta", () => {
+    if (schedaAperta() === "passaggi" && stato.doc === doc) return chiudiLaterale();
+    stato.doc = doc;
+    apriLaterale("passaggi");
+  }, "fonti-risposta");
+  fonti.setAttribute("aria-controls", "laterale");
+  const a = el("a", "Documento completo");
   a.href = url;
   a.target = "_blank";
   a.rel = "noopener";
-  azioni.append(a);
-  if (pertinenti !== null && pertinenti !== undefined) azioni.append(el("span", `${pertinenti} documenti pertinenti`, "etichetta"));
-  const m = messaggio("assistente risposta", corpo, azioni);
+  a.title = "Apre la risposta intera in una finestra a parte, da stampare o salvare";
+  azioni.append(fonti, a, menuEsporta(doc));
+  const confronto = el("div", null, "confronto");
+  confronto.hidden = true;
+  const m = messaggio("assistente risposta", confronto, corpo, azioni);
   (async () => {
     try {
       const r = await api("/api/documento?" + new URLSearchParams(doc));
       corpo.replaceChildren();
       const pref = inserisciDocumento(corpo, r.corpo);
       await arricchisciDocumento(corpo, doc, pref);
+      if (doc.risposta) await mostraConfronto(confronto, corpo, doc);
     } catch (e) {
       corpo.replaceChildren(el("p", e.message, "attenzione"));
     }
   })();
   annuncia("Risposta pronta.");
   return m;
+}
+
+/// ------------------------------------------------------------------ esportazioni e confronto con la risposta di prima
+const ESPORTAZIONI = [
+  ["docx", "Word, con le note a piè di pagina", "la risposta in stile Chicago"],
+  ["csl", "Zotero o Mendeley (CSL-JSON)", "i documenti citati"],
+  ["bibtex", "BibTeX", "i documenti citati"],
+  ["csv", "Tabella dei passaggi (CSV)", "per Excel o LibreOffice"],
+];
+
+// un menu a tendina accanto a «Documento completo»: ogni voce scarica il file (il server lo prepara al momento)
+function menuEsporta(doc) {
+  const d = el("details", null, "menu-esporta");
+  const s = el("summary", "Esporta");
+  d.append(s);
+  const lista = el("ul");
+  for (const [formato, testo, dettaglio] of ESPORTAZIONI) {
+    const li = el("li");
+    const a = el("a", testo);
+    a.href = "/esporta?" + new URLSearchParams(Object.assign({ formato }, doc));
+    a.setAttribute("download", "");
+    a.addEventListener("click", () => { d.open = false; annuncia(`Esporto: ${testo}.`); });
+    li.append(a, el("span", dettaglio, "nota"));
+    lista.append(li);
+  }
+  d.append(lista);
+  d.addEventListener("keydown", (e) => { if (e.key === "Escape" && d.open) { e.stopPropagation(); d.open = false; s.focus(); } });
+  return d;
+}
+
+// La risposta rifatta sulla stessa entità: che cosa è cambiato rispetto a quella prima. Sopra il documento, una
+// riga che lo dice (si apre per i dettagli); nel documento i rimandi [n] dei passaggi nuovi portano «nuovo».
+async function mostraConfronto(box, corpo, doc) {
+  let r;
+  try { r = await api("/api/confronto?" + new URLSearchParams({ risposta: doc.risposta })); } catch (e) { return; }
+  if (!r.precedente) return;
+  const nuovi = r.nuovi || [];
+  const tolti = r.tolti || [];
+  if (!nuovi.length && !tolti.length && !r.risposta_cambiata) {
+    box.append(el("p", `Uguale alla risposta del ${r.precedente.data}: stessi passaggi citati.`, "nota"));
+    box.hidden = false;
+    return;
+  }
+  const parti = [];
+  if (nuovi.length) parti.push(`${nuovi.length} ${nuovi.length === 1 ? "passaggio nuovo" : "passaggi nuovi"}`);
+  if (tolti.length) parti.push(`${tolti.length} non più ${tolti.length === 1 ? "citato" : "citati"}`);
+  if (r.risposta_cambiata) parti.push("la risposta breve è cambiata");
+  const d = el("details", null, "confronto-dettagli");
+  d.append(el("summary", `Rispetto alla risposta del ${r.precedente.data}: ${parti.join(", ")}.`));
+  if (nuovi.length) {
+    d.append(el("h4", "Citati adesso, non la volta prima"));
+    const ul = el("ul");
+    for (const x of nuovi) ul.append(el("li", `[${x.n}] ${senzaMarkdown(x.riferimento)}`));
+    d.append(ul);
+  }
+  if (tolti.length) {
+    d.append(el("h4", "Citati la volta prima, non adesso"));
+    const ul = el("ul");
+    for (const x of tolti) ul.append(el("li", senzaMarkdown(x.riferimento) || x.file));
+    d.append(ul);
+  }
+  if (r.risposta_cambiata && r.risposta_prima) {
+    const due = el("div", null, "due-risposte");
+    const colonna = (titolo, testo) => {
+      const c = el("div");
+      c.append(el("h4", titolo), el("p", senzaMarkdown(testo), "documento-breve"));
+      return c;
+    };
+    due.append(colonna(`Il ${r.precedente.data}`, r.risposta_prima), colonna("Adesso", r.risposta_ora));
+    d.append(due);
+  }
+  const a = el("a", "Apri la risposta di prima");
+  a.href = r.precedente.documento;
+  a.target = "_blank";
+  a.rel = "noopener";
+  d.append(a);
+  box.append(d);
+  box.hidden = false;
+  const numeri = new Set(nuovi.map((x) => String(x.n)));
+  const segnati = new Set();
+  corpo.querySelectorAll("a.rimando").forEach((x) => {
+    const n = (/\d+/.exec(x.textContent) || [])[0];
+    if (!numeri.has(n) || segnati.has(n)) return;
+    segnati.add(n);
+    const s = el("span", "nuovo", "segno-nuovo");
+    s.title = `Non era citato nella risposta del ${r.precedente.data}`;
+    x.after(s);
+  });
 }
 
 // --------------------------------------------- recenti
@@ -2324,17 +3285,122 @@ async function caricaStorico() {
   };
   const voci = [
     ...fili.fili.map((f) => ({ filo: f, titolo: f.titolo || f.entita || "Senza titolo", quando: f.aggiornato,
-      dettaglio: f.entita })),
+      dettaglio: f.entita, domanda: f.domanda || "", stato: f.stato || "", filtri: f.filtri || null,
+      pertinenti: f.pertinenti || "" })),
     ...[...s.risposte, ...s.ricerche].filter((r) => !nei.has(r.documento)).map((r) => ({ vecchia: r,
-      titolo: r.domanda || r.entita || r.cartella || r.file, quando: quando(r.data), dettaglio: r.entita })),
+      titolo: r.domanda || r.entita || r.cartella || r.file, quando: quando(r.data), dettaglio: r.entita,
+      // le risposte di prima dei fili: niente filtri salvati, ma i documenti pertinenti e l'evoluzione sì
+      domanda: r.domanda || "", stato: "risposta", pertinenti: r.pertinenti || "",
+      filtri: r.evoluzione ? { evoluzione: true } : null })),
   ].sort((a, b) => b.quando.localeCompare(a.quando));
   stato.recenti = voci;
+  disegnaRecenti();
+  suggerimenti();
+}
+
+// I recenti: le ricerche sulla stessa entità stanno insieme (una riga con il nome, che si apre sulle sue ricerche),
+// in gruppi per data dell'ultima. Con un filtro l'elenco diventa piatto, con le sole voci che corrispondono.
+function disegnaRecenti() {
+  const ul = $("storico");
+  const voci = stato.recenti || [];
+  const filtro = normalizza($("recenti-filtro").value.trim());
   const corrente = stato.thread && stato.thread.id;
-  ul.replaceChildren(...voci.map((v) => {
-    const li = el("li");
-    const b = el("button", v.titolo, "voce-recente");
+  const oggi = new Date();
+  oggi.setHours(0, 0, 0, 0);
+  const gruppo = (q) => {
+    const d = new Date(q);
+    if (isNaN(d)) return "Prima";
+    const giorni = Math.floor((oggi - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+    return giorni <= 0 ? "Oggi" : giorni === 1 ? "Ieri" : giorni < 7 ? "Questa settimana" : "Prima";
+  };
+  const giorno = (q) => {
+    const d = new Date(q);
+    if (isNaN(d)) return "";
+    return gruppo(q) === "Oggi" || gruppo(q) === "Ieri" ? d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }) :
+      d.toLocaleDateString(LOCALE, { day: "numeric", month: "short", ...(d.getFullYear() !== oggi.getFullYear() ? { year: "numeric" } : {}) });
+  };
+  // dentro un gruppo le ricerche possono stare in giorni diversi: l'ora sola basta solo per oggi
+  const quandoPreciso = (q) => {
+    const d = new Date(q);
+    if (isNaN(d)) return "";
+    const ora = d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+    const g = gruppo(q);
+    return g === "Oggi" ? ora : g === "Ieri" ? `ieri, ${ora}` : `${giorno(q)}, ${ora}`;
+  };
+  // un solo lessico: con una risposta la riga dice quanti documenti; senza, perché non c'è
+  const statoFilo = (v) => v.stato === "non avviata" ? "mai avviata" :
+    v.stato === "avviata" ? (stato.inCorso && stato.filoRicerca && v.filo && stato.filoRicerca.id === v.filo.id ?
+      "in corso" : "senza risposta") : "";
+  // un titolo scelto dall'utente (Rinomina) vale più del nome dell'entità
+  const rinominata = (v) => v.filo && v.titolo &&
+    ![v.domanda, v.dettaglio].filter(Boolean).some((x) => normalizza(x) === normalizza(v.titolo));
+
+  if (filtro) {
+    const trovate = voci.filter((v) => normalizza([v.titolo, v.dettaglio, v.domanda].join(" ")).includes(filtro));
+    ul.replaceChildren(...trovate.map((v) => voceRecente(v, false)));
+    if (!trovate.length) ul.append(el("li", `Nessuna ricerca con «${$("recenti-filtro").value.trim()}».`, "nota"));
+    return;
+  }
+  // i gruppi per entità, nell'ordine dell'ultima ricerca di ciascuna; le domande senza entità restano da sole
+  const gruppi = [];
+  const perNome = new Map();
+  for (const v of voci) {
+    const chiave = v.dettaglio && !rinominata(v) ? normalizza(v.dettaglio) : null;
+    if (chiave && perNome.has(chiave)) { perNome.get(chiave).push(v); continue; }
+    const g = [v];
+    if (chiave) perNome.set(chiave, g);
+    gruppi.push(g);
+  }
+  const righe = [];
+  let ultimo = null;
+  for (const g of gruppi) {
+    const d = gruppo(g[0].quando);
+    if (d !== ultimo) { righe.push(el("li", d, "gruppo-recenti")); ultimo = d; }
+    righe.push(g.length === 1 ? voceRecente(g[0], false) : gruppoEntita(g));
+  }
+  ul.replaceChildren(...righe);
+  if (!voci.length) ul.append(el("li", "Ancora nessuna ricerca.", "nota"));
+
+  // più ricerche sulla stessa entità: il nome con il numero, e sotto le singole ricerche (domanda, stato, data)
+  function gruppoEntita(g) {
+    const li = el("li", null, "entita-recente");
+    const d = el("details");
+    d.open = g.some((v) => v.filo && v.filo.id === corrente) || stato.recentiAperti.has(normalizza(g[0].dettaglio));
+    d.addEventListener("toggle", () => {
+      stato.recentiAperti[d.open ? "add" : "delete"](normalizza(g[0].dettaglio));
+    });
+    const s = el("summary", null, "voce-recente");
+    s.append(el("span", g[0].dettaglio, "titolo"), el("span", `${g.length} ricerche · ultima ${giorno(g[0].quando)}`,
+      "dettaglio"));
+    const sotto = el("ul", null, "sottovoci");
+    sotto.append(...g.map((v) => voceRecente(v, true)));
+    d.append(s, sotto);
+    li.append(d);
+    return li;
+  }
+
+  function voceRecente(v, sottovoce) {
+    const li = el("li", null, "riga-recente");
+    const b = el("button", null, "voce-recente");
     b.type = "button";
-    b.title = [v.dettaglio, v.quando.replace("T", " ").slice(0, 16)].filter(Boolean).join(" · ");
+    // in testa il nome dell'entità (o il titolo scelto); dentro un gruppo, la domanda: il nome è già sopra
+    // «Occorrenze di X» è la domanda che le versioni di prima scrivevano da sole per una ricerca sul solo nome
+    const domandaDiversa = v.domanda && normalizza(v.domanda) !== normalizza(v.dettaglio || "") &&
+      normalizza(v.domanda) !== normalizza(`Occorrenze di ${v.dettaglio || ""}`) ? v.domanda : "";
+    // senza domanda la ricerca trova le menzioni del nome (come dice la pagina vuota); sotto, quello che distingue
+    // una ricerca dall'altra: filtri, documenti pertinenti e, dentro un gruppo, giorno e ora
+    const testa = rinominata(v) ? v.titolo : sottovoce ? domandaDiversa || "Menzioni" : v.dettaglio || v.titolo;
+    const pert = v.pertinenti !== "" && v.pertinenti !== undefined && v.pertinenti !== null ?
+      `${v.pertinenti} ${v.pertinenti === "1" ? "documento" : "documenti"}` : "";
+    const sf = statoFilo(v);
+    if (sf === "mai avviata") li.classList.add("mai-avviata");
+    const sotto = [sottovoce ? "" : domandaDiversa, sf, descriviFiltri(v.filtri), pert,
+      sottovoce ? quandoPreciso(v.quando) : giorno(v.quando)]
+      .filter((x) => x && x !== testa).join(" · ");
+    b.append(el("span", testa, "titolo"), el("span", sotto, "dettaglio"));
+    const data = new Date(v.quando);
+    b.title = [v.titolo, isNaN(data) ? "" : data.toLocaleString(LOCALE, { day: "numeric", month: "long",
+      year: "numeric", hour: "2-digit", minute: "2-digit" })].filter(Boolean).join(" · ");
     if (v.filo) {
       b.dataset.id = v.filo.id;
       if (v.filo.id === corrente) b.setAttribute("aria-current", "true");
@@ -2344,10 +3410,65 @@ async function caricaStorico() {
       b.addEventListener("click", () => apriDalloStorico(v.vecchia));
     }
     li.append(b);
+    if (v.filo) li.append(...azioniRecente(v, testa));
     return li;
-  }));
-  if (!voci.length) ul.append(el("li", "Ancora nessuna ricerca.", "nota"));
-  suggerimenti();
+  }
+}
+
+// le azioni di una conversazione salvata: un pulsante discreto che apre Rinomina ed Elimina sotto la riga
+function azioniRecente(v, nome) {
+  const altro = el("button", null, "icona altro-recente");
+  altro.type = "button";
+  altro.setAttribute("aria-label", `Altre azioni per «${nome}»`);
+  altro.setAttribute("aria-expanded", "false");
+  altro.title = "Rinomina, elimina";
+  altro.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" ' +
+    'cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
+  const pannello = el("div", null, "azioni-recente");
+  pannello.hidden = true;
+  const chiudi = () => { pannello.hidden = true; altro.setAttribute("aria-expanded", "false"); };
+  altro.addEventListener("click", () => {
+    const apri = pannello.hidden;
+    pannello.hidden = !apri;
+    altro.setAttribute("aria-expanded", String(apri));
+    if (apri) mostraAzioni();
+  });
+  pannello.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); chiudi(); altro.focus(); } });
+  function mostraAzioni() {
+    const rinomina = pulsante("Rinomina", mostraCampo);
+    const elimina = pulsante("Elimina", async () => {
+      if (!await conferma(`Eliminare «${nome}» dai recenti?`, "Si cancella solo la conversazione. Le risposte e i " +
+        "passaggi già letti restano nell'archivio del progetto, e una ricerca nuova sulla stessa entità li riusa.",
+        "Elimina")) return;
+      try {
+        await api("/api/filo/elimina", { id: v.filo.id });
+        if (stato.thread && stato.thread.id === v.filo.id) nuovoThread();
+        annuncia(`«${nome}» eliminata dai recenti.`);
+        caricaStorico();
+      } catch (e) { avviso(e.message, true); }
+    });
+    elimina.classList.add("pericolo");
+    pannello.replaceChildren(rinomina, elimina);
+    rinomina.focus();
+  }
+  function mostraCampo() {
+    const campo = document.createElement("input");
+    campo.type = "text";
+    campo.value = v.titolo;
+    campo.setAttribute("aria-label", "Nuovo nome della conversazione");
+    const salva = async () => {
+      try {
+        await api("/api/filo/rinomina", { id: v.filo.id, titolo: campo.value });
+        if (stato.thread && stato.thread.id === v.filo.id) stato.thread.titolo = campo.value.trim();
+        caricaStorico();
+      } catch (e) { avviso(e.message, true); }
+    };
+    campo.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); salva(); } });
+    pannello.replaceChildren(campo, pulsante("Salva", salva, true), pulsante("Annulla", () => { chiudi(); altro.focus(); }));
+    campo.focus();
+    campo.select();
+  }
+  return [altro, pannello];
 }
 
 // una risposta di prima dei fili: si apre come filo nuovo, che si salva al primo seguito
@@ -2366,7 +3487,13 @@ function suggerimenti() {
   const box = $("suggerimenti");
   const visti = new Set();
   const nomi = (stato.recenti || []).map((v) => v.dettaglio).filter((n) => n && !visti.has(n) && visti.add(n)).slice(0, 4);
-  box.replaceChildren(...nomi.map((n) => pulsanteMsg(n, () => { $("testo").value = n; invia(); }, "chip")));
+  // i nomi già cercati: un clic rifà la ricerca delle menzioni (si passa comunque dalla conferma delle forme)
+  const chip = nomi.map((n) => {
+    const b = pulsanteMsg(n, () => { $("testo").value = n; invia(); }, "chip");
+    b.title = `Cerca di nuovo le menzioni di ${n}`;
+    return b;
+  });
+  box.replaceChildren(...(chip.length ? [el("span", "Già cercati:", "suggerimenti-guida"), ...chip] : []));
 }
 
 // ------------------------------------------------------------------ importazione
@@ -2422,7 +3549,8 @@ function seguiImporta(id) {
     if (id !== stato.importaId) return;               // un lavoro più recente ha preso il suo posto
     const a = r.avanzamento;
     $("imp-avanzamento").hidden = !a || !!r.finita;
-    if (a) $("imp-barra").style.width = avanzamento("imp-avanzamento", (a.fatto / Math.max(1, a.totale)) * 100);
+    if (a) $("imp-barra").style.transform =
+      `scaleX(${parseInt(avanzamento("imp-avanzamento", (a.fatto / Math.max(1, a.totale)) * 100), 10) / 100})`;
     $("imp-stato").textContent = [r.finita ? "" : (a ? a.testo : "Lavoro in corso…"), importaEsito(r)]
       .filter(Boolean).join(" ");
     const esiti = (r.ultime || []).join("\n");
@@ -2459,7 +3587,9 @@ function passiImporta(conTabella) {
   $("imp-passo-3").classList.toggle("spento", !conTabella);
   $("imp-proponi").classList.toggle("primario", !conTabella);
   $("imp-applica").classList.toggle("primario", conTabella);
-  for (const id of ["imp-carica", "imp-salva", "imp-prova", "imp-applica"]) $(id).disabled = !conTabella;
+  // anche le caselle dei passi spenti: sembrerebbero usabili, e non fanno nulla finché non c'è la tabella
+  for (const id of ["imp-carica", "imp-salva", "imp-prova", "imp-applica", "imp-dubbi", "imp-avanzate",
+    "imp-sovrascrivi"]) $(id).disabled = !conTabella;
   etichettaImporta();
 }
 
@@ -2530,6 +3660,86 @@ async function salvaTabella() {
   }
 }
 
+/// ------------------------------------------------------------------ qualità dell'OCR
+// I documenti sospetti, il peggiore per primo: perché (confidenza, parole illeggibili), un'occhiata al testo e, se
+// l'originale c'è, «Rifai l'OCR» con le lingue scelte (le installate di Tesseract). Il nuovo testo sostituisce il
+// vecchio con un'importazione normale, che si segue sopra come le altre.
+async function controllaOcr() {
+  const box = $("ocr-esito");
+  const b = $("ocr-controlla");
+  b.disabled = true;
+  box.replaceChildren(el("p", "Controllo i documenti importati…", "nota in-attesa"));
+  let r, lingue = [];
+  try {
+    [r, lingue] = await Promise.all([api("/api/salute-ocr"),
+      api("/api/lingue").then((s) => (s.installate || []).filter((c) => c !== "osd"), () => [])]);
+  } catch (e) {
+    box.replaceChildren(el("p", e.message, "nota attenzione-testo"));
+    return;
+  } finally {
+    b.disabled = false;
+  }
+  b.textContent = "Controlla di nuovo";
+  if (!r.sospetti) {
+    box.replaceChildren(el("p", `Nessun documento sospetto tra i ${r.esaminati} esaminati.`, "nota esito-ocr-ok"));
+    return;
+  }
+  const testa = el("p", `${r.sospetti} ${r.sospetti === 1 ? "documento sospetto" : "documenti sospetti"} su ` +
+    `${r.esaminati}` + (r.sospetti > r.documenti.length ? ` (qui i ${r.documenti.length} peggiori)` : "") + ".", "nota");
+  const ul = el("ul", null, "elenco-ocr");
+  for (const d of r.documenti) ul.append(rigaOcr(d, lingue));
+  box.replaceChildren(testa, ul);
+}
+
+function rigaOcr(d, lingue) {
+  const li = el("li");
+  const testa = el("div", null, "testa");
+  const apri = el("button", d.titolo, "apri-passaggio");
+  apri.type = "button";
+  apri.title = d.file;
+  apri.addEventListener("click", () => apriFonte(d.file, null, "1", null, "ocr"));
+  testa.append(apri, el("span", [d.serie, d.lingua].filter(Boolean).join(" · "), "nota"));
+  li.append(testa, el("div", d.motivi.join("; "), "motivi-ocr"));
+  if (!d.originale) {
+    li.append(el("div", "L'originale non è registrato: reimporta il documento dalla tabella.", "nota"));
+    return li;
+  }
+  const riga = el("div", null, "riga");
+  const sel = document.createElement("select");
+  sel.multiple = false;
+  sel.setAttribute("aria-label", `Lingue dell'OCR per ${d.titolo}`);
+  const proposte = new Set();
+  const attuale = { it: "ita", en: "eng", fr: "fra", de: "deu", es: "spa", pt: "por", sq: "sqi", ru: "rus",
+    zh: "chi_sim", el: "ell" }[d.lingua];
+  if (attuale && lingue.includes(attuale)) proposte.add(attuale + (attuale !== "eng" && lingue.includes("eng") ? "+eng" : ""));
+  for (const c of lingue) proposte.add(c);
+  for (const v of proposte) sel.append(new Option(v.replace(/\+/g, " + "), v));
+  const rifai = pulsante("Rifai l'OCR", async () => {
+    if (!await conferma(`Rifare l'OCR di «${d.titolo}»?`, `Il testo si rifà dall'originale con ${sel.value.replace(/\+/g, " + ")} ` +
+      "e sostituisce quello di adesso; serie, data, numero, titolo e autore restano. I passaggi già letti restano " +
+      "nell'archivio; la prossima ricerca trova anche le forme che l'OCR vecchio nascondeva.", "Rifai l'OCR")) return;
+    rifai.disabled = true;
+    try {
+      const r = await api("/api/rifai-ocr", { file: d.file, lingue: sel.value });
+      stato.importaId = r.id;
+      mostraTabella(null);
+      $("imp-stato").textContent = `OCR di «${d.titolo}» avviato: lo seguo io, non serve che aspetti.`;
+      seguiImporta(r.id);
+      li.classList.add("rifatto");
+      rifai.textContent = "OCR avviato";
+    } catch (e) {
+      rifai.disabled = false;
+      avviso(e.message, true);
+    }
+  });
+  if (!lingue.length) { sel.disabled = rifai.disabled = true; }
+  const l = el("label", "Lingue ");
+  l.append(sel);
+  riga.append(l, rifai);
+  li.append(riga);
+  return li;
+}
+
 // ------------------------------------------------------------------ conversazione sulle fonti
 // Il modello scelto usa gli strumenti del motore; il server confronta ogni citazione della risposta con i risultati
 // degli strumenti e ne dà la posizione nel testo: qui diventa un segno verde (trovata) o rosso (non trovata), e un
@@ -2549,6 +3759,14 @@ function testoConCitazioni(testo, citazioni, voce) {
     const span = el("span", testo.slice(c.inizio, c.fine), "citazione");
     span.title = STATI_CITAZIONE[c.stato] || c.stato;
     if (c.stato === "non trovata") span.classList.add("non-trovata");
+    // l'esito non sta solo nel colore: un segno visibile e, per i lettori di schermo, le parole
+    const trovata = c.stato !== "non trovata";
+    const segno = el("span", null, "segno-citazione");
+    segno.setAttribute("aria-hidden", "true");
+    segno.innerHTML = trovata ? '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' :
+      '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>';
+    span.append(segno, el("span", trovata ? " (citazione verificata)" : " (citazione non trovata nei risultati)",
+      "solo-lettori"));
     if (c.passaggio) {
       span.classList.add("con-passaggio");
       span.tabIndex = 0;
@@ -2696,17 +3914,35 @@ function mostraAnteprima(a, v, radice, pref, n) {
     }
   }
   parti.push(el("p", "Clic: apri la pagina della fonte", "etichetta"));
+  clearTimeout(stato.attesaAnteprima);
+  // appena chiusa un'altra anteprima (si scorre lungo i rimandi) questa arriva senza movimento
+  box.classList.toggle("subito", Date.now() - (stato.anteprimaChiusa || 0) < ANTEPRIMA_CATENA);
   box.replaceChildren(...parti);
   box.hidden = false;
   const r = a.getBoundingClientRect();
   const larga = box.offsetWidth;
   const alta = box.offsetHeight;
-  box.style.left = Math.max(8, Math.min(r.left, innerWidth - larga - 8)) + "px";
-  box.style.top = (r.top - alta - 8 > 8 ? r.top - alta - 8 : r.bottom + 8) + "px";
+  const sopra = r.top - alta - 8 > 8;
+  const sinistra = Math.max(8, Math.min(r.left, innerWidth - larga - 8));
+  box.style.left = sinistra + "px";
+  box.style.top = (sopra ? r.top - alta - 8 : r.bottom + 8) + "px";
+  box.style.transformOrigin = `${Math.round(r.left + r.width / 2 - sinistra)}px ${sopra ? "100%" : "0"}`;
   a.setAttribute("aria-describedby", "anteprima");
 }
 
+// col mouse la prima anteprima aspetta un attimo (passare sopra un rimando non basta ad aprirla); le successive,
+// a catena, si aprono subito
+const ANTEPRIMA_ATTESA = 300;
+const ANTEPRIMA_CATENA = 400;
+function anteprimaDopo(mostraA) {
+  clearTimeout(stato.attesaAnteprima);
+  if (Date.now() - (stato.anteprimaChiusa || 0) < ANTEPRIMA_CATENA) mostraA();
+  else stato.attesaAnteprima = setTimeout(mostraA, ANTEPRIMA_ATTESA);
+}
+
 function nascondiAnteprima() {
+  clearTimeout(stato.attesaAnteprima);
+  if (!$("anteprima").hidden) stato.anteprimaChiusa = Date.now();
   $("anteprima").hidden = true;
   document.querySelectorAll("[aria-describedby=anteprima]").forEach((x) => x.removeAttribute("aria-describedby"));
 }
@@ -2720,6 +3956,9 @@ function filoCorrente() {
 function registra(filo, voce) {
   (filo.messaggi = filo.messaggi || []).push(voce);
   filo.titolo = filo.titolo || filo.domanda || filo.entita || (voce.tipo === "utente" ? voce.testo.slice(0, 120) : "");
+  // una domanda sola non si salva: il filo entra nei recenti quando parte una ricerca o arriva una risposta,
+  // così le prove lasciate a metà non riempiono la barra
+  if (!filo.id && voce.tipo === "utente" && !filo.avviata && !filo.risposta) return;
   salvaFilo(filo);
 }
 
@@ -2739,17 +3978,39 @@ function salvaFilo(filo) {
 }
 
 async function apriFilo(id) {
+  // subito un segno che la ricerca si sta aprendo: il file del filo può arrivare dopo un attimo
+  segnaCorrente((b) => b.dataset.id === id);
+  mostraVista("thread");
+  mostra("vuoto", false);
+  $("messaggi").replaceChildren(el("p", "Apro la ricerca…", "nota in-attesa apertura-filo"));
   let f;
-  try { f = await api("/api/filo?id=" + encodeURIComponent(id)); } catch (e) { avviso(e.message, true); return; }
+  try { f = await api("/api/filo?id=" + encodeURIComponent(id)); } catch (e) {
+    $("messaggi").replaceChildren();
+    mostra("vuoto", true);
+    avviso(e.message, true);
+    return;
+  }
   nuovoThread();
   segnaCorrente((b) => b.dataset.id === id);
   stato.thread = f;
+  // i messaggi di un filo salvato erano già lì: entrano senza animazione (la classe resta fino al disegno)
+  const elenco = $("messaggi");
+  elenco.classList.add("ripristino");
+  requestAnimationFrame(() => requestAnimationFrame(() => elenco.classList.remove("ripristino")));
   for (const m of f.messaggi) {
     if (m.tipo === "utente") messaggio("utente", el("p", m.testo));
     else if (m.tipo === "risposta") { messaggioRisposta(m.documento, m.pertinenti); f.risposta = m.documento; }
     else if (m.tipo === "conversazione") messaggio("assistente").replaceWith(rispostaConversazione(m.voce));
   }
-  scorriInFondo();
+  // un filo riaperto si legge dall'ultima domanda in giù (la risposta arriva sotto e non sposta la vista); in
+  // fondo si va solo seguendo una ricerca o una conversazione dal vivo
+  const domande = $("messaggi").querySelectorAll(".msg.utente");
+  const ultima = domande[domande.length - 1];
+  if (ultima) requestAnimationFrame(() => {
+    const t = $("vista-thread");
+    t.scrollTop = Math.max(0, t.scrollTop + ultima.getBoundingClientRect().top - t.getBoundingClientRect().top - 16);
+  });
+  else scorriInFondo();
   return f;
 }
 
@@ -2760,13 +4021,221 @@ function segnaCorrente(prova) {
   });
 }
 
+//// ------------------------------------------------------------------ consumo: richieste e token
+// Accanto al modello, quante richieste e quanti token il progetto ha usato oggi (system/usage.jsonl, scritto a ogni
+// risposta del modello). Un clic apre il dettaglio per modello e la settimana. Prima di avviare, il riepilogo dice
+// quante richieste costerà la lettura, dai lotti della configurazione.
+function numeroBreve(n) {
+  n = Number(n) || 0;
+  if (n < 1000) return String(n);
+  if (n < 1e6) return (n / 1000).toFixed(n < 1e4 ? 1 : 0).replace(".", ",") + " mila";
+  return (n / 1e6).toFixed(1).replace(".", ",") + " mln";
+}
+
+// i passaggi nuovi si smistano a lotti; i pertinenti (non si sa quanti prima) si leggono a lotti più piccoli; poi
+// una o due richieste per la risposta. Da qui una forbice, non un numero solo
+function stimaRichieste(righe, p) {
+  const lotti = stato.consumo && stato.consumo.lotti;
+  if (!lotti || !righe) return "";
+  const nuovi = Math.max(0, righe - ((p && p.letti) || 0));
+  if (!nuovi) return "poche: i passaggi sono già letti, resta la risposta";
+  const min = Math.ceil(nuovi / Math.max(1, lotti.smistamento)) + 1;
+  const max = min + Math.ceil(nuovi / Math.max(1, lotti.analisi)) + 1;
+  return `da ${min} a ${max} al modello (lotti di ${lotti.smistamento} passaggi)`;
+}
+
+async function aggiornaConsumo() {
+  let r;
+  try { r = await api("/api/consumo"); } catch (e) { return; }
+  stato.consumo = r;
+  const b = $("consumo");
+  const o = r.oggi;
+  b.hidden = !o;
+  if (!o) return;
+  const token = o.ingresso + o.uscita;
+  $("consumo-breve").textContent = o.richieste ? `${numeroBreve(o.richieste)} ${o.richieste === 1 ? "richiesta" : "richieste"} oggi` : "nessuna richiesta oggi";
+  $("consumo-sommario").setAttribute("aria-label", `Consumo di oggi: ${o.richieste} richieste, ${token} token. Dettagli`);
+  const d = $("consumo-dettaglio");
+  d.replaceChildren();
+  const dl = el("dl", null, "riepilogo");
+  dl.append(el("dt", "Oggi"), el("dd", `${o.richieste} richieste · ${numeroBreve(o.ingresso)} token letti, ` +
+    `${numeroBreve(o.uscita)} scritti` + (o.cache ? ` · ${numeroBreve(o.cache)} dalla cache` : "")));
+  const s = r.settimana;
+  if (s) dl.append(el("dt", "7 giorni"), el("dd", `${s.richieste} richieste · ${numeroBreve(s.ingresso + s.uscita)} token`));
+  d.append(dl);
+  const servizi = Object.entries(r.per_servizio || {}).sort((a, b) => b[1].richieste - a[1].richieste);
+  if (servizi.length) {
+    d.append(el("h4", "Oggi per modello"));
+    const ul = el("ul", null, "consumo-servizi");
+    for (const [nome, v] of servizi) {
+      const li = el("li");
+      li.append(el("span", nomeModello(nome), "nome"), el("span", `${v.richieste} · ${numeroBreve(v.ingresso + v.uscita)} token`, "conto"));
+      ul.append(li);
+    }
+    d.append(ul);
+  }
+  d.append(el("p", "I piani gratuiti hanno limiti al giorno e al minuto: quando finiscono, la ricerca aspetta e " +
+    "riprende da sola. Con un servizio a consumo, il costo segue i token.", "nota"));
+}
+
+// ------------------------------------------------------------------ comandi (Ctrl+K) e scorciatoie
+// Una casella sola per arrivare ovunque: azioni, ricerche recenti, schede del glossario (avviano la ricerca),
+// progetti. Si filtra scrivendo (senza accenti né maiuscole), frecce e Invio come in un menu.
+function editabile(t) {
+  return !!(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)));
+}
+
+function vociComandi() {
+  const voci = [];
+  const azione = (testo, dettaglio, fa, tasto) => voci.push({ gruppo: "Azioni", testo, dettaglio, fa, tasto });
+  azione("Nuova ricerca", "", () => { nuovoThread(); $("testo").focus(); }, "Ctrl+N");
+  azione("Importa fonti", "PDF, scansioni, testi", () => mostraVista("importazioni"));
+  azione("Impostazioni", "progetti, modelli, lingue", () => apriImpostazioniRicordate(), "Ctrl+,");
+  azione("Glossario", "schede delle entità e serie", () => apriLaterale("glossario"));
+  if (stato.doc) azione("Passaggi della risposta aperta", "", () => apriLaterale("passaggi"));
+  azione("Mostra o nascondi la barra laterale", "", () => barraLaterale($("app").classList.contains("barra-chiusa")), "Ctrl+B");
+  azione("Controlla la qualità dell'OCR", "documenti con un testo sospetto", () => { mostraVista("importazioni"); controllaOcr(); });
+  azione("Scorciatoie da tastiera", "", apriTasti, "?");
+  document.querySelectorAll("#storico button.voce-recente").forEach((b) => {
+    const titolo = b.querySelector(".titolo");
+    const det = b.querySelector(".dettaglio");
+    voci.push({ gruppo: "Recenti", testo: titolo ? titolo.textContent : b.textContent,
+      dettaglio: det ? det.textContent : "", fa: () => b.click() });
+  });
+  for (const s of (stato.glossario && stato.glossario.schede) || []) {
+    voci.push({ gruppo: "Schede", testo: s.nome, dettaglio: "cerca nelle fonti", fa: () => {
+      if (stato.inCorso) { avviso("C'è già una ricerca in corso: aspetta che finisca.", true); return; }
+      nuovoThread();
+      $("testo").value = s.nome;
+      invia();
+    } });
+  }
+  for (const p of stato.progetti || []) {
+    voci.push({ gruppo: "Progetti", testo: p.nome, dettaglio: p.in_uso ? "in uso" : "passa a questo progetto",
+      fa: () => { if (!p.in_uso) cambiaProgetto(p); } });
+  }
+  return voci;
+}
+
+async function apriComandi() {
+  const d = $("d-comandi");
+  if (d.open) return;
+  stato.comandiDa = document.activeElement;
+  if (!stato.glossario) caricaGlossario().then(() => d.open && filtraComandi()).catch(() => {});
+  $("cm-cerca").value = "";
+  d.showModal();
+  filtraComandi();
+  $("cm-cerca").focus();
+}
+
+function filtraComandi() {
+  const q = normalizza($("cm-cerca").value.trim());
+  const parole = q.split(/\s+/).filter(Boolean);
+  const voci = vociComandi().filter((v) => {
+    const t = normalizza(`${v.testo} ${v.dettaglio} ${v.gruppo}`);
+    return parole.every((p) => t.includes(p));
+  });
+  // senza testo: le azioni e i primi recenti; con il testo, i primi risultati di ogni gruppo
+  const perGruppo = {};
+  const mostrate = voci.filter((v) => (perGruppo[v.gruppo] = (perGruppo[v.gruppo] || 0) + 1) <= (q ? 8 : v.gruppo === "Azioni" ? 10 : 5));
+  const ul = $("cm-elenco");
+  ul.replaceChildren();
+  let gruppo = "";
+  mostrate.forEach((v, i) => {
+    if (v.gruppo !== gruppo) {
+      gruppo = v.gruppo;
+      const t = el("li", gruppo, "gruppo-comandi");
+      t.setAttribute("role", "presentation");
+      ul.append(t);
+    }
+    const li = el("li", null, "comando");
+    li.id = "cm-" + i;
+    li.setAttribute("role", "option");
+    li.append(el("span", v.testo, "testo-comando"));
+    if (v.dettaglio) li.append(el("span", v.dettaglio, "dettaglio-comando"));
+    if (v.tasto) li.append(el("kbd", v.tasto));
+    li.addEventListener("pointerdown", (e) => e.preventDefault());       // il fuoco resta nella casella
+    li.addEventListener("click", () => eseguiComando(v));
+    li._voce = v;
+    ul.append(li);
+  });
+  if (!mostrate.length) ul.append(el("li", "Nessun risultato.", "nota vuoto-comandi"));
+  scegliComando(0);
+}
+
+function scegliComando(i) {
+  const opzioni = [...$("cm-elenco").querySelectorAll("li.comando")];
+  opzioni.forEach((o, k) => o.setAttribute("aria-selected", String(k === i)));
+  const scelta = opzioni[i];
+  if (scelta) {
+    $("cm-cerca").setAttribute("aria-activedescendant", scelta.id);
+    scelta.scrollIntoView({ block: "nearest" });
+  } else {
+    $("cm-cerca").removeAttribute("aria-activedescendant");
+  }
+}
+
+function tastiComandi(e) {
+  const opzioni = [...$("cm-elenco").querySelectorAll("li.comando")];
+  const i = opzioni.findIndex((o) => o.getAttribute("aria-selected") === "true");
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (opzioni.length) scegliComando((i + (e.key === "ArrowDown" ? 1 : -1) + opzioni.length) % opzioni.length);
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (opzioni[i]) eseguiComando(opzioni[i]._voce);
+  }
+}
+
+function eseguiComando(v) {
+  $("d-comandi").close();
+  v.fa();
+}
+
+function apriTasti() {
+  const d = $("d-tasti");
+  if (!d.open) d.showModal();
+}
+
+// «/» porta nella casella della domanda, «?» mostra le scorciatoie (fuori dai campi di testo)
+function tastiGlobali(e) {
+  if (document.querySelector("dialog[open]") || e.ctrlKey || e.metaKey || e.altKey || editabile(e.target)) return;
+  if (e.key === "/") {
+    e.preventDefault();
+    mostraVista("thread");
+    $("testo").focus();
+  } else if (e.key === "?") {
+    e.preventDefault();
+    apriTasti();
+  }
+}
+
 // ------------------------------------------------------------------ avvio
 document.addEventListener("DOMContentLoaded", () => {
   if (ricordato("barra") === "chiusa") barraLaterale(false);
-  $("b-barra").addEventListener("click", () => barraLaterale($("app").classList.contains("barra-chiusa")));
-  $("progetto").addEventListener("change", sceltaProgetto);
+  $("b-barra").addEventListener("click", () => {
+    stato.barraDaRiaprirePannello = false;          // una scelta a mano vale più della chiusura automatica
+    barraLaterale($("app").classList.contains("barra-chiusa"));
+  });
+  // gli anni: solo cifre, al massimo quattro (il campo non accetta altro, invece di rifiutarlo all'avvio)
+  for (const id of ["dal", "al"]) {
+    $(id).addEventListener("input", (e) => {
+      const pulito = e.target.value.replace(/\D/g, "").slice(0, 4);
+      if (pulito !== e.target.value) e.target.value = pulito;
+    });
+  }
+  $("recenti-filtro").addEventListener("input", disegnaRecenti);
+  $("recenti-filtro").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && e.target.value) { e.stopPropagation(); e.target.value = ""; disegnaRecenti(); }
+  });
+  preparaManiglia("barra");
+  preparaManiglia("laterale");
+  window.addEventListener("resize", rispettaLarghezze);
+  sceltaConConferma($("progetto"), sceltaProgetto);
+  $("b-nuovo-progetto").addEventListener("click", apriNuovoProgetto);
+  $("b-modelli").addEventListener("click", () => apriImpostazioni("modelli"));
   $("cfg-nuovo-progetto").addEventListener("click", apriNuovoProgetto);
-  $("modello").addEventListener("change", sceltaModello);
+  sceltaConConferma($("modello"), sceltaModello);
   $("np-crea").addEventListener("click", creaProgetto);
   $("am-servizio").addEventListener("change", scegliServizio);
   $("am-elenca").addEventListener("click", elencaModelli);
@@ -2785,14 +4254,38 @@ document.addEventListener("DOMContentLoaded", () => {
   $("b-importa").addEventListener("click", () => mostraVista("importazioni"));
   document.querySelectorAll(".torna-thread").forEach((b) => b.addEventListener("click", () => { mostraVista("thread"); $("testo").focus(); }));
   document.querySelectorAll("[data-pannello-apri]").forEach((b) =>
-    b.addEventListener("click", () => apriLaterale(b.dataset.pannelloApri)));
+    b.addEventListener("click", () => alternaLaterale(b.dataset.pannelloApri)));
   $("b-chiudi-laterale").addEventListener("click", chiudiLaterale);
+  $("b-chiudi-avviso").addEventListener("click", () => { avviso(""); $("testo").focus(); });
+  // ciò che si apre da tastiera arriva senza movimento (app.css, html[data-tastiera]): si segna l'ultimo modo d'uso
+  document.addEventListener("keydown", (e) => {
+    if (!["Shift", "Control", "Alt", "Meta"].includes(e.key)) document.documentElement.dataset.tastiera = "";
+  }, true);
+  document.addEventListener("pointerdown", () => { delete document.documentElement.dataset.tastiera; }, true);
   document.addEventListener("keydown", tastiFinestra);
+  document.addEventListener("keydown", tastiGlobali);
+  // un menu Esporta aperto si chiude con un clic altrove
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll("details.menu-esporta[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  });
+  $("cm-cerca").addEventListener("input", filtraComandi);
+  $("cm-cerca").addEventListener("keydown", tastiComandi);
+  $("d-comandi").addEventListener("click", (e) => { if (e.target === $("d-comandi")) $("d-comandi").close(); });
+  $("d-comandi").addEventListener("close", () => {
+    const da = stato.comandiDa;
+    if (da && da.isConnected && document.activeElement === document.body) da.focus();
+  });
   $("imp-sfoglia").addEventListener("click", sfogliaCartella);
+  $("ocr-controlla").addEventListener("click", controllaOcr);
+  $("cfg-lingua").value = window.Lingua ? window.Lingua.lingua : "it";
+  $("cfg-lingua").addEventListener("change", () => window.Lingua && window.Lingua.scegli($("cfg-lingua").value));
   $("imp-cartella").value = ricordato("cartella");
   $("imp-sovrascrivi").addEventListener("change", etichettaImporta);
   $("imp-dubbi").addEventListener("change", () => stato.tabella && mostraTabella(stato.tabella));
   $("passaggi-pertinenti").addEventListener("change", filtraPassaggi);
+  $("passaggi-citati").addEventListener("change", filtraPassaggi);
+  $("passaggi-azzera").addEventListener("click", azzeraFaccette);
+  $("p-passaggi").addEventListener("keydown", tastiPassaggi);
   $("av-guida").addEventListener("click", () => api("/api/guida", {}).catch((e) => avviso(e.message, true)));
   $("imp-proponi").addEventListener("click", () => avviaImporta("proponi", $("imp-cartella").value.trim()));
   $("imp-rivedi").addEventListener("click", () => avviaImporta("rivedi", ""));
@@ -2820,9 +4313,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const c = $("av-lingua").value.trim();
     if (c) scaricaLingue([c]);
   });
-  $("cl-scrivi").addEventListener("click", collegaClient);
   stato.convNuova = true;
   $("testo").focus();
+  // il contatore dei consumi: all'avvio e ogni minuto, se la finestra si vede
+  aggiornaConsumo();
+  setInterval(() => { if (!document.hidden) aggiornaConsumo(); }, 60000);
+  $("consumo").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && $("consumo").open) { e.stopPropagation(); $("consumo").open = false; $("consumo-sommario").focus(); }
+  });
+  document.addEventListener("click", (e) => { if ($("consumo").open && !$("consumo").contains(e.target)) $("consumo").open = false; });
+  // un collegamento a un passaggio (la tabella CSV esportata): /?fonte=<file>&riga=<n> apre la fonte
+  const q = new URLSearchParams(location.search);
+  if (q.get("fonte")) {
+    apriFonte(q.get("fonte"), q.get("riga") || null, null, null, "passaggi");
+    history.replaceState(null, "", "/");
+  }
   // al primo avvio (o se manca il progetto o il modello) la preparazione si apre da sé
   caricaTutto().then(() => api("/api/avvio")).then((r) => { if (!r.completo) apriImpostazioni("generale"); })
     .catch(() => {});

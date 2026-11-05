@@ -3,9 +3,9 @@
 Per cominciare in pochi minuti: [`quickstart.it.md`](quickstart.it.md). Se qualcosa non va:
 [`troubleshooting.it.md`](troubleshooting.it.md). In inglese: [`user_guide.md`](user_guide.md).
 
-Il sistema si usa da un **client di chat** collegato al motore dal server MCP `mcp_server.py`: Jan, Claude
-Desktop, LM Studio o un altro client che usi server MCP. Il modello della chat non legge le fonti: usa gli
-strumenti del motore e riporta ciò che restituiscono. Gli stessi passi si possono fare anche da riga di comando.
+Il sistema si usa dalla sua **interfaccia nel browser** (`python app.py`): il percorso guidato della ricerca e,
+accanto, una conversazione sulle fonti, il cui modello non legge le fonti ma usa gli strumenti del motore e riporta
+ciò che restituiscono. Gli stessi passi si possono fare anche da riga di comando.
 
 Il lavoro è diviso così:
 - **Python, sul tuo computer**: la ricerca delle occorrenze, la verifica delle citazioni e l'impaginazione della
@@ -24,35 +24,35 @@ invece di `python`. I percorsi sono scritti con `/`, che vale anche su Windows.
 Pressmark/                  il repository (il motore: si può pubblicare)
   README.it.md, README.md   presentazione (in italiano e in inglese)
   LICENSE, requirements.txt licenza (AGPL-3.0) e librerie facoltative
-  assets/marchio/           logotipo e favicon di Pressmark, versione chiara e scura (SVG)
+  assets/                   logotipo e favicon di Pressmark, versione chiara e scura (SVG)
   docs/                     documentazione: primi passi, questa guida, problemi frequenti
   tests/                    test automatici (python -m unittest discover -s tests); test_project/: progetto di prova
   scripts/
-    installa.py             avvio guidato, librerie, controllo dell'ambiente, profili dei modelli, client di chat
+    installa.py             avvio guidato, librerie, controllo dell'ambiente, profili dei modelli
     app.py, interfaccia/    l'interfaccia nel browser (server locale e pagina)
     conversazione.py        la conversazione sulle fonti dell'interfaccia e la verifica delle sue citazioni
-    strumenti.py            gli strumenti del motore (interfaccia, conversazione, server MCP); istruzioni.py:
-                            le regole per il modello della chat
-    mcp_server.py           il server MCP facoltativo, per usare gli strumenti da un client di chat esterno
-    ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia il server)
+    strumenti.py            gli strumenti del motore (interfaccia e conversazione); istruzioni.py: le regole
+                            per il modello della conversazione
+    ricerca.py              il motore: estrazione -> lettura -> risposta (lo avvia l'interfaccia)
     estrai_occorrenze.py, classifica.py, sintesi.py, evoluzione.py, cronologia.py, date_interne.py,
     glossario.py, archivio.py, schede.py, varianti.py, llm.py   le parti del motore
     indice.py, esplora.py   indice delle fonti, esplorazione dei nomi nuovi e ricerca libera nel testo
     varianti_nomi.py        trascrizioni cinesi e forme tradotte proposte da esplora_nome
-    lavori.py               fa girare le ricerche come processi indipendenti dalla chat
+    lavori.py               fa girare le ricerche come processi indipendenti dall'interfaccia
     progetto.py, profili.py progetti di ricerca (nuovo, stato, percorsi) e profili delle serie
     importa.py, revisione.py   importazione di nuovo materiale (PDF, scansioni, .txt, PAGE/ALTO XML) e tabella
                             di revisione dei metadati
-    pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, ocr_paddle.py, confronto_testi.py, tabelle.py
+    pagine_xml.py, numerazione.py, colonne.py, motori_ocr.py, confronto_testi.py, tabelle.py
                             parti dell'importazione: XML, numeri di pagina, ordine delle colonne nei giornali,
                             motori OCR, confronto dei testi, lettura delle tabelle (.csv, .xlsx)
     citazioni.py            citazioni Chicago note-bibliografia dalle intestazioni e dai profili di serie
     documento.py            la risposta come documento HTML autonomo, da aprire nel browser e stampare
-    sessione.py             lettura dei passaggi in sessione (li legge l'assistente della chat)
+    sessione.py             lettura dei passaggi in sessione (li legge un assistente)
     valuta.py               prova rapida dei modelli su una lettura di riferimento
     valutazione.py          insieme di riferimento verificato a mano; misure di precisione e richiamo
-    prova_ocr.py, prova_chat.py   prove dei motori OCR e dei modelli della chat
-    config.ini              configurazione del motore (profilo di modello in uso, parametri, progetto in uso)
+    prova_ocr.py            prove dei motori OCR
+    config.ini              configurazione del motore: i valori predefiniti (sotto git, non si modifica)
+    config.utente.ini       le tue scelte (progetto e modello in uso), lette sopra config.ini; fuori da git
     models.ini              i tuoi profili di modello (fuori dal controllo di versione; lo crea installa.py modello)
     models_template.ini     esempi di profili di modello, con la descrizione delle voci
     series_template.ini     modello di series.ini per i progetti nuovi
@@ -62,7 +62,7 @@ Pressmark/                  il repository (il motore: si può pubblicare)
       glossary/
         entities.ini        schede delle entità
         series.ini          profili delle serie (anche citazioni)
-        instructions.md     regole del progetto per il modello della chat
+        instructions.md     regole del progetto per il modello della conversazione
       sources/              documenti originali caricati, che non si modificano
       data/                 le fonti processate, un .txt per documento con l'intestazione dei metadati
       audit/
@@ -75,15 +75,15 @@ Pressmark/                  il repository (il motore: si può pubblicare)
       results/
         archive/            archivio unico dei passaggi già letti
         searches/           una cartella per ogni ricerca (modelli.json: i profili di modello con cui è partita)
-        answers/            le risposte complete delle ricerche avviate dalla chat (una per domanda)
+        answers/            le risposte complete delle ricerche avviate dalla conversazione (una per domanda)
         references/         letture di riferimento per valuta.py
         past_sessions/      lavori delle sessioni assistite (letture, tabelle, rapporti)
-        trials/             prove dei modelli, dell'OCR e della chat (non entrano nell'archivio)
+        trials/             prove dei modelli, dell'OCR e della conversazione (non entrano nell'archivio)
         evaluation/         insiemi di riferimento verificati a mano e misure (valutazione.py)
       system/
         index/              indice di ricerca delle fonti (si aggiorna da solo quando aggiungi file)
-        jobs/               una cartella per ogni ricerca avviata dalla chat: stato e registro dei messaggi
-        import_jobs/, cache/   importazioni avviate dalla chat e pagine già lette dall'OCR
+        jobs/               una cartella per ogni ricerca: stato e registro dei messaggi
+        import_jobs/, cache/   importazioni in corso e pagine già lette dall'OCR
         backups/            copie dei file fuori dal controllo di versione (fonti, archivio, schede),
                             una cartella per data e argomento
         model_changes.csv   registro dei cambi di modello (installa.py modello usa)
@@ -97,9 +97,8 @@ Pressmark/                  il repository (il motore: si può pubblicare)
 | **PyMuPDF** (per importare PDF) | `python installa.py librerie` | `python3 installa.py librerie` | `python3 installa.py librerie`, oppure `sudo apt install python3-fitz` |
 | **Tesseract** (per importare scansioni) | `winget install -e --id UB-Mannheim.TesseractOCR` | `brew install tesseract tesseract-lang` | `sudo apt install tesseract-ocr tesseract-ocr-<lingua>` |
 
-Servono poi **un modello per leggere i passaggi** (vedi «Modelli che leggono i passaggi») e, per fare domande in
-conversazione, **un client di chat** (vedi «Collegare la chat»). Il motore usa solo la libreria standard di
-Python. Tutto si installa nel sistema, mai dentro la cartella del progetto.
+Serve poi **un modello per leggere i passaggi** (vedi «Modelli che leggono i passaggi»). Il motore usa solo la
+libreria standard di Python. Tutto si installa nel sistema, mai dentro la cartella del progetto.
 
 Dalla cartella `scripts`:
 
@@ -108,15 +107,14 @@ python installa.py inizia
 ```
 
 `inizia` è l'avvio guidato per chi installa per la prima volta: controlla l'ambiente, crea il profilo del modello,
-crea il primo progetto e lo sceglie, collega la chat e chiude con un riepilogo che rifà i controlli necessari. Ogni
-passo si può saltare (`--saltati 4`) o fare da solo (`--passi 3`); rilanciato, non rifà i passi già completati. Le
+crea il primo progetto e lo sceglie e chiude con un riepilogo che rifà i controlli necessari. Ogni passo si può
+saltare (`--saltati 2`) o fare da solo (`--passi 3`); rilanciato, non rifà i passi già completati. Le
 stesse cose, una per volta:
 
 ```
 python installa.py librerie
 python installa.py modello
 python installa.py controlla
-python installa.py client jan --scrivi
 ```
 
 - `librerie` installa nel Python di sistema le librerie facoltative di `requirements.txt` (PyMuPDF). Sulle
@@ -124,16 +122,13 @@ python installa.py client jan --scrivi
   distribuzione.
 - `modello` crea il primo profilo di modello con una procedura guidata (vedi sotto).
 - `controlla` verifica Python, SQLite con FTS5, i profili di modello in uso (chiave presente, servizio
-  raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie e PaddleOCR, e per ciò che manca
-  dà il comando adatto al sistema in uso. Esce con 1 se manca un requisito necessario; `--rapido` salta PaddleOCR.
-- `client` configura la chat: vedi «Collegare la chat».
+  raggiungibile), il progetto in uso, PyMuPDF, Tesseract con le lingue delle serie, e per ciò che manca dà il comando
+  adatto al sistema in uso. Esce con 1 se manca un requisito necessario.
 
 ### Modelli che leggono i passaggi (profili)
 
-I modelli sono due, e diversi:
-- il **modello che legge i passaggi** (smistamento, traduzione, sintesi), scelto qui;
-- il **modello della chat**, che usa gli strumenti e presenta la risposta: si sceglie nel client (Jan, Claude
-  Desktop, LM Studio).
+Il **modello che legge i passaggi** (smistamento, traduzione, sintesi) si sceglie qui. La conversazione sulle fonti
+dell'interfaccia usa il profilo scelto per la sintesi.
 
 Ogni modello configurato è un **profilo** con un nome, in `scripts/models.ini`: servizio, nome del modello,
 indirizzo, nome della variabile d'ambiente che contiene la chiave e parametri propri (pausa tra le richieste,
@@ -164,7 +159,7 @@ Poi il nome del modello, se non l'hai già scelto dall'elenco, e quello del prof
 chiave e la variabile non c'è, la chiede (non si vede mentre la scrivi) e, se confermi, la salva come variabile
 d'ambiente del tuo utente (su Windows con `setx`; su macOS e Linux indica la riga da aggiungere a `~/.zprofile` o
 `~/.profile`). Infine prova il collegamento e chiede se usare subito il profilo. Le variabili nuove valgono nei
-terminali e nei programmi aperti dopo: riapri il terminale e riavvia il client di chat.
+terminali e nei programmi aperti dopo: riapri il terminale e riavvia l'interfaccia.
 
 **Scelta del profilo.** `usa` prova prima il collegamento e cambia la scelta **solo se la prova riesce**;
 altrimenti resta il profilo di prima e il messaggio spiega il problema (chiave rifiutata, modello inesistente,
@@ -201,7 +196,7 @@ successivo. È la scelta avanzata: per cominciare basta un servizio con una sola
    file della cartella.
 3. Nella pagina **Fallback Chain** servono due catene:
    - `ricerca`: i modelli verificati con `valuta.py` o `valutazione.py`, usati dal motore per leggere i passaggi;
-   - `chat`: solo modelli capaci di usare strumenti, usati dal client di chat.
+   - `chat`: solo modelli capaci di usare strumenti, usati dalla conversazione sulle fonti.
 4. Strategia di instradamento: **Personalizzato**, con affidabilità 0%, velocità 40% e intelligenza 60%.
 5. Copia la chiave unica (`freellmapi-…`, pagina **Chiavi**) e salvala nella variabile d'ambiente
    `FREELLMAPI_KEY` (Windows: `setx FREELLMAPI_KEY "..."`; macOS e Linux: `export FREELLMAPI_KEY="..."` nel
@@ -224,25 +219,23 @@ python app.py
 ```
 
 Avvia un server sul tuo computer e apre l'interfaccia nel browser; il terminale mostra il collegamento, da
-copiare se il browser non si apre (vale finché la finestra resta aperta; Ctrl+C per chiudere). Non serve un
-client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
+copiare se il browser non si apre (vale finché la finestra resta aperta; Ctrl+C per chiudere). L'interfaccia è in
+italiano; in inglese si sceglie in Impostazioni → Generale → «Lingua dell'interfaccia». Le risposte e le
+traduzioni dei passaggi restano nella lingua del progetto.
 
 - **Preparazione** (pulsante nella testata; si apre da sé finché mancano progetto o modello): i passi per
-  cominciare senza terminale. Progetto e modello sono necessari, le prime fonti e la chat facoltative; ogni passo ha
-  il suo pulsante («Nuovo progetto…», «Aggiungi modello…», «Importa…», «Collega…» per Jan, Claude Desktop e LM
-  Studio). «Collega…» mostra prima il file del programma di chat e che cosa cambia; scrive solo con «Scrivi le
-  modifiche», con una copia di sicurezza, lasciando intatte le altre voci, e non scrive se Jan è aperto; poi prova
-  il server come lo avvierà il programma di chat. «Controllo dell'ambiente» rifà i controlli di
+  cominciare senza terminale. Progetto e modello sono necessari, le prime fonti facoltative; ogni passo ha il suo
+  pulsante («Nuovo progetto…», «Aggiungi modello…», «Importa…»). «Controllo dell'ambiente» rifà i controlli di
   `installa.py controlla` (Python, finestra propria, progetto, collegamento al modello, PyMuPDF, Tesseract e lingue
-  delle serie) e dice dove stanno configurazione, profili e progetti. Sotto, «Lingue OCR»: le lingue installate e
+  delle serie) e dice dove stanno configurazione, profili e progetti. Sotto, «Lingue delle scansioni»: le lingue installate e
   quelle che mancano alle serie del progetto, con «Scarica le mancanti» e un campo per qualsiasi altro codice di
   Tesseract (per esempio `por`, `chi_tra`). I modelli arrivano da tessdata_best e vanno nella cartella di Tesseract:
   si può solo con il Tesseract incluso nel programma installato; con un Tesseract installato nel sistema (in
   Program Files) il pannello spiega come aggiungerle con il suo installatore. Da riga di comando:
   `installa.py lingue` (stato) e `installa.py lingue sqi chi_sim` (scaricamento). Se alle scansioni di una tabella
   di importazione manca la lingua, lo dice già «Prova senza scrivere».
-- **Menu «Progetto»**: i progetti della cartella `projects`; la scelta vale anche per la chat e la riga di comando
-  (si scrive in `config.ini`, sezione `[progetto]`). «Nuovo progetto…» ne crea uno. Mentre una ricerca del progetto
+- **Menu «Progetto»**: i progetti della cartella `projects`; la scelta vale anche per la riga di comando
+  (si scrive in `config.utente.ini`, sezione `[progetto]`). «Nuovo progetto…» ne crea uno. Mentre una ricerca del progetto
   è in corso il cambio è bloccato.
 - **Menu «Modello»**: i profili di modello, con «misurato» o «non misurato» su queste fonti e un pallino per il
   collegamento (verde: chiave presente e servizio raggiungibile). La scelta passa per la prova di collegamento: se
@@ -254,7 +247,7 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
   anche chiudendo e riaprendo la pagina; 4. il riassunto della risposta e il documento completo, che si apre nella
   colonna sinistra.
 - **Conversazione sulle fonti** (sotto il percorso): domande libere al modello scelto (quello della sintesi, se le
-  scelte per ruolo sono diverse), che usa gli stessi strumenti del server MCP con le stesse regole. È un'aggiunta,
+  scelte per ruolo sono diverse), che usa gli strumenti del motore (vedi «Uso»). È un'aggiunta,
   non la via principale: i modelli deboli possono inventare riferimenti. Per questo ogni citazione della risposta si
   confronta con ciò che gli strumenti hanno restituito: sottolineata in verde se c'è (un clic mostra originale e
   traduzione del passaggio), in rosso se nessuno strumento l'ha data. All'apertura una prova dice se il modello sa
@@ -273,52 +266,50 @@ client di chat: l'interfaccia chiama le stesse funzioni del server MCP.
   sinistra e destra) o, nei file senza marcatori, a blocchi di righe. Si apre dal pulsante «Apri la fonte» accanto
   a ogni citazione del documento della risposta (la pagina della citazione), o dalla scheda «Passaggi»;
   «Torna al documento» riporta da dove si è partiti.
-- **Passaggi**: i passaggi del documento aperto; per una ricerca quelli letti, raggruppati per documento, con
-  pagina, pertinenza, traduzione e modello che li ha letti, filtrabili (anche «Solo pertinenti»); un clic apre la
-  fonte.
+- **Passaggi**: i passaggi del documento aperto; per una ricerca, e per una risposta salvata la cui ricerca c'è
+  ancora, tutti quelli letti, raggruppati per documento, con pagina, pertinenza, traduzione, modello che li ha
+  letti e numero [n] di quelli citati nella risposta. Sopra la tabella, la linea del tempo (passaggi per anno, o per
+  mese se il periodo è breve; la parte piena sono i pertinenti) e i pulsanti di serie e lingua: un clic su un
+  periodo o su un pulsante filtra la tabella. Filtri «Solo pertinenti» e «Solo citati». Un clic su una riga apre
+  la fonte.
+- **Correzioni**: nella tabella dei passaggi la pertinenza «sì»/«no» è un pulsante: un clic la capovolge, e
+  «Correggi» sotto una traduzione permette di riscriverla. La correzione si salva nella ricerca e nell'archivio
+  unico come lettura a mano: le ricerche successive la usano e non rimandano mai quel passaggio al modello. La
+  risposta cambia quando rifai la ricerca.
 - **Glossario**: schede delle entità e profili delle serie del progetto, in sola lettura.
 
 Il server ascolta solo sul tuo computer (`127.0.0.1`) e accetta solo il browser aperto con il collegamento della
 sessione. Opzioni: `--porta 8770` (porta fissa), `--senza-browser`.
 
-## Collegare la chat
+### Durante la ricerca, e dopo
 
-```
-python installa.py client claude --scrivi
-python installa.py client --verifica
-```
+- **Lettura dal vivo**: sotto la barra dell'avanzamento compaiono gli ultimi passaggi letti man mano che il
+  modello decide (✓ pertinente, – non pertinente), con la stima del tempo che resta e i modelli in uso. Quando le
+  quote gratuite finiscono, un conto alla rovescia dice quando la ricerca riprova, e «Riprova ora» riprova subito.
+- **Richieste e token**: accanto al menu del modello, quante richieste il progetto ha mandato oggi; un clic mostra
+  i token letti e scritti, per modello e negli ultimi 7 giorni (da `system/usage.jsonl`). Prima di avviare una
+  ricerca, il riepilogo stima anche quante richieste costerà la lettura.
+- **Che cosa è cambiato**: una risposta rifatta sulla stessa entità dice, sopra il testo, che cosa è cambiato
+  rispetto alla precedente: passaggi citati adesso e non prima (documenti nuovi, correzioni), quelli non più
+  citati, e le due risposte brevi una accanto all'altra. I rimandi nuovi portano «nuovo».
+- **Esporta** (accanto a «Documento completo»): Word con le note a piè di pagina in stile Chicago, Zotero o
+  Mendeley (CSL-JSON), BibTeX (i documenti di una raccolta curata diventano `@incollection`, con i curatori) e la
+  tabella dei passaggi in CSV per Excel. Ogni riga del CSV ha un collegamento che apre il passaggio in Pressmark
+  finché l'interfaccia è aperta a quell'indirizzo.
+- **Forme del nome**: le forme trovate per un nome nuovo sono chip da accendere o spegnere; quella sotto il
+  puntatore o la tastiera mostra sotto un esempio. Da tastiera: frecce tra le forme, Spazio accende o spegne, A
+  segna ambigua, Invio crea la scheda. Le forme lasciate spente si ricordano per quel nome e la volta dopo non si
+  ripropongono.
+- **Qualità dell'OCR** (in fondo a Importazioni): «Controlla la qualità» elenca i documenti con una confidenza
+  dell'OCR bassa o molte parole illeggibili, dal peggiore. «Rifai l'OCR» reimporta un documento dal suo originale
+  con le lingue scelte, conservando serie, data, numero, titolo e autore.
 
-`client <nome>` (`jan`, `claude`, `lmstudio`) trova il file di configurazione del client sul sistema in uso,
-mostra che cosa cambierà e, con `--scrivi`, aggiunge o aggiorna solo la voce di Pressmark (comando: il percorso
-completo dell'interprete Python; argomento: `scripts/mcp_server.py`; variabile `PYTHONUTF8=1`), dopo una copia di
-sicurezza (`<file>.pressmark-<data>.bak`) e la tua conferma. Le altre voci restano intatte. Senza `--scrivi`
-mostra solo che cosa scriverebbe. `client json` stampa il blocco `mcpServers` generico, da incollare in client
-diversi. `client --verifica` avvia il server come lo avvierebbe il client e controlla l'handshake MCP e l'elenco
-degli strumenti. Per i client che usano HTTP: `python mcp_server.py --http 8765`.
+### Tastiera
 
-Dopo la scrittura riavvia il client. Claude Desktop esiste per Windows e macOS; su Linux si usano Jan o LM Studio.
-
-### Jan
-
-1. Installa Jan da https://jan.ai (gratuito, open source; Windows, macOS, Linux).
-2. Aggiungi il servizio del modello della chat: Settings → Model Providers (un servizio già presente, o **Add
-   Provider** con indirizzo e chiave, per esempio FreeLLMAPI con `http://127.0.0.1:31415/v1` e il modello
-   `auto:chat`). Per il modello scelto, con la matita, attiva **Tools**.
-3. **A Jan chiuso**, dalla cartella `scripts`: `python installa.py client jan --scrivi`. Jan riscrive i suoi file
-   quando si chiude, quindi una modifica fatta a Jan aperto andrebbe persa. Il comando aggiorna la voce del server
-   (anche se si chiama «Pipeline») e la accende, porta il timeout degli strumenti ad almeno 90 secondi, spegne lo
-   smart routing, alza a 8000 caratteri i risultati degli strumenti e spegne la ricerca web (file
-   `mcp_config.json` e `settings.json` nella cartella dei dati di Jan).
-
-   A mano, in alternativa: Settings → **MCP Servers** → **+ Add MCP Server**, tipo STDIO, Command il percorso
-   completo di Python (`where python` su Windows, `which python3` su macOS e Linux), Arguments il percorso di
-   `scripts/mcp_server.py` nella cartella del motore, variabile d'ambiente `PYTHONUTF8` = `1`; poi, nelle
-   impostazioni MCP, timeout degli strumenti a 90 secondi e smart routing spento, e **Web Search** spento.
-4. **Assistente «Ricerca fonti»** con il modello scelto. Le regole di lavoro (fonti, citazioni, traduzioni) le
-   consegna il server (vedi «Istruzioni per l'IA della chat»): nelle istruzioni dell'assistente basta scrivere
-   «All'inizio di ogni conversazione chiama lo strumento guida e segui le sue istruzioni».
-
-Dopo ogni aggiornamento del motore, spegni e riaccendi il server di Pressmark nelle impostazioni MCP del client.
+Ctrl+K apre una casella di comandi che porta ad azioni, ricerche recenti, schede delle entità (avviano la ricerca)
+e progetti. `/` porta alla casella della domanda, `?` elenca tutte le scorciatoie. Nella tabella dei passaggi: J e
+K (o le frecce) passano da una riga all'altra, O o Invio apre la fonte, R capovolge la pertinenza. Ctrl+N nuova
+ricerca, Ctrl+B barra laterale, Ctrl+, impostazioni, Esc chiude.
 
 ## Progetti di ricerca
 
@@ -341,8 +332,7 @@ python progetto.py nuovo ../projects/stampa_albanese --nome "Stampa albanese 196
 Senza un progetto scelto il motore non parte: lo dice e indica `progetto.py nuovo`.
 
 **Quale progetto usare**: in `config.ini`, sezione `[progetto]`, voce `cartella`; oppure la variabile d'ambiente
-`PRESSMARK_PROGETTO`, che prevale. Nel client di chat si possono avere più server MCP, uno per progetto: stesso
-comando e stessi argomenti, con la variabile d'ambiente `PRESSMARK_PROGETTO` che indica la cartella del progetto.
+`PRESSMARK_PROGETTO`, che prevale. L'interfaccia scrive la scelta in `config.utente.ini`.
 
 In `project.ini` si possono anche cambiare, solo per quel progetto, le impostazioni di `config.ini` (per esempio
 `[estrazione] finestra = 300`) e spostare un file con la sezione `[percorsi]` (percorsi relativi alla cartella del
@@ -350,7 +340,7 @@ progetto).
 
 ## Uso
 
-Nuova conversazione con l'assistente collegato al server, poi scrivi la domanda. Esempi (dal progetto per cui il
+Nell'interfaccia, usa il percorso della ricerca o la conversazione sulle fonti e scrivi la domanda. Esempi (dal progetto per cui il
 sistema è nato, sul comunismo dissidente tra Pechino e Tirana):
 - «Cosa dicono le fonti di Jacques Grippa nel 1964?»
 - «Qual è stata l'evoluzione politica di Grippa fino al 1972?»
@@ -359,50 +349,39 @@ sistema è nato, sul comunismo dissidente tra Pechino e Tirana):
 - «Quali varianti nuove ci sono per Grippa?»
 - «Il passaggio X non è pertinente: correggilo.»
 
-Strumenti a disposizione del modello della chat (14; quelli con più operazioni hanno il parametro `azione`):
+Strumenti a disposizione del modello della conversazione (quelli con più operazioni hanno il parametro `azione`):
 
 | Strumento | Cosa fa |
 |---|---|
-| `guida` | istruzioni di lavoro e fonti del progetto (per i client che non le mostrano al modello) |
 | `schede` | `elenca`: trova il nome esatto della scheda; `crea`: crea la scheda con le forme che hai confermato |
 | `esplora_nome` | per un'entità senza scheda: le forme del nome attestate nelle fonti, con conteggi ed esempi |
 | `cerca_testo` | ricerca libera di una parola o frase in tutte le fonti (senza valutazione di pertinenza) |
-| `ricerca` | `avvia`, `attendi` (l'avanzamento e i profili di modello in uso; attese brevi, `[mcp] attesa_massima`), `ferma`: ricerca completa nelle fonti. Con `avvia`, su tua richiesta: `usa_modello_attuale`, `rileggi_modello` (vedi sotto) |
-| `modello` | `elenca`: profili, quelli in uso, chiavi presenti, se il modello è misurato su queste fonti; `prova`: prova di collegamento; `usa`: sceglie un profilo (anche per alcuni ruoli o per il solo progetto), solo se la prova riesce |
+| `ricerca` | `avvia`, `attendi` (l'avanzamento e i profili di modello in uso; attese brevi, `[conversazione] attesa_massima`), `ferma`: ricerca completa nelle fonti. Con `avvia`, su tua richiesta: `usa_modello_attuale`, `rileggi_modello` (vedi sotto) |
 | `risposte` | `elenca`, `leggi`: le risposte salvate nella cartella `results/answers` del progetto, per sezioni |
 | `passaggi_archivio` | passaggi già letti (originale, traduzione, riferimento): risposta immediata |
 | `copertura_fonti` | quanti numeri di ogni periodico (profili di serie) ci sono in un periodo e quali mancano |
 | `apri_fonte` | il testo del file sorgente attorno a una riga |
 | `varianti` | forme del nome proposte durante la lettura: elenca, aggiungi, scarta |
 | `correggi_passaggio` | registra una tua correzione: vale per tutte le ricerche successive |
-| `importa` | `proponi`, `applica`, `rivedi`, `avvia`, `stato`: importazione di nuove fonti (vedi «Importare nuove fonti») |
-| `serie` | `elenca`, `crea`: profili delle serie del progetto |
 
-I nomi usati fino al 25/10/2026 (`elenca_entita`, `avvia_ricerca`, `leggi_risposta`...) restano accettati, così un
-assistente che li nomina continua a funzionare.
+Modelli e importazioni non sono strumenti della conversazione: hanno il menu «Modello» e la scheda «Importazioni».
 
-Dalla chat si può chiedere quale modello legge i passaggi («Quale modello legge i passaggi? È misurato?») e
-cambiarlo («Usa il profilo ollama-qwen-9b per la sintesi»): lo strumento `modello` fa la stessa prova di
-`installa.py modello usa`. Un profilo nuovo si crea solo da riga di comando, perché la chiave non passi dalla
-chat. Il modello della chat stessa si cambia nel client.
-
-**Senza chat.** La ricerca si avvia anche da riga di comando, su un'entità che ha una scheda (vedi «Schede delle
+**Da riga di comando.** La ricerca si avvia anche da riga di comando, su un'entità che ha una scheda (vedi «Schede delle
 entità e glossario»): `python ricerca.py "Nome della scheda"`, con `--apri` per aprire il documento della risposta
 a fine ricerca. Opzioni utili: `--dal` e `--al` (anni), `--fonti "Serie 1; Serie 2"`, `--evoluzione` (analisi nel
 tempo con le entità collegate). La risposta resta in `results/searches/<nome>/`.
 
-### Istruzioni per l'IA della chat
+### Istruzioni per l'IA della conversazione
 
-Il server le compone ogni volta (`istruzioni.py`) da tre parti: le regole generali del motore (come usare gli
+Il motore le compone ogni volta (`istruzioni.py`) da tre parti: le regole generali del motore (come usare gli
 strumenti, come citare, cosa non fare), l'elenco delle fonti ricavato da `series.ini` con nome e descrizione da
 `project.ini`, e le regole proprie del progetto scritte in `instructions.md` nella cartella del progetto
 (argomento, carattere delle fonti, convenzioni su nomi e cariche, esempi di citazione; le righe con `#` non si
-inviano). Le consegna in tre modi, perché non tutti i client le mostrano al modello: nel campo `instructions` del
-protocollo MCP, come prompt MCP `istruzioni` e con lo strumento `guida`. Lingua delle risposte della chat (`lingua
-= italiano`, o un'altra) e attesa massima: `config.ini` (o `project.ini`), sezione `[mcp]`. Traduzioni e sintesi
+inviano). Arrivano al modello come messaggio di sistema della conversazione. Lingua delle risposte (`lingua =
+italiano`, o un'altra) e attesa massima: `config.ini` (o `project.ini`), sezione `[conversazione]`. Traduzioni e sintesi
 dei passaggi sono, per ora, sempre in italiano.
 
-Ogni ricerca completa avviata dalla chat salva la risposta nella cartella `results/answers` del progetto, con data
+Ogni ricerca completa avviata dalla conversazione salva la risposta nella cartella `results/answers` del progetto, con data
 e domanda nel nome del file. La risposta ha otto sezioni:
 1. Documenti
 2. Passaggi originali
@@ -502,7 +481,7 @@ compare anche in 贝林格韦, una regione dello Zimbabwe): vanno confermate una
 forme ambigue, che il modello smista sempre.
 
 L'assistente ti mostra le forme attestate e crea la scheda solo dopo la tua conferma: nessuna forma entra nella
-scheda se non compare nelle fonti. Poi la ricerca procede come per le altre entità. Senza chat la scheda si scrive
+scheda se non compare nelle fonti. Poi la ricerca procede come per le altre entità. Da riga di comando la scheda si scrive
 a mano in `glossary/entities.ini` (bastano `tipo` e `varianti`).
 
 L'**indice delle fonti** (in `system/index/` del progetto; per un corpus di alcune migliaia di file, quasi 1 GB)
@@ -575,7 +554,7 @@ Nell'intestazione l'autore si scrive «Cognome, Nome» (più autori separati da 
 testata come va scritto (es. `*Renmin ribao* 人民日报`). Il campo `chicago` serve solo per una forma diversa da
 quella del tipo (es. le traduzioni JPRS di Red Flag). I campi avanzati sono descritti in testa a `series.ini`
 (modello: `scripts/series_template.ini`). Le serie si aggiungono con l'importazione guidata (qui sotto),
-scrivendo il blocco o chiedendo in chat («crea la serie ...»). Il profilo dice anche al resto del sistema come
+o scrivendo il blocco. Il profilo dice anche al resto del sistema come
 trattare la serie: se è un periodico (`tipo`), fin dove arrivano i numeri (`periodo`, per i silenzi della
 cronologia), ogni quanto esce (`periodicita`), con quali altre serie cercarla (`gruppo`), come trovare la pagina
 nel testo (`pagina_regex`). Una serie senza `periodo` non ha silenzi finali nella cronologia.
@@ -612,8 +591,7 @@ verificare o mancanti); correggi e `applica` riscrive solo i campi cambiati (cod
 del file), con una copia di prima in `system/backups/` e una riga per campo in `audit/changes.csv`. Un valore
 corretto diventa verificato.
 
-Dalla chat lo stesso percorso: strumento `importa`, azioni `proponi`, `applica` (prima con `prova`) e `rivedi`;
-la chat dice quale file aprire e non compila la tabella al posto tuo.
+Dall'interfaccia lo stesso percorso: scheda «Importazioni» (vedi «L'interfaccia nel browser»).
 
 **Importare un file in una serie che c'è già.** In chat: «importa la cartella <percorso delle scansioni> nella
 serie Zëri i Popullit». La prima volta per una serie o un tipo di scansione l'assistente fa una **prova** sulle
@@ -715,8 +693,7 @@ python prova_ocr.py misura cina_icm
 ```
 
 1. `motori`: quali motori sono disponibili e perché gli altri no. Oggi: Tesseract, anche con segmentazioni
-   diverse (`tesseract:3`, `tesseract:6`). PaddleOCR si usa da un Python separato (vedi `ocr_paddle.py`); sul
-   computer dell'autore era troppo lento, circa 50 secondi per pagina. Kraken richiede Linux (su Windows, WSL).
+   diverse (`tesseract:3`, `tesseract:6`). Kraken richiede Linux (su Windows, WSL).
 2. `prepara`: rende le pagine come immagini e le fa leggere a ogni motore; se il PDF ha già uno strato di testo,
    lo aggiunge al confronto (`strato_pdf`). Tutto va in `results/trials/ocr/<nome>/`, fuori dall'archivio.
    Per ogni pagina scrive `pNNN.riferimento.txt`, una proposta da correggere a mano guardando `pNNN.png`.
@@ -857,22 +834,6 @@ modelli` e `misura`) i modelli si chiedono a FreeLLMAPI, attraverso il suo profi
 FreeLLMAPI, altrimenti il primo di `models.ini`. Per misure su qualsiasi corpus e con qualsiasi servizio, vedi
 «Misure su un insieme verificato a mano».
 
-## Prova dei modelli della chat
-
-I modelli della chat non leggono i passaggi: usano gli strumenti. Per sceglierli, `prova_chat.py` simula il client
-su una domanda vera (strumenti veri, quelli che scrivono simulati: non modifica nulla) e calcola un punteggio su 8:
-guida chiamata per primo, procedura seguita, nessuna risposta ricostruita con apri_fonte, conferma chiesta, forma
-cinese attesa, niente file o righe, niente «corpus», testo senza caratteri estranei.
-
-```
-python prova_chat.py --modelli "auto:chat; gpt-oss-120b; nemotron-3-ultra"
-python prova_chat.py --modelli "gpt-oss-120b" --domanda "..." --forma 格里巴 --istruzioni-complete
-```
-
-Risultati e conversazioni in `results/trials/chat/`. Il punteggio misura la procedura e la pulizia del testo, non
-la bontà delle scelte: le risposte vanno lette (per esempio, un modello può proporre come forma del nome un'altra
-persona trovata con l'allineamento).
-
 ## Misure su un insieme verificato a mano
 
 `valutazione.py` costruisce un insieme di riferimento verificato da te e misura su quello sia l'estrazione sia le
@@ -926,4 +887,4 @@ la regola delle forme inequivocabili, così la misura riguarda solo il modello. 
 ## Problemi frequenti
 
 Raccolti in [`troubleshooting.it.md`](troubleshooting.it.md): installazione sui tre sistemi, modello che legge i
-passaggi, progetto e importazione, client di chat.
+passaggi, progetto e importazione, conversazione sulle fonti.

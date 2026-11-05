@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="marchio/pressmark-favicon-chiaro.svg" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/svg+xml" href="marchio/pressmark-favicon-scuro.svg" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="app.css">
+<script src="i18n.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -27,27 +28,43 @@
         aria-expanded="true" title="Barra laterale (Ctrl+B)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
     </div>
     <label for="progetto" class="solo-lettori">Progetto</label>
-    <select id="progetto" class="scelta-progetto"></select>
+    <div class="riga-progetto">
+      <select id="progetto" class="scelta-progetto"></select>
+      <button type="button" id="b-nuovo-progetto" class="icona" aria-label="Nuovo progetto"
+        title="Nuovo progetto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10.5v5M9.5 13h5"/></svg></button>
+    </div>
     <button type="button" id="b-nuova" class="voce-barra" title="Nuova ricerca (Ctrl+N)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Nuova ricerca</button>
     <nav class="recenti" aria-labelledby="recenti-titolo">
       <h2 id="recenti-titolo" class="titoletto">Recenti</h2>
-      <ul id="storico" class="elenco-recenti"></ul>
+      <input id="recenti-filtro" class="filtro-recenti" type="search" placeholder="Filtra per nome o domanda"
+        aria-label="Filtra le ricerche recenti">
+      <ul id="storico" class="elenco-recenti"><li class="nota in-attesa">Carico le ricerche…</li></ul>
     </nav>
     <div class="barra-piede">
-      <button type="button" class="voce-barra" data-pannello-apri="glossario"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/></svg> Glossario</button>
+      <button type="button" class="voce-barra" data-pannello-apri="glossario" aria-controls="laterale"
+        aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/></svg> Glossario</button>
       <button type="button" class="voce-barra" id="b-importa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5l5 5M12 4v12"/></svg> Importa fonti</button>
       <button type="button" class="voce-barra" id="b-impostazioni"
-        title="Impostazioni: progetti, modelli, chat collegate, ambiente (Ctrl+,)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3a1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg> Impostazioni</button>
+        title="Impostazioni: progetti, modelli, ambiente (Ctrl+,)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3a1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg> Impostazioni</button>
     </div>
+    <div id="maniglia-barra" class="maniglia" role="separator" aria-orientation="vertical" tabindex="0"
+      aria-label="Larghezza della barra laterale" title="Trascina per allargare o stringere; doppio clic o Invio: larghezza iniziale"></div>
   </aside>
 
   <main class="centro">
-    <div id="avviso" class="avviso" hidden></div>
+    <div id="avviso" class="avviso" hidden>
+      <span id="avviso-testo"></span>
+      <button type="button" id="b-chiudi-avviso" class="icona" aria-label="Chiudi l'avviso"
+        title="Chiudi l'avviso"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
 
     <section id="vista-thread" class="thread" aria-label="Ricerca">
       <div id="vuoto" class="vuoto">
         <h1>Che cosa cerchi nelle fonti?</h1>
         <p id="vuoto-progetto" class="nota"></p>
+        <p class="vuoto-modi">Scrivi un <strong>nome</strong> per trovarne le menzioni, oppure una
+          <strong>domanda</strong> che nomina chi o che cosa ti interessa. Ogni affermazione della risposta rimanda
+          al passaggio della fonte da cui viene.</p>
         <div id="suggerimenti" class="suggerimenti"></div>
       </div>
       <div id="messaggi" class="messaggi"></div>
@@ -57,14 +74,14 @@
       <div class="vista-corpo">
         <button type="button" class="discreto torna-thread">Torna alla ricerca</button>
         <h2>Importare documenti</h2>
-        <p class="nota">PDF, scansioni, .txt o esportazioni PAGE/ALTO. Il sistema propone serie e metadati, tu li
+        <p class="nota">PDF, scansioni, file di testo (.txt) o trascrizioni già fatte in formato PAGE o ALTO. Il sistema propone serie e metadati, tu li
           controlli, poi importi. Il lavoro continua anche se chiudi la pagina.</p>
         <ol class="passi-importa">
           <li id="imp-passo-1">
             <h3>Scegli i file</h3>
             <label for="imp-cartella">Cartella o file</label>
             <div class="campo-con-pulsante">
-              <input id="imp-cartella" type="text" placeholder="percorso della cartella">
+              <input id="imp-cartella" type="text" placeholder="scegli con Sfoglia… o incolla il percorso">
               <button type="button" id="imp-sfoglia">Sfoglia…</button>
             </div>
             <label>Serie per tutti i file (facoltativo)
@@ -81,14 +98,14 @@
             <div class="riga">
               <button type="button" id="imp-salva" disabled>Salva le correzioni</button>
               <button type="button" id="imp-carica" class="discreto" disabled>Ricarica</button>
-              <label class="casella"><input id="imp-dubbi" type="checkbox"> Solo le righe da controllare</label>
-              <label class="casella"><input id="imp-avanzate" type="checkbox"> Colonne avanzate</label>
+              <label class="casella"><input id="imp-dubbi" type="checkbox" disabled> Solo le righe da controllare</label>
+              <label class="casella"><input id="imp-avanzate" type="checkbox" disabled> Colonne avanzate</label>
             </div>
             <div id="imp-tabella" class="tabella-revisione" hidden></div>
           </li>
           <li id="imp-passo-3" class="spento">
             <h3>Importa</h3>
-            <label class="casella"><input id="imp-sovrascrivi" type="checkbox"> Sostituisci i documenti già
+            <label class="casella"><input id="imp-sovrascrivi" type="checkbox" disabled> Sostituisci i documenti già
               importati</label>
             <div class="riga">
               <button type="button" id="imp-prova" disabled>Prova senza scrivere</button>
@@ -100,6 +117,14 @@
           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div id="imp-barra"></div></div>
         <p id="imp-stato" class="nota"></p>
         <pre id="imp-esiti" class="registro" hidden></pre>
+        <section class="salute-ocr" aria-labelledby="ocr-titolo">
+          <h3 id="ocr-titolo">Qualità dell'OCR</h3>
+          <p class="nota">Un OCR fallito o letto con la lingua sbagliata nasconde i nomi alla ricerca. Il controllo
+            cerca i documenti con una confidenza bassa o con molte parole illeggibili; da qui puoi rifare l'OCR
+            dall'originale con altre lingue.</p>
+          <div class="riga"><button type="button" id="ocr-controlla">Controlla la qualità</button></div>
+          <div id="ocr-esito"></div>
+        </section>
       </div>
     </section>
     <section id="vista-impostazioni" class="impostazioni" aria-labelledby="cfg-titolo" hidden>
@@ -108,8 +133,7 @@
         <ul class="cfg-voci">
           <li><button type="button" class="voce-barra" data-sezione="generale"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h8M16 6h4M4 12h2M10 12h10M4 18h11M19 18h1"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg> Generale</button></li>
           <li><button type="button" class="voce-barra" data-sezione="modelli"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg> Modelli</button></li>
-          <li><button type="button" class="voce-barra" data-sezione="chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg> Chat collegate</button></li>
-          <li><button type="button" class="voce-barra" data-sezione="ocr"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M8 9h8M8 12h8M8 15h5"/></svg> Lingue OCR</button></li>
+          <li><button type="button" class="voce-barra" data-sezione="ocr"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M8 9h8M8 12h8M8 15h5"/></svg> Lingue delle scansioni</button></li>
           <li><button type="button" class="voce-barra" data-sezione="ambiente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12l2 2l4-4"/><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9c-4.6-.7-8-4.5-8-9V6z"/></svg> Controllo dell'ambiente</button></li>
         </ul>
         <div class="cfg-gruppo">
@@ -139,12 +163,40 @@
             <p class="nota" id="av-intro"></p>
             <ol id="av-passi" class="passi-avvio"></ol>
           </section>
+          <section class="riquadro" aria-labelledby="cfg-lingua-titolo">
+            <h3 id="cfg-lingua-titolo" class="solo-lettori">Lingua dell'interfaccia</h3>
+            <div class="impostazione">
+              <label class="titolo" for="cfg-lingua">Lingua dell'interfaccia</label>
+              <span class="descrizione">Le risposte e le traduzioni dei passaggi restano nella lingua scelta per il
+                progetto.</span>
+              <div class="controllo">
+                <select id="cfg-lingua">
+                  <option value="it" lang="it">Italiano</option>
+                  <option value="en" lang="en">English</option>
+                </select>
+              </div>
+            </div>
+          </section>
           <section class="riquadro" aria-labelledby="cfg-aiuto-titolo">
             <h3 id="cfg-aiuto-titolo">Aiuto</h3>
             <div class="impostazione">
               <span class="titolo">Guida all'uso</span>
               <span class="descrizione">Come si importano le fonti, si cerca un nome e si leggono le risposte.</span>
               <div class="controllo"><button type="button" id="av-guida">Apri la guida</button></div>
+            </div>
+            <div class="impostazione">
+              <span class="titolo">Scorciatoie da tastiera</span>
+              <dl class="scorciatoie">
+                <dt><kbd>Ctrl</kbd> <kbd>K</kbd></dt><dd>Comandi: azioni, ricerche recenti, schede, progetti</dd>
+                <dt><kbd>Ctrl</kbd> <kbd>N</kbd></dt><dd>Nuova ricerca</dd>
+                <dt><kbd>/</kbd></dt><dd>Vai alla casella della domanda</dd>
+                <dt><kbd>Ctrl</kbd> <kbd>B</kbd></dt><dd>Mostra o nascondi la barra laterale</dd>
+                <dt><kbd>Ctrl</kbd> <kbd>,</kbd></dt><dd>Impostazioni</dd>
+                <dt><kbd>Esc</kbd></dt><dd>Chiude il pannello, il menu o il dialogo aperto</dd>
+                <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Pagina precedente o successiva della scansione</dd>
+                <dt><kbd>J</kbd> <kbd>K</kbd> <kbd>R</kbd></dt><dd>Passaggi: il seguente, il precedente, correggi la pertinenza</dd>
+                <dt><kbd>?</kbd></dt><dd>Tutte le scorciatoie</dd>
+              </dl>
             </div>
           </section>
         </div>
@@ -160,18 +212,9 @@
           <div id="cfg-fornitore"></div>
         </div>
 
-        <div class="cfg-sezione" data-sezione="chat" hidden>
-          <h2>Chat collegate</h2>
-          <p class="nota">Un programma di chat collegato usa le fonti del progetto con i propri modelli: la
-            configurazione si scrive da qui, con una copia di sicurezza.</p>
-          <section class="riquadro" aria-label="Programmi di chat">
-            <div id="cfg-client"></div>
-          </section>
-        </div>
-
         <div class="cfg-sezione" data-sezione="ocr" hidden>
-          <h2>Lingue OCR</h2>
-          <p class="nota">Le lingue che Tesseract riconosce nelle scansioni. Servono quelle delle serie del progetto.</p>
+          <h2>Lingue delle scansioni</h2>
+          <p class="nota">Le lingue in cui il riconoscimento del testo (OCR, con Tesseract) legge le scansioni. Servono quelle delle serie del progetto.</p>
           <section class="riquadro" aria-label="Lingue installate">
             <div id="av-lingue"><p class="nota">Controllo in corso…</p></div>
             <p class="nota" id="av-lingue-stato" aria-live="polite"></p>
@@ -184,7 +227,7 @@
                 <select id="av-lingua"></select>
                 <button type="button" id="av-lingua-scarica" class="primario">Installa</button>
               </div>
-              <p class="nota">I modelli vengono da tessdata_best, i più precisi: da 1 a 50 MB ciascuno, e vanno in
+              <p class="nota">Si scaricano i modelli più precisi di Tesseract, da 1 a 50 MB ciascuno, nella cartella
                 <span id="av-lingue-dove" class="indirizzo"></span>.</p>
             </div>
             <div id="av-lingue-propria" hidden></div>
@@ -207,8 +250,8 @@
     <form id="composer" class="composer" autocomplete="off">
       <div id="filtri" class="filtri" hidden>
         <div class="riga">
-          <label>Dal <input id="dal" type="text" inputmode="numeric" size="5" placeholder="anno"></label>
-          <label>Al <input id="al" type="text" inputmode="numeric" size="5" placeholder="anno"></label>
+          <label>Dal <input id="dal" type="text" inputmode="numeric" size="5" maxlength="4" placeholder="anno"></label>
+          <label>Al <input id="al" type="text" inputmode="numeric" size="5" maxlength="4" placeholder="anno"></label>
           <label class="casella"><input id="evoluzione" type="checkbox"> Evoluzione anno per anno</label>
         </div>
         <fieldset id="fonti"><legend>Solo queste serie (nessuna = tutte)</legend></fieldset>
@@ -221,12 +264,18 @@
             title="Periodo e serie"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v2.2a2 2 0 0 1-.6 1.4L15 12v7l-6 2v-8.5L4.5 7.5A2 2 0 0 1 4 6.2z"/></svg><span class="solo-lettori">Periodo e serie</span></button>
           <span id="filtri-riassunto" class="chip-filtri"></span>
           <span class="spazio"></span>
+          <details id="consumo" class="consumo" hidden>
+            <summary id="consumo-sommario" title="Richieste e token usati oggi"><span id="consumo-breve"></span></summary>
+            <div id="consumo-dettaglio" class="consumo-dettaglio"></div>
+          </details>
           <span class="modello-scelta">
             <label for="modello" class="solo-lettori">Modello</label>
             <select id="modello" aria-describedby="pallino-stato"></select>
             <span id="pallino" class="pallino" aria-hidden="true"></span>
             <span id="pallino-stato" class="solo-lettori">Collegamento: non provato</span>
           </span>
+          <button type="button" id="b-modelli" class="icona" aria-label="Fornitori e modelli"
+            title="Fornitori e modelli"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h8M16 6h4M4 12h2M10 12h10M4 18h11M19 18h1"/><circle cx="14" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg></button>
           <button type="submit" id="b-invia" class="invia" aria-label="Invia" title="Invia (Invio)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M18 11l-6-6M6 11l6-6"/></svg></button>
           <button type="button" id="b-ferma" class="invia ferma" aria-label="Ferma la ricerca" title="Ferma la ricerca"
             hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
@@ -236,6 +285,8 @@
   </main>
 
   <aside id="laterale" class="laterale" aria-label="Fonti e glossario" hidden>
+    <div id="maniglia-laterale" class="maniglia" role="separator" aria-orientation="vertical" tabindex="0"
+      aria-label="Larghezza del pannello" title="Trascina per allargare o stringere; doppio clic o Invio: larghezza iniziale"></div>
     <div class="laterale-testa">
       <div class="schede" role="tablist" aria-label="Pannello">
         <button type="button" role="tab" id="t-fonte" aria-controls="p-fonte" aria-selected="true"
@@ -263,9 +314,9 @@
         <img id="fonte-img" class="fonte-img" alt="Pagina dell'originale" hidden>
         <details id="fonte-trascrizione" class="trascrizione">
           <summary id="fonte-trascrizione-titolo">Testo trascritto</summary>
-          <details id="fonte-scheda" class="scheda-tecnica" hidden></details>
           <div id="fonte-testo" class="fonte-testo"></div>
         </details>
+        <details id="fonte-scheda" class="scheda-tecnica" hidden></details>
       </div>
     </div>
     <div class="pannello" id="p-passaggi" role="tabpanel" aria-labelledby="t-passaggi" data-pannello="passaggi"
@@ -276,12 +327,17 @@
         <input id="passaggi-filtro" type="search" placeholder="filtra per fonte, data, traduzione"
           aria-label="Filtra i passaggi">
         <label class="casella"><input id="passaggi-pertinenti" type="checkbox"> Solo pertinenti</label>
+        <label class="casella"><input id="passaggi-citati" type="checkbox"> Solo citati</label>
       </div>
+      <div id="passaggi-faccette" class="faccette" hidden></div>
+      <p class="conto-passaggi"><span id="passaggi-conto" class="nota" aria-live="polite" hidden></span>
+        <button type="button" id="passaggi-azzera" class="discreto" hidden>Togli periodo, serie e lingue</button></p>
       <div class="scorrimento-passaggi"><table id="passaggi-tabella" class="passaggi"></table></div>
     </div>
     <div class="pannello" id="p-glossario" role="tabpanel" aria-labelledby="t-glossario" data-pannello="glossario"
       hidden>
-      <p class="nota">In sola lettura. Una scheda nuova nasce dalla ricerca guidata.</p>
+      <p class="nota">Le schede si leggono qui e da ognuna si avvia una ricerca. Una scheda nuova nasce quando
+        cerchi un nome e confermi le sue forme.</p>
       <input id="gl-filtro" type="search" placeholder="filtra per nome o forma" aria-label="Filtra il glossario">
       <h3>Schede delle entità <span id="gl-n-schede" class="nota"></span></h3>
       <div id="gl-schede"></div>
@@ -291,7 +347,38 @@
   </aside>
 </div>
 
-<dialog id="d-conferma">
+<dialog id="d-comandi" class="comandi" aria-label="Comandi">
+  <label for="cm-cerca" class="solo-lettori">Cerca un comando, una ricerca, una scheda o un progetto</label>
+  <input id="cm-cerca" type="text" role="combobox" aria-expanded="true" aria-controls="cm-elenco"
+    aria-autocomplete="list" autocomplete="off" spellcheck="false"
+    placeholder="Cerca un comando, una ricerca recente, una scheda o un progetto">
+  <ul id="cm-elenco" role="listbox" aria-label="Risultati"></ul>
+  <p class="nota piede-comandi"><kbd>↑</kbd> <kbd>↓</kbd> per scegliere · <kbd>Invio</kbd> per aprire ·
+    <kbd>Esc</kbd> per chiudere</p>
+</dialog>
+
+<dialog id="d-tasti" aria-labelledby="tk-titolo">
+  <form method="dialog">
+    <h2 id="tk-titolo">Scorciatoie da tastiera</h2>
+    <dl class="elenco-tasti">
+      <dt><kbd>Ctrl</kbd> <kbd>K</kbd></dt><dd>Comandi: azioni, ricerche recenti, schede, progetti</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>N</kbd></dt><dd>Nuova ricerca</dd>
+      <dt><kbd>/</kbd></dt><dd>Vai alla casella della domanda</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>B</kbd></dt><dd>Mostra o nascondi la barra laterale</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>,</kbd></dt><dd>Impostazioni</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Chiudi il pannello</dd>
+      <dt><kbd>J</kbd> <kbd>K</kbd></dt><dd>Passaggi: il seguente e il precedente</dd>
+      <dt><kbd>O</kbd> o <kbd>Invio</kbd></dt><dd>Passaggi: apri la fonte</dd>
+      <dt><kbd>R</kbd></dt><dd>Passaggi: correggi la pertinenza (sì ↔ no)</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Fonte: pagina precedente e seguente</dd>
+      <dt><kbd>Spazio</kbd> <kbd>A</kbd></dt><dd>Forme del nome: accendi o spegni, segna ambigua</dd>
+      <dt><kbd>?</kbd></dt><dd>Questo elenco</dd>
+    </dl>
+    <menu><button value="chiudi" class="primario">Chiudi</button></menu>
+  </form>
+</dialog>
+
+<dialog id="d-conferma" aria-labelledby="cf-titolo" aria-describedby="cf-testo">
   <form method="dialog">
     <h2 id="cf-titolo"></h2>
     <p id="cf-testo"></p>
@@ -299,21 +386,9 @@
   </form>
 </dialog>
 
-<dialog id="d-client">
+<dialog id="d-progetto" aria-labelledby="np-titolo">
   <form method="dialog">
-    <h2 id="cl-titolo">Collega la chat</h2>
-    <p class="nota" id="cl-file"></p>
-    <ul id="cl-modifiche" class="elenco"></ul>
-    <p class="nota" id="cl-nota">Prima di scrivere, il sistema fa una copia di sicurezza del file; le altre voci del
-      programma restano come sono.</p>
-    <pre id="cl-messaggi" class="registro" hidden></pre>
-    <menu><button value="annulla">Chiudi</button> <button id="cl-scrivi" value="scrivi" class="primario">Scrivi le modifiche</button></menu>
-  </form>
-</dialog>
-
-<dialog id="d-progetto">
-  <form method="dialog">
-    <h2>Nuovo progetto</h2>
+    <h2 id="np-titolo">Nuovo progetto</h2>
     <label>Nome della ricerca <input id="np-nome" type="text" required></label>
     <label>Descrizione (facoltativa) <input id="np-descrizione" type="text"></label>
     <p class="nota" id="np-dove"></p>
@@ -321,9 +396,9 @@
   </form>
 </dialog>
 
-<dialog id="d-modello">
+<dialog id="d-modello" aria-labelledby="am-titolo">
   <form method="dialog">
-    <h2>Aggiungi modello</h2>
+    <h2 id="am-titolo">Aggiungi modello</h2>
     <label>Servizio <select id="am-servizio"></select></label>
     <p class="nota" id="am-dove"></p>
     <label id="am-url-l">Indirizzo <input id="am-url" type="text"></label>

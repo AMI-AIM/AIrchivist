@@ -3,8 +3,8 @@
 Interfaccia di Pressmark: un server locale, con la sola libreria standard, che apre una finestra
 propria (pywebview, opzionale) con i menu «Progetto» e «Modello» e il percorso guidato della ricerca (domanda,
 forme del nome attestate da confermare, avvio, avanzamento, risposta come documento). Senza pywebview apre nel
-browser. Le funzioni sono quelle del motore (strumenti.py, le stesse del server MCP): interfaccia e chat fanno le stesse cose allo stesso
-modo.
+browser. Le funzioni sono quelle del motore (strumenti.py): interfaccia e conversazione sulle fonti fanno le stesse
+cose allo stesso modo.
 
 Sicurezza: il server ascolta solo su 127.0.0.1; all'avvio crea un token di sessione e apre la finestra con il
 collegamento che lo contiene; il token diventa un cookie (HttpOnly, SameSite=Strict) e senza di esso ogni richiesta
@@ -12,7 +12,8 @@ collegamento che lo contiene; il token diventa un cookie (HttpOnly, SameSite=Str
 (POST) vogliono JSON e l'intestazione X-Pressmark.
 
 Progetto: la scelta vale per l'interfaccia (variabile PRESSMARK_PROGETTO del processo, ereditata dalle ricerche)
-e si scrive in config.ini, sezione [progetto], perché la seguano anche chat e riga di comando (una copia di
+e si scrive tra le scelte dell'utente (posizioni.file_config: config.utente.ini o, da installato, il config.ini
+nella cartella dei dati), sezione [progetto], perché la segua anche la riga di comando (una copia di
 sicurezza al giorno). Il cambio è bloccato mentre una ricerca del progetto è in corso.
 Modello: la scelta passa per la prova di collegamento (installa.modello_usa): se fallisce resta il precedente.
 Conversazione sulle fonti: con il modello della sintesi e gli strumenti del motore;
@@ -66,7 +67,7 @@ from llm import ErroreModello   # noqa: E402
 from progetto import VARIABILE, cartella_scelta, leggi_config, percorso   # noqa: E402
 
 PAGINE = CARTELLA / "interfaccia"
-MARCHIO = CARTELLA.parent / "assets" / "marchio"   # logotipo e favicon, serviti come /marchio/<file>
+MARCHIO = CARTELLA.parent / "assets"   # logotipo e favicon, serviti come /marchio/<file>
 TIPI = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
 COOKIE = "pressmark"
@@ -493,27 +494,12 @@ class App:
         esistenti = leggi_profili(c)
         return ", ".join(sorted(nomi)) if all(n in esistenti for n in nomi) else None
 
-    def chat(self):
-        """I client di chat noti: se il programma c'è su questo computer, se Pressmark è collegato così com'è
-        (la voce avvia proprio questo programma) o se c'è una voce da aggiornare (un'altra copia, impostazioni)."""
-        out = []
-        for codice, etichetta in installa.CLIENT_GUIDA:
-            f = installa.file_client(codice)
-            p = installa.prepara_client(codice, f)
-            collegato = p["valida"] and p["gia"]
-            out.append({"id": codice, "nome": etichetta, "file": str(f), "presente": f.parent.is_dir(),
-                        "collegato": collegato,
-                        "da_aggiornare": not collegato and installa.voce_presente(codice, f)})
-        return out
-
     def avvio(self):
-        """I passi della preparazione, come «installa.py inizia»: progetto e modello necessari, chat e prime
-        fonti facoltative. «completo» quando si può cercare."""
+        """I passi della preparazione, come «installa.py inizia»: progetto e modello necessari, prime fonti
+        facoltative. «completo» quando si può cercare."""
         c = self.cfg()
         p = self.progetto_in_uso()
         modello = self._modello_scelto(c) if p else None
-        chat = self.chat()
-        collegati = [x["nome"] for x in chat if x["collegato"]]
         passi = [
             {"id": "progetto", "titolo": "Progetto di ricerca", "fatto": bool(p), "facoltativo": False,
              "dettaglio": f"«{p['nome']}» in {p['cartella']}" if p else
@@ -525,12 +511,8 @@ class App:
             {"id": "fonti", "titolo": "Prime fonti", "fatto": bool(p and p["documenti"]), "facoltativo": True,
              "dettaglio": f"{p['documenti']} documenti nel progetto." if p and p["documenti"] else
              "Importa PDF, scansioni o testi: il sistema propone i metadati in una tabella da controllare."},
-            {"id": "chat", "titolo": "Chat (Jan, Claude Desktop, LM Studio)", "fatto": bool(collegati),
-             "facoltativo": True,
-             "dettaglio": "Collegato a " + ", ".join(collegati) + "." if collegati else
-             "Facoltativo: per fare domande sulle fonti anche da un programma di chat."},
         ]
-        return {"passi": passi, "completo": bool(p and modello), "chat": chat}
+        return {"passi": passi, "completo": bool(p and modello)}
 
     def ambiente(self):
         """I controlli di «installa.py controlla», uno per riga, con l'azione dell'interfaccia che rimedia."""
@@ -554,8 +536,6 @@ class App:
         gruppo("Importazione delle fonti", installa.controlla_pymupdf,
                lambda e: installa.controlla_tesseract(e, c))
         for g in gruppi:
-            # PYTHONUTF8 riguarda i client di chat, e la loro voce la contiene già
-            g["voci"] = [v for v in g["voci"] if v["voce"] != "PYTHONUTF8"]
             for v in g["voci"]:
                 v["azione"] = ("progetto" if v["voce"] == "progetto" and v["stato"] == "manca" else
                                "modello" if v["voce"].startswith("modelli") and v["stato"] == "manca" else "")
@@ -605,41 +585,6 @@ class App:
                 raise Errore(f"Copia dei modelli non riuscita: {e}.")
         return {"messaggi": righe, **installa.stato_lingue(self.cfg())}
 
-    def _client_noto(self, nome):
-        if nome not in dict(installa.CLIENT_GUIDA):
-            raise Errore(f"Programma di chat «{nome}» sconosciuto.")
-
-    def client(self, nome):
-        """Anteprima del collegamento a un client: il file, che cosa cambia, se il programma è aperto."""
-        self._client_noto(nome)
-        p = installa.prepara_client(nome)
-        return {"id": nome, "nome": dict(installa.CLIENT_GUIDA)[nome], "file": str(p["file"]),
-                "esiste": p["esiste"], "modifiche": [m for m in p["modifiche"] if not m.startswith("- ")],
-                "gia": p["gia"], "errore": p["illeggibile"] or (None if p["valida"] else "; ".join(p["modifiche"])),
-                "avvia": " ".join([installa.voce_server()["command"], *installa.voce_server()["args"]]),
-                "aperto": installa.in_esecuzione(nome)}
-
-    def collega_client(self, nome):
-        """Scrive la voce di Pressmark nel client (con copia di sicurezza) e prova il server come lo avvierà il
-        client. Lo chiede la pagina dopo aver mostrato l'anteprima: è la conferma di «--scrivi»."""
-        self._client_noto(nome)
-        etichetta = dict(installa.CLIENT_GUIDA)[nome]
-        p = installa.prepara_client(nome)
-        if p["illeggibile"] or not p["valida"]:
-            raise Errore(p["illeggibile"] or "; ".join(p["modifiche"]))
-        righe = []
-        if p["gia"]:
-            righe.append(f"{etichetta} è già collegato: nessuna modifica.")
-        else:
-            if installa.in_esecuzione(nome):
-                raise Errore(f"{etichetta} è aperto: quando si chiude riscrive i suoi file e la modifica andrebbe "
-                             "persa. Chiudilo (anche dall'icona accanto all'orologio) e riprova.")
-            righe += list(installa.scrivi_client(p))
-        prova = installa.client_verifica(argparse.Namespace(), righe.append) == 0
-        righe.append(f"Apri {etichetta}: il server Pressmark è acceso." if nome == "jan" else
-                     f"Riavvia {etichetta} perché legga la nuova configurazione.")
-        return {"scritto": not p["gia"], "prova": prova, "messaggi": righe}
-
     # ------------------------------------------------------------ percorso della ricerca
     def entita(self, nome):
         """Passo 1: c'è una scheda per questo nome? Le schede trovate, con le loro forme."""
@@ -660,6 +605,12 @@ class App:
             return r
         forme = []
         proposta = r.get("proposta_di_scheda", {})
+        # le forme che per questo nome si sono già scartate (crea_scheda): restano fuori dalla proposta
+        import varianti as mod_varianti
+        scartate = set()
+        for k, v in mod_varianti.carica_scartate(self.cfg()).items():
+            if k.strip().lower() == (nome or "").strip().lower():
+                scartate |= v
         ambigue = set(proposta.get("forme_ambigue", []))
         scelte = set(proposta.get("varianti", []))
         for gruppo, origine in (("forme_latine", "nelle fonti"), ("forme_cinesi", ""), ("forme_albanesi", "")):
@@ -668,11 +619,76 @@ class App:
                               "attenzione": s_.get("attenzione", ""), "per_serie_e_anno": s_.get("per_serie_e_anno", {}),
                               "esempi": [{"riferimento": e.get("riferimento", ""), "testo": e.get("testo", "")}
                                          for e in (s_.get("esempi") or [])[:2]],
-                              "proposta": forma in scelte, "ambigua": forma in ambigue})
+                              "proposta": forma in scelte and forma not in scartate, "ambigua": forma in ambigue,
+                              "scartata_prima": forma in scartate})
         return {"nome": nome, "forme": forme, "non_attestate": r.get("non_attestate", []),
                 "contesto": proposta.get("contesto", []), "avviso_indice": r.get("avviso_indice", "")}
 
-    def crea_scheda(self, nome, varianti, forme_ambigue=None, tipo="", contesto=None):
+    def conta_righe(self, varianti, dal=None, al=None, fonti=None):
+        """Quante righe delle fonti contengono almeno una delle forme, con i filtri scelti: il riepilogo prima di
+        avviare la ricerca dice così quanto lavoro aspetta il modello. Una riga con due forme conta una volta."""
+        forme = _elenco(varianti)
+        if not forme:
+            return {"righe": 0}
+        ind, errore = M.indice_pronto()
+        if errore:
+            return {"righe": None, "nota": "indice delle fonti in costruzione" if errore.get("avanzamento")
+                    else "indice delle fonti non disponibile"}
+        import esplora
+        serie = esplora.serie_indice(ind, _elenco(fonti)) if _elenco(fonti) else None
+        viste = set()
+        for f in forme:
+            for x in ind.cerca(f, _anno(dal), _anno(al), serie):
+                viste.add((x["file"], x["riga"]))
+        return {"righe": len(viste)}
+
+    def precedenti(self, entita):
+        """Prima di avviare: l'ultima ricerca finita su questa entità, quanti suoi passaggi sono già letti (una
+        ricerca nuova li riusa) e il ritmo delle ricerche passate del progetto, in minuti per passaggio estratto, per
+        stimare la durata. Il ritmo prende per ogni cartella di ricerca la corsa più lunga: le successive riusano i
+        passaggi già letti e sembrerebbero più veloci di quanto è una ricerca nuova."""
+        c = self.cfg()
+        entita = (entita or "").strip()
+        ultima, per_cartella = None, {}
+        try:
+            elenco = lavori.lavori(c)
+        except OSError:
+            elenco = []
+        for d in elenco:
+            s_ = lavori.stato_lavoro(d)
+            if not s_ or not str(s_.get("stato", "")).startswith("completata"):
+                continue
+            par = s_.get("parametri") or {}
+            if not par.get("principale"):
+                continue
+            minuti = max(0.0, (s_.get("battito", 0) - s_.get("inizio", 0)) / 60)
+            try:
+                cartella = lavori.cartella_ricerca(c, par)
+            except (KeyError, TypeError):
+                continue
+            per_cartella[cartella] = max(per_cartella.get(cartella, 0.0), minuti)
+            if par["principale"].lower() == entita.lower():
+                ultima = {"quando": dt.datetime.fromtimestamp(s_.get("inizio", 0)).isoformat(timespec="minutes"),
+                          "minuti": round(minuti), "domanda": s_.get("domanda", "")}
+        ritmi = []
+        for cartella, minuti in per_cartella.items():
+            n = _righe_jsonl(cartella / "passaggi.jsonl")
+            if n >= 5 and minuti >= 1:
+                ritmi.append(minuti / n)
+        ritmi.sort()
+        letti = 0
+        if entita:
+            try:
+                d = lavori.cartella_ricerca(c, {"principale": entita, "modalita": "occorrenze"})
+                letti = _righe_jsonl(d / "classificati.jsonl")
+            except (OSError, KeyError, TypeError):
+                letti = 0
+        return {"ultima": ultima, "letti": letti,
+                "minuti_per_passaggio": ritmi[len(ritmi) // 2] if ritmi else None, "campioni": len(ritmi)}
+
+    def crea_scheda(self, nome, varianti, forme_ambigue=None, tipo="", contesto=None, scartate=None, cercato=""):
+        """Crea la scheda; «scartate»: le forme trovate e non spuntate, che si ricordano per il nome cercato e per
+        la scheda (varianti.py, rejected_variants.json), così una nuova esplorazione non le ripropone."""
         varianti = _elenco(varianti)
         if not varianti:
             raise Errore("Conferma almeno una forma del nome.")
@@ -682,6 +698,11 @@ class App:
                             forme_ambigue=ambigue or None, tipo=tipo)
         if r.get("errore"):
             raise Errore(r["errore"])
+        scartate = [f for f in _elenco(scartate) if f not in varianti]
+        if scartate:
+            import varianti as mod_varianti
+            for chi in {nome.strip(), (cercato or "").strip()} - {""}:
+                mod_varianti.scarta(self.cfg(), chi, scartate)
         return r
 
     def avvia(self, entita, domanda="", dal=None, al=None, fonti=None, evoluzione=False):
@@ -704,8 +725,13 @@ class App:
             return {"nessuna": True}
         out = M.compatto(s_)
         out.pop("nota", None)                # le indicazioni per il modello della chat qui non servono
+        par = s_.get("parametri") or {}
         out.update({"id": s_.get("id", d.name), "domanda": s_.get("domanda", ""),
-                    "entita": (s_.get("parametri") or {}).get("principale", "")})
+                    "entita": par.get("principale", ""),
+                    # i filtri con cui è partita: «Riprova» li riusa, invece di quelli scelti nel frattempo
+                    "filtri": {"dal": str(par.get("dal") or ""), "al": str(par.get("al") or ""),
+                               "fonti": list(par.get("fonti") or []),
+                               "evoluzione": par.get("modalita") == "evoluzione"}})
         if not out.get("finito"):
             ultimi = [m for m in s_.get("ultimi_messaggi") or [] if not m.startswith("---")]
             if ultimi:
@@ -721,17 +747,22 @@ class App:
         return out
 
     def _passaggi_letti(self, parametri):
-        """(letti, estratti) della ricerca: righe distinte di classificati.jsonl e di passaggi.jsonl."""
-        def ids(f):
+        """(letti, estratti, pertinenti) della ricerca: righe distinte di classificati.jsonl e di passaggi.jsonl, e
+        quante delle lette il modello ha giudicato pertinenti finora (la pagina lo mostra durante la lettura)."""
+        def ids(f, solo_pertinenti=False):
             with open(f, encoding="utf-8") as h:
-                return {m.group(1) for m in (re.search(r'"id":\s*"([^"]+)"', r) for r in h) if m}
+                return {m.group(1) for r in h
+                        if not solo_pertinenti or re.search(r'"pertinente":\s*"s(?:ì|\\u00ec)"', r)
+                        for m in [re.search(r'"id":\s*"([^"]+)"', r)] if m}
         try:
             d = lavori.cartella_ricerca(self.cfg(), parametri)
             estratti = ids(d / "passaggi.jsonl")
             letti = ids(d / "classificati.jsonl") & estratti      # non le letture di ricerche precedenti
+            pertinenti = ids(d / "classificati.jsonl", True) & estratti
         except (OSError, KeyError, TypeError):
             return None
-        return {"letti": len(letti), "estratti": len(estratti)} if estratti else None
+        return ({"letti": len(letti), "estratti": len(estratti), "pertinenti": len(pertinenti)}
+                if estratti else None)
 
     def ferma(self):
         return M.t_ferma_ricerca()
@@ -743,15 +774,19 @@ class App:
         risposte = M.t_elenca_risposte(50).get("risposte", [])
         for r in risposte:
             r["documento"] = "/documento?" + urllib.parse.urlencode({"risposta": r["file"]})
-            r["entita"] = _testa_risposta(lavori.cartella_risposte(c) / r["file"])[0]
+            t = _intestazione_risposta(lavori.cartella_risposte(c) / r["file"])
+            r.update(entita=t["entita"], pertinenti=t["pertinenti"], evoluzione=t["evoluzione"])
         ricerche = []
         base = percorso(c, "risultati") / "searches"
         if base.is_dir():
             for d in sorted(base.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
                 f = d / "risposta.html"
                 if f.is_file():
-                    entita, domanda = _testa_risposta(d / "risposta.md")
+                    t = _intestazione_risposta(d / "risposta.md")
+                    entita, domanda = t["entita"], t["domanda"]
                     ricerche.append({"cartella": d.name, "data": _data(f), "entita": entita, "domanda": domanda,
+                                     "pertinenti": t["pertinenti"],
+                                     "evoluzione": t["evoluzione"] or d.name.endswith("_evoluzione"),
                                      "documento": "/documento?" + urllib.parse.urlencode({"ricerca": d.name})})
         return {"risposte": risposte, "ricerche": ricerche[:50]}
 
@@ -800,6 +835,29 @@ class App:
             raise Errore("Conversazione non valida.")
         return self._cartella_fili() / f"{ident}.json"
 
+    def rinomina_filo(self, ident, titolo):
+        """Il titolo di una conversazione nei recenti; il contenuto resta com'è."""
+        titolo = str(titolo or "").strip()[:200]
+        if not titolo:
+            raise Errore("Scrivi il nome della conversazione.")
+        f = self._file_filo(ident)
+        if not f.is_file():
+            raise Errore("Conversazione non trovata.")
+        dati = json.loads(f.read_text(encoding="utf-8"))
+        dati["titolo"] = titolo
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(dati, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(f)
+        return {"id": ident, "titolo": titolo}
+
+    def elimina_filo(self, ident):
+        """Toglie una conversazione dai recenti. Le risposte e i passaggi letti restano nell'archivio del progetto:
+        si cancella solo il file della conversazione."""
+        f = self._file_filo(ident)
+        if f.is_file():
+            f.unlink()
+        return {"id": ident, "eliminato": True}
+
     def fili(self):
         if not self.progetto_in_uso():
             return {"fili": []}
@@ -810,10 +868,23 @@ class App:
                 x = json.loads(f.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
+            messaggi = [m for m in x.get("messaggi") or [] if isinstance(m, dict)]
+            tipi = {m.get("tipo") for m in messaggi}
+            # lo stato si legge nella barra dei recenti: una risposta, una ricerca partita, o solo una domanda
+            stato_filo = ("risposta" if tipi & {"risposta", "conversazione"} else
+                          "avviata" if "ricerca" in tipi or x.get("ricerca") else "non avviata")
+            # per distinguere le ricerche nei recenti: i filtri dell'ultima ricerca e i documenti pertinenti
+            # dell'ultima risposta (i fili di prima non hanno filtri salvati)
+            ricerche = [m for m in messaggi if m.get("tipo") == "ricerca"]
+            risposte = [m for m in messaggi if m.get("tipo") == "risposta"]
+            filtri = ricerche[-1].get("filtri") if ricerche else None
+            pertinenti = risposte[-1].get("pertinenti") if risposte else None
             out.append({"id": x.get("id", f.stem), "titolo": x.get("titolo", ""), "entita": x.get("entita", ""),
+                        "domanda": x.get("domanda", ""), "stato": stato_filo,
                         "aggiornato": x.get("aggiornato", ""), "ricerca": x.get("ricerca", ""),
-                        "documenti": [m.get("documento") for m in x.get("messaggi") or []
-                                      if isinstance(m, dict) and m.get("tipo") == "risposta"]})
+                        "filtri": filtri if isinstance(filtri, dict) else None,
+                        "pertinenti": "" if pertinenti is None else str(pertinenti),
+                        "documenti": [m.get("documento") for m in risposte]})
         out.sort(key=lambda x: x["aggiornato"], reverse=True)
         return {"fili": out[:200]}
 
@@ -912,27 +983,59 @@ class App:
                 raise Errore("Pagina inesistente.")
             return doc[k - 1].get_pixmap(dpi=150).tobytes("png")     # la pagina è ora la vista principale
 
+    def _cartella_ricerca_nome(self, ricerca):
+        if not ricerca or Path(ricerca).name != ricerca or ricerca in (".", ".."):
+            raise Errore("Ricerca non valida.")
+        cartella = percorso(self.cfg(), "risultati") / "searches" / ricerca
+        if not cartella.is_dir():
+            raise Errore("Ricerca non trovata.")
+        return cartella
+
+    def _ricerca_della_risposta(self, md):
+        """La cartella della ricerca che ha scritto una risposta salvata, dall'intestazione che lavori.salva_risposta
+        mette in cima («<!-- Domanda: … | entità: … | occorrenze -->»); None per le risposte senza intestazione."""
+        try:
+            with open(md, encoding="utf-8", errors="replace") as h:
+                testa = h.read(800)
+        except OSError:
+            return None
+        m = re.search(r"<!-- Domanda: .*? \| entità: (.*?)(?: \+ [^|]*)? \| (occorrenze|evoluzione)", testa)
+        if not m:
+            return None
+        try:
+            d = lavori.cartella_ricerca(self.cfg(), {"principale": m.group(1).strip(), "modalita": m.group(2)})
+        except (KeyError, TypeError):
+            return None
+        return d if d.is_dir() else None
+
+    def _lingue_dei_file(self):
+        """{file: lingua} dall'indice delle fonti, se è pronto (le faccette dei passaggi); {} altrimenti."""
+        try:
+            ind, errore = M.indice_pronto()
+            if errore:
+                return {}
+            return {r[1]: r[6] or "" for r in ind._file().values()}
+        except Exception:
+            return {}
+
     def passaggi(self, risposta="", ricerca=""):
-        """I passaggi del documento aperto: per una ricerca quelli letti (classificati.jsonl), con pertinenza, chi li
-        ha letti e traduzione; per una risposta salvata quelli citati. «rimandi»: [n] della risposta -> file e riga,
-        dalla sezione «Dati tecnici per la verifica» (la pagina li usa per aprire la fonte dal documento)."""
+        """I passaggi del documento aperto: quelli letti dalla ricerca (classificati.jsonl), con pertinenza, chi li
+        ha letti, traduzione, serie e lingua (le faccette del pannello); per una risposta salvata, quelli letti dalla
+        ricerca che l'ha scritta, con il numero [n] di quelli citati. Senza la cartella della ricerca, solo i citati.
+        «rimandi»: [n] della risposta -> file e riga, dalla sezione «Dati tecnici per la verifica» (la pagina li usa
+        per aprire la fonte dal documento). «ricerca»: la cartella, per correzioni ed esportazioni."""
         if ricerca:                     # anche le ricerche vecchie, senza il documento HTML
-            if Path(ricerca).name != ricerca or ricerca in (".", ".."):
-                raise Errore("Ricerca non valida.")
-            cartella = percorso(self.cfg(), "risultati") / "searches" / ricerca
-            if not cartella.is_dir():
-                raise Errore("Ricerca non trovata.")
+            cartella = self._cartella_ricerca_nome(ricerca)
             md = cartella / "risposta.md"
         else:
-            cartella, md = None, self.documento(risposta).with_suffix(".md")
+            md = self.documento(risposta).with_suffix(".md")
+            cartella = self._ricerca_della_risposta(md)
         testo = md.read_text(encoding="utf-8", errors="replace") if md.is_file() else ""
         rimandi = _rimandi(testo)
         out = []
         if cartella is not None and (cartella / "classificati.jsonl").is_file():
-            estratti = set()
-            if (cartella / "passaggi.jsonl").is_file():
-                with open(cartella / "passaggi.jsonl", encoding="utf-8") as h:
-                    estratti = {m.group(1) for m in (re.search(r'"id":\s*"([^"]+)"', r) for r in h) if m}
+            estratti = _ids_jsonl(cartella / "passaggi.jsonl")
+            visti = {}
             with open(cartella / "classificati.jsonl", encoding="utf-8") as h:
                 for r in h:
                     try:
@@ -941,13 +1044,8 @@ class App:
                         continue
                     if estratti and p.get("id") not in estratti:
                         continue                         # letture di ricerche precedenti
-                    a = p.get("analisi") or {}
-                    lettura = (a.get("provenienza") or {}).get("lettura") or {}
-                    out.append({"data": p.get("data", ""), "fonte": p.get("citazione") or p.get("fonte", ""),
-                                "pagina": a.get("pagina", ""), "pertinente": a.get("pertinente", ""),
-                                "letto_da": lettura.get("da") or a.get("modello_analisi", ""),
-                                "traduzione": a.get("traduzione_it") or "", "file": p.get("file", ""),
-                                "riga": str(p.get("riga", ""))})
+                    visti[p.get("id")] = _vista_lettura(p)      # un passaggio riletto: vale l'ultima lettura
+            out = list(visti.values())
             out.sort(key=lambda x: (x["data"], x["file"], int(x["riga"]) if x["riga"].isdigit() else 0))
             # la pagina che il modello non ha indicato si ricava dai marcatori del file (letto una volta per file)
             pagine_file = {}
@@ -963,11 +1061,310 @@ class App:
                         pagine_file[x["file"]] = []
                 k = int(x["riga"])
                 x["pagina"] = next((p["etichetta"][3:] for p in pagine_file[x["file"]] if p["da"] <= k <= p["a"]), "")
+            # i citati nella risposta: il passaggio dello stesso file che comincia più vicino prima della riga citata
+            per_file = {}
+            for x in out:
+                if x["riga"].isdigit():
+                    per_file.setdefault(x["file"], []).append(x)
+            for n, v in rimandi.items():
+                for riga in v.get("righe") or [v["riga"]]:
+                    vicini = [x for x in per_file.get(v["file"], []) if int(x["riga"]) <= riga]
+                    if vicini:
+                        x = max(vicini, key=lambda y: int(y["riga"]))
+                        if riga - int(x["riga"]) <= 40 and "n" not in x:
+                            x["n"] = n
+                            break
+            lingue = self._lingue_dei_file()
+            for x in out:
+                x["lingua"] = lingue.get(x["file"], "")
         else:
+            cartella = None
             for n, v in rimandi.items():
                 out.append({"n": n, "fonte": v["riferimento"], "pertinente": "sì", "file": v["file"],
-                            "riga": str(v["riga"])})
-        return {"passaggi": out, "rimandi": rimandi}
+                            "riga": str(v["riga"]), "pagina": v.get("pagina", "")})
+        return {"passaggi": out, "rimandi": rimandi, "ricerca": cartella.name if cartella is not None else "",
+                "tutti": cartella is not None}
+
+    # ------------------------------------------------------------ lettura dal vivo, correzioni, confronti
+    def _cartella_attiva(self):
+        """(cartella del lavoro, cartella della ricerca) della ricerca in corso, o dell'ultima."""
+        c = self.cfg()
+        d, s_ = lavori.attivo(c)
+        if not d:
+            d, s_ = lavori.ultimo(c)
+        if not d:
+            return None, None
+        try:
+            return d, lavori.cartella_ricerca(c, (s_ or {}).get("parametri") or {})
+        except (KeyError, TypeError):
+            return d, None
+
+    def letture_ricerca(self, dopo=0):
+        """Le letture scritte in classificati.jsonl dopo la riga «dopo» (al più le ultime 12): la pagina le mostra
+        mentre il modello legge. «righe» va ripassato la volta dopo; «azzera»: il file è più corto di prima (una
+        ricerca nuova), la pagina ricomincia."""
+        dopo = int(dopo) if str(dopo or "").isdigit() else 0
+        try:
+            _, cart = self._cartella_attiva()
+        except Exception:
+            cart = None
+        if cart is None or not (cart / "classificati.jsonl").is_file():
+            return {"righe": 0, "letture": [], "nuove": 0, "azzera": dopo > 0}
+        estratti = _ids_jsonl(cart / "passaggi.jsonl")
+        nuove, n = [], 0
+        with open(cart / "classificati.jsonl", encoding="utf-8") as h:
+            for n, r in enumerate(h, 1):
+                if n <= dopo or not r.strip():
+                    continue
+                try:
+                    p = json.loads(r)
+                except ValueError:
+                    continue
+                if estratti and p.get("id") not in estratti:
+                    continue
+                nuove.append(_vista_lettura(p))
+        return {"righe": n, "letture": nuove[-12:], "nuove": len(nuove), "azzera": n < dopo,
+                "ricerca": cart.name}
+
+    def riprova_ricerca(self):
+        """«Riprova ora»: la ricerca in attesa delle quote non aspetta l'orario previsto."""
+        d, s_ = lavori.attivo(self.cfg())
+        if not d:
+            raise Errore("Nessuna ricerca in corso.")
+        if (s_ or {}).get("stato") != "in attesa":
+            return {"riprova": False, "nota": "La ricerca non è in attesa: sta già lavorando."}
+        lavori.riprova_ora(d)
+        return {"riprova": True, "nota": "Riprovo adesso: se le quote non sono ancora tornate, la ricerca riaspetta."}
+
+    def correggi_passaggio(self, ricerca, id, pertinente=None, traduzione=None):
+        """Una correzione a mano dal pannello dei passaggi: pertinenza e/o traduzione. Si scrive nella lettura della
+        ricerca (classificati.jsonl, così il pannello e la prossima sintesi la vedono) e nell'archivio unico, come
+        lettura «correzione manuale»: nessuna ricerca successiva la rimanda al modello (archivio.letto_da)."""
+        from archivio import LETTURE, NOME, _blocco, append_jsonl, escluso, impronta, livello, provenienza
+        if pertinente not in (None, "", "sì", "no", "incerto"):
+            raise Errore("Pertinenza non valida: sì, no o incerto.")
+        traduzione = (traduzione or "").strip() if traduzione is not None else None
+        if not pertinente and not traduzione:
+            raise Errore("Niente da correggere.")
+        cart = self._cartella_ricerca_nome(ricerca)
+        f = cart / "classificati.jsonl"
+        if not f.is_file():
+            raise Errore("Questa ricerca non ha passaggi letti.")
+        oggi = dt.date.today().isoformat()
+        da = livello("sessione", "correzione dall'interfaccia")
+        trovato, analisi = None, None
+        with _blocco(f):
+            righe = f.read_text(encoding="utf-8").splitlines(keepends=True)
+            for k, r in enumerate(righe):
+                if f'"{id}"' not in r:
+                    continue
+                try:
+                    p = json.loads(r)
+                except ValueError:
+                    continue
+                if p.get("id") != id:
+                    continue
+                a = dict(p.get("analisi") or {})
+                prima = provenienza(a)
+                if pertinente:
+                    a["pertinente"] = pertinente
+                if traduzione:
+                    a["traduzione_it"] = traduzione
+                a.update(corretto_a_mano=True, classificato_da="correzione manuale", corretto_il=oggi,
+                         motivazione="Correzione manuale dall'interfaccia")
+                a["provenienza"] = {"decisione": da if pertinente else prima.get("decisione"),
+                                    "lettura": da if traduzione else prima.get("lettura")}
+                p["analisi"] = a
+                righe[k] = json.dumps(p, ensure_ascii=False) + "\n"
+                trovato, analisi = p, a
+            if trovato is None:
+                raise Errore("Passaggio non trovato in questa ricerca.")
+            tmp = f.with_name(f.name + ".tmp")
+            tmp.write_text("".join(righe), encoding="utf-8", newline="\n")
+            try:
+                os.replace(tmp, f)
+            except PermissionError:          # Windows: il file è aperto da un'altra lettura; si riscrive sul posto
+                f.write_text("".join(righe), encoding="utf-8", newline="\n")
+                tmp.unlink(missing_ok=True)
+        if not escluso(cart):
+            arch = percorso(self.cfg(), "risultati") / NOME / LETTURE
+            arch.parent.mkdir(parents=True, exist_ok=True)
+            append_jsonl(arch, [json.dumps({"id": trovato["id"], "entita": trovato.get("entita", ""),
+                                            "file": trovato.get("file", ""), "impronta": impronta(trovato),
+                                            "origine": "correzione manuale", "letto_il": oggi, "analisi": analisi},
+                                           ensure_ascii=False)])
+        return {"passaggio": _vista_lettura(trovato),
+                "nota": "Corretto. La risposta cambia quando rifai la ricerca: le ricerche successive usano la "
+                        "correzione e non rimandano il passaggio al modello."}
+
+    def confronto(self, risposta):
+        """Che cosa è cambiato rispetto alla risposta precedente sulla stessa entità (stessa modalità): passaggi
+        citati adesso e non prima (nuovi documenti importati, correzioni), citati prima e non più, e la risposta
+        breve di allora e di adesso. {"precedente": None} se è la prima."""
+        f = self.documento(risposta).with_suffix(".md")
+        if not f.is_file():
+            raise Errore("Risposta non trovata.")
+        chiave = _chiave_risposta(f)
+        if not chiave:
+            return {"precedente": None}
+        prima = [g for g in f.parent.glob("*.md")
+                 if g != f and g.stat().st_mtime < f.stat().st_mtime and _chiave_risposta(g) == chiave]
+        if not prima:
+            return {"precedente": None}
+        g = max(prima, key=lambda x: x.stat().st_mtime)
+        ra = _rimandi(g.read_text(encoding="utf-8", errors="replace"))
+        rb = _rimandi(f.read_text(encoding="utf-8", errors="replace"))
+        chiavi = lambda v: {(v["file"], r) for r in v.get("righe") or [v["riga"]]}
+        prima_k = set().union(*[chiavi(v) for v in ra.values()]) if ra else set()
+        ora_k = set().union(*[chiavi(v) for v in rb.values()]) if rb else set()
+        nuovi = [{"n": n, "riferimento": v["riferimento"], "file": v["file"], "riga": v["riga"]}
+                 for n, v in rb.items() if not chiavi(v) & prima_k]
+        tolti = [{"riferimento": v["riferimento"], "file": v["file"], "riga": v["riga"]}
+                 for v in ra.values() if not chiavi(v) & ora_k]
+        breve_a, breve_b = _risposta_breve(g), _risposta_breve(f)
+
+        def pulisci(t):
+            return re.sub(r"\s+", " ", t or "").strip()
+        return {"precedente": {"file": g.name, "data": _data(g),
+                               "documento": "/documento?" + urllib.parse.urlencode(
+                                   {"risposta": g.name})},
+                "nuovi": nuovi, "tolti": tolti, "risposta_prima": breve_a, "risposta_ora": breve_b,
+                "risposta_cambiata": pulisci(breve_a) != pulisci(breve_b)}
+
+    def consumo(self):
+        """Richieste e token di oggi e degli ultimi 7 giorni (system/usage.jsonl, scritto da llm.py), per profilo,
+        e i lotti della lettura, con cui la pagina stima quante richieste costerà una ricerca."""
+        c = self.cfg()
+        lotti = {"smistamento": c.getint("estrazione", "lotto_smistamento", fallback=6),
+                 "analisi": c.getint("estrazione", "lotto_analisi", fallback=3)}
+        try:
+            f = percorso(c, "lavori").parent / "usage.jsonl"
+        except Exception:
+            return {"oggi": None, "lotti": lotti}
+        oggi = dt.date.today()
+        giorni = {(oggi - dt.timedelta(days=k)).isoformat() for k in range(7)}
+
+        def vuoto():
+            return {"richieste": 0, "ingresso": 0, "uscita": 0, "cache": 0}
+        tot_oggi, tot_sett, per_servizio = vuoto(), vuoto(), {}
+        for r in _coda_jsonl(f, 4_000_000):
+            g = r.get("giorno")
+            if g not in giorni:
+                continue
+            gruppi = [tot_sett]
+            if g == oggi.isoformat():
+                gruppi += [tot_oggi, per_servizio.setdefault(r.get("profilo") or r.get("servizio") or "?", vuoto())]
+            for t in gruppi:
+                t["richieste"] += 1
+                for k in ("ingresso", "uscita", "cache"):
+                    t[k] += int(r.get(k) or 0)
+        return {"oggi": tot_oggi, "settimana": tot_sett, "per_servizio": per_servizio, "lotti": lotti}
+
+    # ------------------------------------------------------------ esportazioni
+    def esporta(self, formato, risposta="", ricerca="", base=""):
+        """(byte, tipo, nome del file) di un'esportazione (esporta.py). CSL e BibTeX: i documenti citati nella
+        risposta, o quelli con passaggi pertinenti; CSV: i passaggi letti; Word: la risposta con le note."""
+        import esporta
+        if formato not in esporta.FORMATI:
+            raise Errore("Formato sconosciuto: csl, bibtex, csv o docx.")
+        tipo, est = esporta.FORMATI[formato]
+        dati = self.passaggi(risposta, ricerca)
+        nome = Path(risposta).stem if risposta else ricerca
+        if formato == "csv":
+            return esporta.tabella_csv(dati["passaggi"], base).encode("utf-8"), tipo, nome + "_passaggi" + est
+        if formato == "docx":
+            md = (self.documento(risposta).with_suffix(".md") if risposta
+                  else self._cartella_ricerca_nome(ricerca) / "risposta.md")
+            if not md.is_file():
+                raise Errore("Questa ricerca non ha ancora una risposta da esportare.")
+            testo = md.read_text(encoding="utf-8", errors="replace")
+            pulito = re.sub(r"<!--.*?-->\s*", "", testo, flags=re.DOTALL)
+            sez1 = next((x for x in re.split(r"^(?=## \d+\.)", pulito, flags=re.MULTILINE)
+                         if re.match(r"## 1\.", x)), "")
+            riferimenti = {n: r.replace("*", "") for n, r in M._mappa_riferimenti(sez1).items()}
+            for n, v in dati["rimandi"].items():
+                riferimenti.setdefault(int(n), v["riferimento"])
+            return esporta.docx(testo, riferimenti), tipo, nome + est
+        # documenti: i citati (rimandi) se ci sono, altrimenti quelli con passaggi pertinenti
+        pagine = {}
+        if dati["rimandi"]:
+            for v in dati["rimandi"].values():
+                pagine.setdefault(v["file"], set()).add(v.get("pagina") or "")
+        else:
+            for x in dati["passaggi"]:
+                if x.get("pertinente") == "sì":
+                    pagine.setdefault(x["file"], set()).add(x.get("pagina") or "")
+        documenti = []
+        for file, pp in pagine.items():
+            try:
+                testa = self._file_dati(file).read_text(encoding="utf-8", errors="replace")[:20000]
+            except (Errore, OSError):
+                continue
+            meta, _ = leggi_intestazione(testa)
+            documenti.append((meta, file, sorted(p for p in pp if p)))
+        documenti.sort(key=lambda d: (d[0].get("DATE") or d[0].get("YEAR") or "", d[1]))
+        corpo = esporta.csl(documenti) if formato == "csl" else esporta.bibtex(documenti)
+        return corpo.encode("utf-8"), tipo, nome + est
+
+    # ------------------------------------------------------------ salute delle scansioni
+    def salute_ocr(self):
+        """I documenti importati con un testo sospetto: confidenza dell'OCR sotto 70 (OCR_CONFIDENCE
+        dell'intestazione) o troppe «parole» che non sono parole (segni, cifre e lettere mescolate, lettere
+        isolate: il segno di un OCR fallito o della lingua sbagliata). Il peggiore per primo."""
+        dati = percorso(self.cfg(), "dati")
+        out, esaminati = [], 0
+        for f in sorted(dati.rglob("*.txt")):
+            try:
+                with open(f, encoding="utf-8", errors="replace") as h:
+                    testo = h.read(40000)
+            except OSError:
+                continue
+            esaminati += 1
+            meta, inizio = leggi_intestazione(testo)
+            metodo = " ".join((meta.get("TEXT_METHOD") or "", meta.get("METADATA_SOURCE") or "")).lower()
+            if not (meta.get("OCR_ENGINE") or meta.get("OCR_CONFIDENCE") or "ocr" in metodo):
+                continue                                      # testo nativo o trascrizione: niente OCR da rifare
+            try:
+                conf = float(meta.get("OCR_CONFIDENCE") or "")
+            except ValueError:
+                conf = None
+            rumore = _rumore(testo[inizio:])
+            if (conf is not None and conf < 70) or rumore >= 0.25:
+                motivi = []
+                if conf is not None and conf < 70:
+                    motivi.append(f"confidenza dell'OCR {conf:g}")
+                if rumore >= 0.25:
+                    motivi.append(f"{round(rumore * 100)}% di parole illeggibili")
+                out.append({"file": f.relative_to(dati).as_posix(), "titolo": meta.get("TITLE") or f.stem,
+                            "serie": meta.get("SERIES", ""), "lingua": meta.get("LANG", ""),
+                            "originale": meta.get("SOURCE_FILE", ""), "confidenza": conf,
+                            "rumore": round(rumore, 2), "motivi": motivi,
+                            "gravita": (70 - (conf if conf is not None else 70)) / 70 + rumore})
+        out.sort(key=lambda x: -x["gravita"])
+        return {"documenti": out[:200], "esaminati": esaminati, "sospetti": len(out)}
+
+    def rifai_ocr(self, file, lingue=""):
+        """Reimporta un documento dall'originale con l'OCR forzato e le lingue scelte (importa.py --ocr sempre
+        --lingue …), conservando serie e metadati principali dell'intestazione. Il documento nuovo sostituisce il
+        vecchio; lo stato si segue come ogni importazione."""
+        f = self._file_dati(file)
+        meta, _ = leggi_intestazione(f.read_text(encoding="utf-8", errors="replace")[:20000])
+        rel = (meta.get("SOURCE_FILE") or "").replace("\\", "/")
+        if not rel:
+            raise Errore("Il documento non ricorda il suo originale (SOURCE_FILE): reimportalo dalla scheda Importa.")
+        originali = percorso(self.cfg(), "originali").resolve()
+        orig = (originali / rel).resolve()
+        if originali not in orig.parents or not orig.is_file():
+            raise Errore(f"L'originale «{rel}» non è più in sources/.")
+        lingue = "+".join(x for x in re.split(r"[+,;\s]+", lingue or "") if re.fullmatch(r"[a-z_]{3,8}", x))
+        r = M.t_importa_fonti(str(orig), meta.get("SERIES", ""), data=meta.get("DATE", ""),
+                              numero=meta.get("ISSUE", ""), titolo=meta.get("TITLE", ""),
+                              autore=meta.get("AUTHOR", ""), anno=meta.get("YEAR", ""), volume=meta.get("VOLUME", ""),
+                              sovrascrivi=True, lingue=lingue, ocr="sempre")
+        if r.get("errore"):
+            raise Errore(r["errore"])
+        r.pop("nota", None)
+        return r
 
     def glossario(self):
         """Schede delle entità e profili delle serie del progetto (in sola lettura)."""
@@ -1188,6 +1585,98 @@ class App:
                 "cartella_progetti": str(self.cartella_progetti), "ricerca": self.stato_ricerca()}
 
 
+def _ids_jsonl(f):
+    """Gli «id» di un file .jsonl (insieme vuoto se manca), senza decodificare ogni riga."""
+    try:
+        with open(f, encoding="utf-8") as h:
+            return {m.group(1) for m in (re.search(r'"id":\s*"([^"]+)"', r) for r in h) if m}
+    except OSError:
+        return set()
+
+
+def _vista_lettura(p):
+    """Una lettura di classificati.jsonl come la mostra la pagina (pannello dei passaggi, lettura dal vivo)."""
+    a = p.get("analisi") or {}
+    lettura = (a.get("provenienza") or {}).get("lettura") or {}
+    decisione = (a.get("provenienza") or {}).get("decisione") or {}
+    return {"id": p.get("id", ""), "entita": p.get("entita", ""), "data": p.get("data", "") or "",
+            "fonte": p.get("citazione") or p.get("fonte", ""), "serie": p.get("fonte", ""),
+            "pagina": str(a.get("pagina") or ""), "pertinente": a.get("pertinente", ""),
+            "letto_da": lettura.get("da") or a.get("modello_analisi", "") or decisione.get("da", ""),
+            "traduzione": a.get("traduzione_it") or "", "file": p.get("file", ""), "riga": str(p.get("riga", "")),
+            "corretto": bool(a.get("corretto_a_mano"))}
+
+
+def _chiave_risposta(md):
+    """(entità, modalità) di una risposta salvata, dall'intestazione: le risposte con la stessa chiave si
+    confrontano. None per le risposte senza intestazione."""
+    try:
+        with open(md, encoding="utf-8", errors="replace") as h:
+            testa = h.read(800)
+    except OSError:
+        return None
+    m = re.search(r"<!-- Domanda: .*? \| entità: (.*?) \| (occorrenze|evoluzione)", testa)
+    return (m.group(1).strip().lower(), m.group(2)) if m else None
+
+
+def _risposta_breve(md):
+    """La sezione «Risposta finale» di una risposta salvata, con i rimandi [n] com'erano (non i riferimenti
+    interi): due di queste si leggono una accanto all'altra nel confronto."""
+    try:
+        testo = re.sub(r"<!--.*?-->\s*", "", md.read_text(encoding="utf-8", errors="replace"), flags=re.DOTALL)
+    except OSError:
+        return ""
+    m = re.search(r"^## \d+\.\s*Risposta finale[^\n]*\n(.*?)(?=^## |\Z)", testo, flags=re.MULTILINE | re.DOTALL)
+    return m.group(1).strip() if m else ""
+
+
+def _coda_jsonl(f, quanto):
+    """Le righe JSON degli ultimi «quanto» byte di un file (il registro dei consumi cresce: basta la coda)."""
+    try:
+        with open(f, "rb") as h:
+            h.seek(0, os.SEEK_END)
+            fine = h.tell()
+            h.seek(max(0, fine - quanto))
+            dati = h.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    righe = dati.splitlines()
+    if fine > quanto:
+        righe = righe[1:]                    # la prima riga può essere tagliata a metà
+    out = []
+    for r in righe:
+        try:
+            out.append(json.loads(r))
+        except ValueError:
+            continue
+    return out
+
+
+_PAROLA = re.compile(r"\S+")
+_BUONA = re.compile(r"^[\(\[«“\"']*[^\W\d_]{2,}(?:[-'’][^\W\d_]+)*[\)\]»”\"'.,;:!?]*$|^\d+[.,]?\d*[.,;:]?$")
+
+
+def _rumore(testo):
+    """La parte (0-1) delle «parole» di un testo che non sono né parole né numeri: mescolanze di lettere, cifre e
+    segni («fl;Ja», «t3e»), lettere isolate. Sopra 0,25 un testo stampato è quasi sempre un OCR fallito o letto
+    con la lingua sbagliata. Le righe di marcatori ([[p. 3]]) e le scritture senza spazi (cinese) non contano."""
+    parole = [w for w in _PAROLA.findall(re.sub(r"\[\[[^\]]*\]\]", " ", testo[:30000]))
+              if not re.search(r"[㐀-鿿]", w)]
+    if len(parole) < 50:
+        return 0.0
+    cattive = sum(1 for w in parole if not _BUONA.match(w) and w not in ("-", "–", "—", "e", "a", "o", "i", "y", "à"))
+    return cattive / len(parole)
+
+
+def _righe_jsonl(f):
+    """Righe non vuote di un file .jsonl (0 se manca)."""
+    try:
+        with open(f, encoding="utf-8") as h:
+            return sum(1 for r in h if r.strip())
+    except OSError:
+        return 0
+
+
 def _elenco(v):
     if not v:
         return []
@@ -1207,18 +1696,32 @@ def _anno(v):
 
 def _testa_risposta(md):
     """(entità, domanda) dalle prime righe di una risposta.md («# Nome» e «*Domanda:* ...»); vuote se mancano."""
-    entita = domanda = ""
+    t = _intestazione_risposta(md)
+    return t["entita"], t["domanda"]
+
+
+def _intestazione_risposta(md):
+    """Le prime righe di una risposta.md: entità («# Nome», senza «: evoluzione nelle fonti»), domanda, documenti
+    pertinenti («*Generato il … — documenti pertinenti: N*») e se è una ricerca dell'evoluzione. Servono ai recenti
+    per distinguere le risposte di prima dei fili, che non hanno filtri salvati."""
+    t = {"entita": "", "domanda": "", "pertinenti": "", "evoluzione": False}
     try:
         with open(md, encoding="utf-8", errors="replace") as h:
             for r, _ in zip(h, range(12)):
-                if not entita and r.startswith("# "):
-                    entita = r[2:].strip()
+                if not t["entita"] and r.startswith("# "):
+                    nome = r[2:].strip()
+                    if nome.endswith(": evoluzione nelle fonti"):
+                        nome, t["evoluzione"] = nome[:-len(": evoluzione nelle fonti")], True
+                    t["entita"] = nome
                 m = re.match(r"\*Domanda:\*\s*(.+)", r.strip())
                 if m:
-                    domanda = m.group(1).strip()
+                    t["domanda"] = m.group(1).strip()
+                m = re.search(r"documenti pertinenti:\s*(\d+)", r)
+                if m and not t["pertinenti"]:
+                    t["pertinenti"] = m.group(1)
     except OSError:
         pass
-    return entita, domanda
+    return t
 
 
 def _data(f):
@@ -1301,8 +1804,11 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/filo": lambda a, q: a.filo(q.get("id", "")),
        "/api/avvio": lambda a, q: a.avvio(),
        "/api/ambiente": lambda a, q: a.ambiente(),
-       "/api/client": lambda a, q: a.client(q.get("nome", "")),
-       "/api/lingue": lambda a, q: a.lingue()}
+       "/api/lingue": lambda a, q: a.lingue(),
+       "/api/ricerca/letture": lambda a, q: a.letture_ricerca(q.get("dopo", "0")),
+       "/api/confronto": lambda a, q: a.confronto(q.get("risposta", "")),
+       "/api/consumo": lambda a, q: a.consumo(),
+       "/api/salute-ocr": lambda a, q: a.salute_ocr()}
 POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/progetto/nuovo": lambda a, d: a.nuovo_progetto(d.get("nome", ""), d.get("descrizione", "")),
         "/api/modello/usa": lambda a, d: a.usa_modello(d.get("nome", ""), ruoli=d.get("ruoli")),
@@ -1319,21 +1825,29 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
             d.get("servizio", ""), d.get("modello", ""), d.get("nome", ""), d.get("url", ""),
             d.get("chiave_env", ""), d.get("chiave", ""), bool(d.get("salva_chiave")), d.get("usa", True) is not False),
         "/api/entita": lambda a, d: a.entita(d.get("nome", "")),
+        "/api/precedenti": lambda a, d: a.precedenti(d.get("entita", "")),
+        "/api/righe": lambda a, d: a.conta_righe(d.get("varianti"), d.get("dal"), d.get("al"), d.get("fonti")),
         "/api/esplora": lambda a, d: a.esplora(d.get("nome", ""), d.get("indizi"), d.get("candidate")),
         "/api/scheda": lambda a, d: a.crea_scheda(d.get("nome", ""), d.get("varianti"), d.get("forme_ambigue"),
-                                                 d.get("tipo", ""), d.get("contesto")),
+                                                 d.get("tipo", ""), d.get("contesto"), d.get("scartate"),
+                                                 d.get("cercato", "")),
         "/api/ricerca/avvia": lambda a, d: a.avvia(d.get("entita", ""), d.get("domanda", ""), d.get("dal"),
                                                   d.get("al"), d.get("fonti"), bool(d.get("evoluzione"))),
         "/api/ricerca/ferma": lambda a, d: a.ferma(),
+        "/api/ricerca/riprova": lambda a, d: a.riprova_ricerca(),
+        "/api/passaggio/correggi": lambda a, d: a.correggi_passaggio(d.get("ricerca", ""), d.get("id", ""),
+                                                                     d.get("pertinente"), d.get("traduzione")),
+        "/api/rifai-ocr": lambda a, d: a.rifai_ocr(d.get("file", ""), d.get("lingue", "")),
         "/api/importa": lambda a, d: a.importa(d.get("azione", ""), d.get("percorso", ""), d.get("serie", ""),
                                                d.get("prova", False), d.get("sovrascrivi", False)),
         "/api/tabella": lambda a, d: a.salva_tabella(d.get("percorso", ""), d.get("righe")),
         "/api/conversazione": lambda a, d: a.conversa(d.get("testo", "")),
         "/api/conversazione/nuova": lambda a, d: a.nuova_conversazione(),
-        "/api/client": lambda a, d: a.collega_client(d.get("nome", "")),
         "/api/lingue": lambda a, d: a.scarica_lingua(d.get("codice", "")),
         "/api/lingue/cartella": lambda a, d: a.cartella_lingue_propria(),
         "/api/filo": lambda a, d: a.salva_filo(d.get("filo")),
+        "/api/filo/rinomina": lambda a, d: a.rinomina_filo(d.get("id", ""), d.get("titolo", "")),
+        "/api/filo/elimina": lambda a, d: a.elimina_filo(d.get("id", "")),
         "/api/scegli-cartella": lambda a, d: {"percorso": scegli_cartella()},
         "/api/guida": lambda a, d: {"aperta": webbrowser.open(GUIDA)}}
 
@@ -1423,6 +1937,16 @@ def gestore(app):
                 return self._invia(200, f.read_bytes(), "text/html; charset=utf-8",
                                    {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
                                                                "img-src data:"})
+            if u.path == "/esporta":
+                try:
+                    host = self.headers.get("Host") or ""
+                    corpo, tipo, nome = app.esporta(q.get("formato", ""), q.get("risposta", ""), q.get("ricerca", ""),
+                                                    f"http://{host}" if host else "")
+                except Errore as e:
+                    return self._invia(404, f"<!doctype html><meta charset=utf-8><p>{e}</p>", "text/html; charset=utf-8")
+                nome_ascii = re.sub(r"[^\w.-]", "_", nome.encode("ascii", "ignore").decode()) or "pressmark"
+                return self._invia(200, corpo, tipo, {"Content-Disposition": f"attachment; filename=\"{nome_ascii}\"; "
+                                                      f"filename*=UTF-8''{urllib.parse.quote(nome)}"})
             if u.path == "/fonte/pagina":
                 try:
                     png = app.immagine_pagina(q.get("file", ""), q.get("pdf", ""))
@@ -1430,11 +1954,11 @@ def gestore(app):
                     return self._invia(404, {"errore": str(e)})
                 return self._invia(200, png, "image/png")
             nome = "index.html" if u.path == "/" else u.path.lstrip("/")
-            base = PAGINE
-            if nome.startswith("marchio/"):
-                base, nome = MARCHIO, nome[len("marchio/"):]
+            base, tipi = PAGINE, TIPI
+            if nome.startswith("marchio/"):              # da assets solo le immagini SVG del marchio
+                base, nome, tipi = MARCHIO, nome[len("marchio/"):], {".svg": TIPI[".svg"]}
             f = (base / nome).resolve()
-            if base.resolve() not in f.parents or not f.is_file() or f.suffix not in TIPI:
+            if base.resolve() not in f.parents or not f.is_file() or f.suffix not in tipi:
                 return self._invia(404, {"errore": "Non trovato."})
             self._invia(200, f.read_bytes(), TIPI[f.suffix],
                         {"Content-Security-Policy": "default-src 'self'; style-src 'self'; script-src 'self'; "
@@ -1486,6 +2010,10 @@ def _avvia_finestra_propria(server, url, senza_browser):
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     try:
+        try:                                     # le esportazioni (Word, BibTeX, CSV) si scaricano anche qui
+            webview.settings["ALLOW_DOWNLOADS"] = True
+        except (AttributeError, TypeError):      # pywebview vecchio: niente scaricamenti dalla finestra
+            pass
         FINESTRA["w"] = webview.create_window("Pressmark", url, width=1200, height=800, min_size=(900, 600))
         webview.start()
     except Exception as e:          # per esempio WebView2 assente: si ripiega sul browser

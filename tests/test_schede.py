@@ -1,6 +1,6 @@
 """
-Test del controllo delle schede (schede.py) sulle forme ambigue che non sono tra le varianti, e dell'avviso del
-server MCP quando la chat crea una scheda così. Schede in una cartella temporanea.
+Test del controllo delle schede (schede.py) sulle forme ambigue che non sono tra le varianti, e dell'avviso dello
+strumento schede quando la conversazione crea una scheda così. Schede in una cartella temporanea.
 """
 import os
 import sys

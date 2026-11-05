@@ -5,5 +5,3 @@
 # Sotto la 2.0: la 2.0 porta con sé pymupdf4llm, onnxruntime e numpy (circa 90 MB), che il motore non usa
 PyMuPDF>=1.24,<2
 pywebview>=5.0
-# PaddleOCR (motore OCR alternativo per il cinese) va in un Python a parte: vedi docs/user_guide.it.md,
-# «Prova dei motori OCR».

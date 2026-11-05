@@ -32,8 +32,8 @@ cartella `scripts` del motore; su macOS e Linux il comando può chiamarsi `pytho
   presso il servizio; i servizi gratuiti ritirano spesso i modelli. Crea un altro profilo con
   `python installa.py modello`: con la chiave, la procedura elenca i modelli che il servizio offre davvero.
 - **«Manca la chiave» o «variabile … assente»**: la variabile d'ambiente della chiave non c'è nel terminale (o
-  nel client di chat) in uso. Dopo averla salvata (Windows `setx NOME "..."`; macOS e Linux una riga
-  `export NOME="..."` in `~/.zprofile` o `~/.profile`) chiudi e riapri il terminale e riavvia il client di chat:
+  nell'interfaccia) in uso. Dopo averla salvata (Windows `setx NOME "..."`; macOS e Linux una riga
+  `export NOME="..."` in `~/.zprofile` o `~/.profile`) chiudi e riapri il terminale e riavvia l'interfaccia:
   i programmi già aperti non vedono le variabili nuove.
 - **Errore 401 o 403**: chiave sbagliata o scaduta. **Errore 404**: modello ritirato. Controlla con
   `python installa.py modello prova <profilo>`.
@@ -62,28 +62,16 @@ cartella `scripts` del motore; su macOS e Linux il comando può chiamarsi `pytho
   scheda. Una forma messa solo in `forme_ambigue` non viene cercata: va anche in `varianti`.
   `python schede.py controlla` lo segnala.
 - **«Indice delle fonti in costruzione»**: la prima volta, su un corpus grande, l'indice richiede 10-30 minuti;
-  nel frattempo la chat lo dice. A mano: `python indice.py costruisci`.
+  nel frattempo la conversazione lo dice. A mano: `python indice.py costruisci`.
 
-## Chat (Jan, Claude Desktop, LM Studio)
+## Conversazione sulle fonti
 
-- **Hai configurato il programma quando si chiamava AIrchivist**: la voce `airchivist` nel client resta com'è e
-  `installa.py client <nome> --scrivi` la aggiorna invece di aggiungerne una seconda. La variabile d'ambiente
-  `AIRCHIVIST_PROGETTO` va rinominata in `PRESSMARK_PROGETTO` dove l'hai impostata (anche nelle voci del client):
-  il nome vecchio non si legge più. Una copia installata continua a usare `%APPDATA%\AIrchivist` finché non c'è
-  una cartella `%APPDATA%\Pressmark`.
-- **Il server di Pressmark non compare o è spento**: riavvia il client dopo `installa.py client <nome>
-  --scrivi`. In Jan la voce scritta a programma aperto si perde (Jan riscrive i suoi file quando si chiude):
-  chiudi Jan, rilancia il comando, riapri Jan. Controlla poi il collegamento con
-  `python installa.py client --verifica`.
-- **Il client non trova `python`**: il comando della voce del server dev'essere il percorso completo
-  dell'interprete; `installa.py client <nome> --scrivi` lo scrive così.
-- **La chat risponde senza usare gli strumenti**: il modello della chat deve saper usare gli strumenti (in Jan:
-  **Tools** attivo sul modello) e la ricerca web dev'essere spenta. Se le istruzioni del server non arrivano al
-  modello, scrivi all'inizio della conversazione «chiama lo strumento guida».
-- **La chat dice che la ricerca non finisce**: le ricerche girano in un processo a sé e continuano anche se la
-  chat smette di aspettare. Chiedi «a che punto è la ricerca?»: l'assistente la ritrova.
-- **Il risultato di uno strumento è tagliato**: il client accetta meno caratteri di quelli che il server manda.
-  In Jan il valore giusto (8000) lo imposta `installa.py client jan --scrivi`; per altri client abbassa `[mcp]
-  max_caratteri` in `config.ini`.
-- **«All models exhausted»** (FreeLLMAPI): le quote gratuite del momento sono finite per il modello della chat.
-  Riprova più tardi; le ricerche già avviate aspettano e riprendono da sole.
+- **Hai configurato il programma quando si chiamava AIrchivist**: la variabile d'ambiente `AIRCHIVIST_PROGETTO` va
+  rinominata in `PRESSMARK_PROGETTO` dove l'hai impostata: il nome vecchio non si legge più. Una copia installata
+  continua a usare `%APPDATA%\AIrchivist` finché non c'è una cartella `%APPDATA%\Pressmark`.
+- **La conversazione resta disattivata**: la prova all'apertura dice che il modello scelto non sa usare gli
+  strumenti. Scegli un altro profilo per la sintesi, oppure usa il percorso guidato della ricerca.
+- **La conversazione dice che la ricerca non finisce**: le ricerche girano in un processo a sé e continuano anche se
+  la conversazione smette di aspettare. Seguila nel riquadro della ricerca, o chiedi «a che punto è la ricerca?».
+- **«All models exhausted»** (FreeLLMAPI): le quote gratuite del momento sono finite. Riprova più tardi; le
+  ricerche già avviate aspettano e riprendono da sole.
