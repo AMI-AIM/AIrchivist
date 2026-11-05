@@ -36,6 +36,11 @@ profilo = groq-personale
 analisi = altro
 file_profili = D:\\miei\\models.ini
 
+[router]
+# FreeLLMAPI sul PC di chi costruisce
+url = http://127.0.0.1:31415/v1
+chiave_env = FREELLMAPI_KEY
+
 [ocr]
 tesseract = C:\\Tesseract\\tesseract.exe
 modelli = D:\\tessdata
@@ -51,7 +56,7 @@ class Confezione(unittest.TestCase):
         cp = configparser.ConfigParser(interpolation=None)
         cp.read_string(testo)
         self.assertEqual(cp.get("progetto", "cartella"), "")
-        for voce in ("profilo", "analisi", "file_profili"):
+        for voce in ("profilo", "analisi", "file_profili", "backend"):
             self.assertFalse(cp.has_option("modello", voce), voce)
         self.assertEqual(cp.get("modello", "timeout"), "300")
         self.assertEqual(cp.get("ocr", "tesseract"), "")
@@ -59,6 +64,9 @@ class Confezione(unittest.TestCase):
         self.assertEqual(cp.get("estrazione", "finestra"), "400")
         self.assertIn("# commento", testo)
         self.assertNotIn("qualcuno", testo)
+        self.assertFalse(cp.has_section("router"))
+        self.assertNotIn("31415", testo)
+        self.assertNotIn("FreeLLMAPI", testo)
 
     def test_config_del_repository(self):
         """Il config.ini vero, ripulito, non sceglie né progetto né profilo."""
@@ -66,6 +74,31 @@ class Confezione(unittest.TestCase):
         cp.read_string(C.config_pulito((RADICE / "scripts" / "config.ini").read_text(encoding="utf-8")))
         self.assertEqual(cp.get("progetto", "cartella", fallback=""), "")
         self.assertFalse(cp.has_option("modello", "profilo"))
+        self.assertFalse(cp.has_option("modello", "backend"))
+        self.assertFalse(set(C.SEZIONI_PRECEDENTI) & set(cp.sections()))
+
+    def test_config_del_repository_senza_scelte_locali(self):
+        """Il config.ini sotto git non porta il servizio, gli indirizzi o le chiavi di chi lo sviluppa."""
+        testo = (RADICE / "scripts" / "config.ini").read_text(encoding="utf-8")
+        cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=("#",))
+        cp.read_string(testo)
+        self.assertFalse(cp.has_option("modello", "backend"))
+        self.assertFalse(set(C.SEZIONI_PRECEDENTI) & set(cp.sections()))
+        for segno in ("127.0.0.1", "localhost", "_API_KEY", "FREELLMAPI", "auto:ricerca"):
+            self.assertNotIn(segno, testo)
+
+    @unittest.skipUnless(os.name == "nt", "solo Windows")
+    def test_dll_di_tesseract(self):
+        """Delle DLL accanto a Tesseract si copiano solo quelle che tesseract.exe carica (non pango, cairo, ICU degli
+        strumenti di addestramento)."""
+        trovato = importa.cerca_tesseract(configparser.ConfigParser())
+        if not trovato:
+            self.skipTest("Tesseract non installato")
+        cartella = Path(trovato).parent
+        nomi = {f.name.lower() for f in C.dll_necessarie(cartella)}
+        self.assertTrue(any(n.startswith("libtesseract") for n in nomi), nomi)
+        self.assertFalse({n for n in nomi if n.startswith(("libpango", "libcairo", "libicu"))})
+        self.assertIn("kernel32.dll", C.importazioni_pe(cartella / "tesseract.exe"))
 
     def test_file_del_motore(self):
         nomi = {f.relative_to(RADICE / "scripts").as_posix() for f in C.file_del_motore()}

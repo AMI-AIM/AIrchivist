@@ -811,6 +811,244 @@ class Interfaccia(unittest.TestCase):
         finally:
             cattivo.unlink()
 
+    def _glossario_di_prova(self):
+        """entities.ini e series.ini del progetto tornano come erano alla fine del test (le copie del giorno pure)."""
+        g = self.p1 / "glossary"
+        prima = {f: f.read_bytes() for f in (g / "entities.ini", g / "series.ini")}
+
+        def ripristina():
+            for f, b in prima.items():
+                f.write_bytes(b)
+            for f in g.glob("*.pressmark-*.bak"):
+                f.unlink()
+        self.addCleanup(ripristina)
+        (g / "entities.ini").write_text(
+            "# commento in testa\n\n" + SCHEDA + "nome_completo = Enrico Berlinguer\ncollegate = PCI\n\n"
+            "# il partito\n[PCI]\ntipo = organizzazione\nvarianti = PCI; 意共\ncollegate = Enrico Berlinguer\n",
+            encoding="utf-8")
+        return g / "entities.ini"
+
+    def test_modifica_schede(self):
+        f = self._glossario_di_prova()
+        codice, r = self.get("/api/scheda?nome=" + quote("Enrico Berlinguer"))
+        self.assertEqual(codice, 200, r)
+        self.assertEqual((r["varianti"], r["campi"]["nome_completo"]), (["贝林格"], "Enrico Berlinguer"))
+        codice, r = self.post("/api/scheda/modifica", {"nome": "Enrico Berlinguer", "campi": {
+            "varianti": ["贝林格", "Berlinguer"], "forme_ambigue": ["Berlinguer"], "tipo": "persona", "note": "Segretario"}})
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["nuove"], ["Berlinguer"])
+        self.assertEqual(sorted(r["cambiati"]), ["forme_ambigue", "note", "varianti"])
+        testo = f.read_text(encoding="utf-8")
+        self.assertIn("# commento in testa", testo)                     # commenti e campi sconosciuti restano
+        self.assertIn("nome_completo = Enrico Berlinguer", testo)
+        self.assertIn("varianti = 贝林格; Berlinguer", testo)
+        self.assertTrue(list(f.parent.glob("entities.ini.pressmark-*.bak")))
+        registro = (self.p1 / "audit" / "changes.csv").read_text(encoding="utf-8-sig")
+        self.assertIn("glossary/entities.ini [Enrico Berlinguer],varianti,贝林格,贝林格; Berlinguer", registro)
+        for dati in ({"nome": "Enrico Berlinguer", "campi": {"varianti": []}},
+                     {"nome": "Enrico Berlinguer", "campi": {"tipo": "pianeta"}},
+                     {"nome": "Assente", "campi": {"note": "x"}}, {"nome": "Enrico Berlinguer", "campi": {}}):
+            self.assertEqual(self.post("/api/scheda/modifica", dati)[0], 400, dati)
+        # rinomina: le collegate delle altre schede seguono
+        codice, r = self.post("/api/scheda/rinomina", {"nome": "PCI", "nuovo": "Partito comunista italiano"})
+        self.assertEqual(codice, 200, r)
+        testo = f.read_text(encoding="utf-8")
+        self.assertIn("[Partito comunista italiano]", testo)
+        self.assertIn("collegate = Partito comunista italiano", testo)
+        self.assertIn("# il partito\n[Partito comunista italiano]", testo)
+        self.assertEqual(self.post("/api/scheda/rinomina", {"nome": "Enrico Berlinguer",
+                                                            "nuovo": "Partito comunista italiano"})[0], 400)
+        self.assertEqual(self.post("/api/scheda/rinomina", {"nome": "Enrico Berlinguer", "nuovo": "a [b]"})[0], 400)
+        # unisci, poi elimina
+        codice, r = self.post("/api/scheda/unisci", {"da": "Partito comunista italiano", "verso": "Enrico Berlinguer"})
+        self.assertEqual(codice, 200, r)
+        s = self.get("/api/scheda?nome=" + quote("Enrico Berlinguer"))[1]
+        self.assertEqual(s["varianti"], ["贝林格", "Berlinguer", "PCI", "意共", "Partito comunista italiano"])
+        self.assertEqual(s["collegate"], [])
+        self.assertNotIn("[Partito comunista italiano]", f.read_text(encoding="utf-8"))
+        self.assertEqual(self.post("/api/scheda/elimina", {"nome": "Enrico Berlinguer"})[0], 200)
+        self.assertEqual(self.get("/api/glossario")[1]["schede"], [])
+        self.assertIn("# commento in testa", f.read_text(encoding="utf-8"))
+        # le modifiche sono POST: una GET non cambia nulla
+        self.assertEqual(self.get("/api/scheda/elimina?nome=x")[0], 404)
+
+    def test_pagina_forme_e_controllo(self):
+        self._glossario_di_prova()
+        codice, r = self.get("/api/scheda/pagina?nome=" + quote("Enrico Berlinguer"))
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["collegate"], [{"nome": "PCI", "esiste": True}])
+        self.assertTrue({"letti", "pertinenti", "per_anno", "per_serie", "risposte", "problemi"} <= set(r))
+        codice, r = self.get("/api/scheda/forme?nome=" + quote("Enrico Berlinguer"))
+        self.assertEqual(codice, 200, r)
+        self.assertIsInstance(r["forme"], list)
+        codice, r = self.post("/api/scheda/forme", {"nome": "Enrico Berlinguer", "aggiungi": ["Berlinguer"],
+                                                    "scarta": ["Berlinguér"]})
+        self.assertEqual(codice, 200, r)
+        self.assertIn("Berlinguer", self.get("/api/scheda?nome=" + quote("Enrico Berlinguer"))[1]["varianti"])
+        codice, r = self.post("/api/forme/conta", {"forme": ["贝林格", "nessunaformacosi"]})
+        self.assertEqual(codice, 200, r)
+        if r["conti"]["贝林格"] is not None:                    # con l'indice pronto
+            self.assertGreater(r["conti"]["贝林格"], 0)
+            self.assertEqual(r["conti"]["nessunaformacosi"], 0)
+            self.assertIn("riferimento", r["esempi"]["贝林格"])
+        # due schede con la stessa forma: un errore che si può risolvere unendole
+        self.post("/api/scheda/modifica", {"nome": "PCI", "campi": {"varianti": ["PCI", "Berlinguer"]}})
+        codice, r = self.get("/api/glossario/controllo")
+        self.assertEqual(codice, 200, r)
+        doppia = [p for p in r["problemi"] if "stessa forma" in p["problema"]]
+        self.assertTrue(doppia and doppia[0]["unibili"], r)
+        self.assertGreaterEqual(r["errori"], 1)
+
+    def test_passaggio_evidenziato_sulla_pagina(self):
+        """Il visore ritrova il capoverso della riga citata tra le parole del PDF (anche con accenti persi e un
+        a capo diverso, come in un OCR), segna la riga citata e offre lo strato di testo e l'originale."""
+        fitz = A._fitz()
+        if fitz is None:
+            self.skipTest("PyMuPDF non installato")
+        rel = "volumi/prova_evidenze/documento.txt"
+        pdf = self.p1 / "sources" / "volumi" / "prova_evidenze" / "documento.pdf"
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        doc = fitz.open()
+        pag = doc.new_page(width=400, height=500)
+        for k, riga in enumerate(["Intestazione della rivista", "Il comitato centrale si riunisce a",
+                                  "Tirana per discutere la questione", "dei rapporti con il partito italiano.",
+                                  "Altro capoverso che non c'entra", "con il passaggio cercato."]):
+            pag.insert_text((40, 60 + 30 * k), riga)
+        doc.save(pdf)
+        doc.close()
+        f = self.p1 / "data" / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("[DOC_ID: documento]\n[TITLE: Prova evidenze]\n[SOURCE_FILE: volumi/prova_evidenze/documento.pdf]\n"
+                     "[TEXT_METHOD: strato di testo del PDF]\n\n[[p. 1 | pdf 1]]\nIntestazione della rivista\n\n"
+                     "Il comitato centrale si riunisce a Tiranë\nper discutere la questione dei rapporti\n"
+                     "con il partito italiano.\n\nAltro capoverso che non c'entra\ncon il passaggio cercato.\n",
+                     encoding="utf-8")
+        cercata = 11                                      # «per discutere la questione dei rapporti»
+        codice, r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}")
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["evidenzia"], cercata)
+        alti = [round(e["r"][1] * 500) for e in r["evidenze"]]
+        # le tre righe del capoverso (y 90, 120, 150 meno l'altezza del corpo), non l'intestazione né l'altro
+        self.assertEqual(len(r["evidenze"]), 3, r["evidenze"])
+        self.assertTrue(all(70 < y < 150 for y in alti), alti)
+        citate = [e for e in r["evidenze"] if e["citata"]]
+        self.assertTrue(citate and len(citate) <= 2, r["evidenze"])
+        for e in r["evidenze"]:
+            self.assertTrue(all(0 <= v <= 1 for v in e["r"]), e)
+        self.assertEqual([x[4] for x in r["strato"]][:2], ["Intestazione della rivista", "Il comitato centrale si riunisce a"])
+        self.assertTrue(r["originale"].startswith("/fonte/pdf?") and r["originale"].endswith("#page=1"), r["originale"])
+        risposta, corpo = self.richiesta("GET", r["originale"].split("#")[0])
+        self.assertEqual((risposta.status, risposta.getheader("Content-Type")), (200, "application/pdf"))
+        self.assertTrue(corpo.startswith(b"%PDF"))
+        self.assertEqual(self.richiesta("GET", "/fonte/pdf?file=" + quote("../project.ini"))[0].status, 404)
+        self.assertEqual(self.richiesta("GET", r["originale"].split("#")[0], cookie=False)[0].status, 403)
+        # più definita per l'ingrandimento, entro un limite
+        piccola = self.richiesta("GET", r["immagine"])[1]
+        grande = self.richiesta("GET", r["immagine"] + "&dpi=300")[1]
+        enorme = self.richiesta("GET", r["immagine"] + "&dpi=5000")[1]
+        self.assertGreater(len(grande), len(piccola))
+        self.assertEqual(len(enorme), len(grande))
+        # una riga che sulla pagina non c'è: nessuna evidenza, invece di una sbagliata
+        f.write_text(f.read_text(encoding="utf-8").replace("per discutere la questione dei rapporti",
+                                                           "zzz qqq xxx www yyy kkk jjj"), encoding="utf-8")
+        f.write_text(f.read_text(encoding="utf-8").replace("Il comitato centrale si riunisce a Tiranë\n", "\n")
+                     .replace("con il partito italiano.\n", "\n"), encoding="utf-8")
+        r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}")[1]
+        self.assertEqual(r["evidenze"], [], r["evidenze"])
+        # strato scartato all'importazione (OCR rifatto): le parole vengono dall'OCR della pagina, letto alla
+        # seconda richiesta (la prima risponde subito con «ocr_pagina») e poi conservato nella cache del progetto
+        f.write_text("[DOC_ID: documento]\n[TITLE: Prova evidenze]\n[SOURCE_FILE: volumi/prova_evidenze/documento.pdf]\n"
+                     "[TEXT_METHOD: OCR proprio (strato scartato)]\n[LANG: it]\n\n[[p. 1 | pdf 1]]\n"
+                     "Intestazione della rivista\n\nIl comitato centrale si riunisce a Tiranë\n"
+                     "per discutere la questione dei rapporti\ncon il partito italiano.\n", encoding="utf-8")
+        cercata = 11                                      # «per discutere la questione dei rapporti»
+        righe_ocr = ["Intestazione della rivista", "Il comitato centrale si riunisce a Tiranë",
+                     "per discutere la questione dei rapporti", "con il partito italiano."]
+        letture = []
+
+        class FintoOcr:
+            dpi = 72
+
+            def __init__(self, cfg, lingue):
+                letture.append(lingue)
+
+            def leggi_parole(self, img, larghezza, altezza):
+                self.letta = Path(img).is_file()
+                return [[.1 + .1 * k, .1 + .1 * j, .18 + .1 * k, .13 + .1 * j, w, 1001, j]
+                        for j, riga in enumerate(righe_ocr) for k, w in enumerate(riga.split())]
+
+        import importa
+        with mock.patch.object(importa, "Ocr", FintoOcr):
+            r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}")[1]
+            self.assertEqual((r["strato"], r["evidenze"], r["ocr_pagina"], letture), ([], [], True, []))
+            r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}&ocr=1")[1]
+            self.assertEqual(letture, ["ita"])
+            self.assertFalse(r["ocr_pagina"])
+            self.assertEqual([x[4] for x in r["strato"]], righe_ocr)          # il testo dell'OCR, accenti compresi
+            self.assertEqual([round(e["r"][1], 2) for e in r["evidenze"]], [.2, .3, .4])
+            self.assertEqual([e["citata"] for e in r["evidenze"]], [False, True, False])
+            r = self.get("/api/fonte?file=" + quote(rel) + f"&riga={cercata}")[1]   # dalla cache: nessuna lettura
+            self.assertEqual((len(r["strato"]), r["ocr_pagina"], len(letture)), (4, False, 1))
+
+    def test_errori_evitati_e_corretti(self):
+        f = self._glossario_di_prova()
+        # prima di salvare: una forma breve non ambigua si vede subito, e il file non cambia
+        prima = f.read_bytes()
+        codice, r = self.post("/api/scheda/verifica", {"nome": "PCI", "campi": {"varianti": ["PCI", "Comunisti"],
+                                                                               "forme_ambigue": []}})
+        self.assertEqual(codice, 200, r)
+        self.assertTrue(any("forme brevi" in p["problema"] for p in r["problemi"]), r)
+        self.assertEqual(f.read_bytes(), prima)
+        r = self.post("/api/scheda/verifica", {"nome": "Nuova", "nuova": True,
+                                               "campi": {"varianti": ["Mario Rossi"], "note": "Un dirigente.",
+                                                         "tipo": "persona"}})[1]
+        self.assertEqual(r["problemi"], [])
+        r = self.post("/api/scheda/verifica", {"nome": "PCI", "nuova": True, "campi": {"varianti": ["x y"]}})[1]
+        self.assertIn("esiste già", r["problemi"][0]["problema"])
+        # correzioni dal controllo: nome_completo che ripete il nome, forme brevi
+        codice, r = self.get("/api/glossario/controllo")
+        corr = {(p["schede"][0], p["correzione"]["tipo"]) for p in r["problemi"] if p.get("correzione")}
+        self.assertIn(("Enrico Berlinguer", "campo:nome_completo"), corr)
+        self.assertIn(("PCI", "brevi"), corr)
+        codice, r = self.post("/api/scheda/correggi", {"tutte": True})
+        self.assertEqual(codice, 200, r)
+        testo = f.read_text(encoding="utf-8")
+        self.assertNotIn("nome_completo", testo)
+        self.assertIn("forme_ambigue = PCI; 意共", testo)
+        restano = self.get("/api/glossario/controllo")[1]
+        self.assertFalse([p for p in restano["problemi"] if p.get("correzione", {}).get("tipo") not in (None, "note")])
+        self.assertEqual(self.post("/api/scheda/correggi", {"nome": "PCI", "tipo": "inventata"})[0], 400)
+        # le forme suggerite accettate, se brevi, entrano già ambigue
+        codice, r = self.post("/api/scheda/forme", {"nome": "Enrico Berlinguer", "aggiungi": ["Enrico", "Enrico B."]})
+        self.assertEqual(r["ambigue"], ["Enrico"])                # «Enrico B.» ha due parole: non è breve
+        s = self.get("/api/scheda?nome=" + quote("Enrico Berlinguer"))[1]
+        self.assertIn("Enrico", s["forme_ambigue"])
+        self.assertNotIn("Enrico B.", s["forme_ambigue"])
+        # una scheda nuova con la descrizione la porta nelle note
+        codice, r = self.post("/api/scheda", {"nome": "Luigi Longo", "varianti": ["Luigi Longo", "Longo"],
+                                              "forme_ambigue": ["Longo"], "descrizione": "Segretario del PCI dal 1964."})
+        self.assertEqual(codice, 200, r)
+        self.assertIn("Segretario del PCI dal 1964.", self.get("/api/scheda?nome=" + quote("Luigi Longo"))[1]["note"])
+
+    def test_modifica_serie_e_anteprima(self):
+        self._glossario_di_prova()
+        codice, r = self.get("/api/serie?nome=" + quote("Renmin Ribao"))
+        self.assertEqual(codice, 200, r)
+        self.assertEqual(r["campi"]["lingua"], "zh")
+        codice, r = self.post("/api/serie/anteprima", {"nome": "Renmin Ribao", "campi": {}})
+        self.assertEqual(codice, 200, r)
+        self.assertIn("1980, p. 12", r["citazione"])
+        self.assertNotIn("errore", r)
+        codice, r = self.post("/api/serie/anteprima", {"nome": "Renmin Ribao",
+                                                       "campi": {"chicago": "*{sbagliato}*, {data}."}})
+        self.assertIn("{sbagliato}", r["errore"])
+        self.assertIn("data", r["segnaposti"])
+        codice, r = self.post("/api/serie/modifica", {"nome": "Renmin Ribao", "campi": {"sigla": "RMRB"}})
+        self.assertEqual((codice, r["cambiati"]), (200, ["sigla"]))
+        testo = (self.p1 / "glossary" / "series.ini").read_text(encoding="utf-8")
+        self.assertIn("sigla = RMRB", testo)
+        self.assertIn("# Progetto di prova dei test automatici", testo)
+
     def test_glossario(self):
         codice, r = self.get("/api/glossario")
         self.assertEqual(codice, 200, r)

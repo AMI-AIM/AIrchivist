@@ -15,9 +15,8 @@ scripts/config.utente.ini
 # Marcatore del programma installato (lo mette l'installatore: scripts/posizioni.py)
 scripts/installazione.ini
 
-# Costruzione del programma per Windows: file scaricati e risultato (confezione/costruisci.py)
-confezione/cache/
-confezione/uscita/
+# Costruzione del programma per Windows
+confezione/
 
 # File temporanei
 __pycache__/
@@ -30,9 +29,6 @@ __pycache__/
 .claude/
 .impeccable/
 .pytest_cache/
-
-# Carattere usato per disegnare il marchio: i file SVG di assets non ne hanno bisogno
-assets/atwriter.ttf
 
 # Sistema
 Thumbs.db

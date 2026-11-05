@@ -860,12 +860,34 @@ def come_salvare_variabile(nome, piattaforma=None):
     return f"aggiungi export {nome}=\"...\" a {profilo_shell}, poi riapri il terminale"
 
 
+# Le variabili d'ambiente che Pressmark ha salvato per l'utente, una per riga, nella cartella dei dati: la
+# disinstallazione, se l'utente lo chiede, toglie solo queste (non le chiavi che altri programmi possono usare).
+FILE_VARIABILI_SALVATE = "variabili_salvate.txt"
+
+
+def ricorda_variabile(nome):
+    """Aggiunge `nome` a variabili_salvate.txt (solo nel modo installato: nel modo sviluppo non c'è disinstallazione).
+    Un errore di scrittura non ferma il salvataggio della chiave."""
+    if not posizioni.installato():
+        return
+    f = posizioni.cartella_dati() / FILE_VARIABILI_SALVATE
+    try:
+        noti = set(f.read_text(encoding="utf-8").split()) if f.exists() else set()
+        if nome not in noti:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            with open(f, "a", encoding="utf-8") as d:
+                d.write(nome + "\n")
+    except OSError:
+        pass
+
+
 def salva_variabile(nome, valore, stampa):
     """Variabile d'ambiente dell'utente (solo dopo conferma). Su Windows con setx; altrove si spiega dove scriverla."""
     if os.name == "nt":
         r = subprocess.run(["setx", nome, valore], capture_output=True,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if r.returncode == 0:
+            ricorda_variabile(nome)
             stampa(f"Variabile {nome} salvata per il tuo utente: vale nei terminali e nei programmi aperti da adesso.")
             return True
         stampa(f"Non riesco a salvare la variabile {nome}: impostala a mano (vedi docs/user_guide.it.md).")

@@ -3,8 +3,8 @@
 ;   ISCC /DVersione=2026.11.01+e21b46b /DVersioneNumerica=2026.11.01 /DCartella=<cartella> /O<uscita> pressmark.iss
 ;
 ; Installa per il solo utente, senza amministratore, in %LOCALAPPDATA%\Programs\Pressmark. Le scelte e i progetti
-; dell'utente stanno altrove (%APPDATA%\Pressmark, Documenti\Pressmark): un aggiornamento o una disinstallazione
-; non li toccano.
+; dell'utente stanno altrove (%APPDATA%\Pressmark, Documenti\Pressmark): un aggiornamento non li tocca; la
+; disinstallazione chiede se togliere le impostazioni e le chiavi salvate da Pressmark (i progetti restano sempre).
 
 #ifndef Versione
   #define Versione "0.0.0"
@@ -47,6 +47,8 @@ it.Collegamento=Un collegamento sul desktop
 en.Collegamento=A desktop shortcut
 it.Apri=Apri Pressmark
 en.Apri=Open Pressmark
+it.TogliDati=Rimuovere anche le impostazioni di Pressmark (configurazione e profili dei modelli) e le chiavi dei servizi che Pressmark ha salvato tra le variabili del tuo utente?%n%nI progetti in Documenti\Pressmark restano in ogni caso.
+en.TogliDati=Also remove Pressmark's settings (configuration and model profiles) and the service keys Pressmark saved in your user environment variables?%n%nProjects in Documents\Pressmark are kept either way.
 
 [Tasks]
 Name: "desktop"; Description: "{cm:Collegamento}"; Flags: unchecked
@@ -76,3 +78,46 @@ Filename: "{app}\python\pythonw.exe"; Parameters: """{app}\scripts\app.py"""; Wo
 Type: filesandordirs; Name: "{app}\scripts"
 Type: filesandordirs; Name: "{app}\python"
 Type: filesandordirs; Name: "{app}\tesseract"
+
+[Code]
+// Su richiesta, la disinstallazione toglie anche i dati dell'utente in %APPDATA%\Pressmark e le variabili
+// d'ambiente elencate in variabili_salvate.txt (installa.ricorda_variabile): solo quelle salvate da Pressmark, non
+// chiavi con lo stesso nome impostate da altri programmi prima. I progetti (Documenti\Pressmark) non si toccano.
+// Senza domanda (disinstallazione silenziosa) i dati restano.
+const
+  WM_SETTINGCHANGE = $001A;
+  SMTO_ABORTIFHUNG = $0002;
+
+function SendMessageTimeout(hWnd: HWND; Msg: UINT; wParam: Longint; lParam: String; fuFlags, uTimeout: UINT;
+  var lpdwResult: DWORD): Longint;
+  external 'SendMessageTimeoutW@user32.dll stdcall';
+
+procedure TogliDatiUtente();
+var
+  Cartella: String;
+  Nomi: TArrayOfString;
+  I: Integer;
+  Nome: String;
+  Esito: DWORD;
+begin
+  Cartella := ExpandConstant('{userappdata}\Pressmark');
+  if LoadStringsFromFile(Cartella + '\variabili_salvate.txt', Nomi) then
+  begin
+    for I := 0 to GetArrayLength(Nomi) - 1 do
+    begin
+      Nome := Trim(Nomi[I]);
+      if Nome <> '' then
+        RegDeleteValue(HKEY_CURRENT_USER, 'Environment', Nome);
+    end;
+    // i programmi aperti da adesso (Esplora risorse compreso) vedono le variabili senza le chiavi tolte
+    SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, 'Environment', SMTO_ABORTIFHUNG, 5000, Esito);
+  end;
+  DelTree(Cartella, True, True, True);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
+    if MsgBox(CustomMessage('TogliDati'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      TogliDatiUtente();
+end;

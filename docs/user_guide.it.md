@@ -261,9 +261,18 @@ traduzioni dei passaggi restano nella lingua del progetto.
 - **Storico**: le risposte e le ricerche precedenti del progetto, con domanda ed entità; aprendone una, la
   colonna destra la riassume e «Cerca di nuovo» riprende la stessa ricerca.
 - **Fonte**: la pagina di un documento. Se l'originale è un PDF in `sources/` e PyMuPDF è installato, la vista
-  principale è l'immagine della pagina, con sopra la riga citata; il testo trascritto (con la riga evidenziata e la
-  scheda tecnica del file) si apre sotto. Si sfoglia per pagina stampata (marcatori `[[p. N]]`, anche con le frecce
-  sinistra e destra) o, nei file senza marcatori, a blocchi di righe. Si apre dal pulsante «Apri la fonte» accanto
+  principale è l'immagine della pagina con il passaggio evidenziato sopra: in giallo il capoverso della riga citata,
+  più scura e con la barra color ruggine la riga citata. Il passaggio si cerca tra le parole del PDF stesso, così
+  regge le differenze dell'OCR. «Pagina» e «Testo» passano dalla pagina al testo trascritto (con la riga evidenziata e, alla prima
+  pagina, la scheda tecnica del file). Sulla pagina: si ingrandisce con − / + (o i tasti + − 0, o Ctrl + rotella
+  attorno al puntatore), se ne seleziona e copia il testo, e si apre l'intero PDF originale a quella pagina nel
+  lettore del browser (la freccia accanto al titolo). Si
+  sfoglia per pagina stampata (marcatori `[[p. N]]`, anche con le frecce sinistra e destra) o, nei file senza
+  marcatori, a blocchi di righe. Parole e posizioni vengono dallo strato di testo del PDF quando la trascrizione
+  viene da lì; sulle scansioni (senza strato, o con uno strato scartato all'importazione perché l'OCR era migliore)
+  Tesseract legge la pagina la prima volta che la si guarda («Leggo il testo della pagina…», un paio di secondi, la
+  pagina intanto è già in vista) e la lettura resta in `system/cache/ocr_pagine`, così dopo è immediata. Senza
+  Tesseract, il passaggio compare sopra la pagina. Si apre dal pulsante «Apri la fonte» accanto
   a ogni citazione del documento della risposta (la pagina della citazione), o dalla scheda «Passaggi»;
   «Torna al documento» riporta da dove si è partiti.
 - **Passaggi**: i passaggi del documento aperto; per una ricerca, e per una risposta salvata la cui ricerca c'è
@@ -276,7 +285,31 @@ traduzioni dei passaggi restano nella lingua del progetto.
   «Correggi» sotto una traduzione permette di riscriverla. La correzione si salva nella ricerca e nell'archivio
   unico come lettura a mano: le ricerche successive la usano e non rimandano mai quel passaggio al modello. La
   risposta cambia quando rifai la ricerca.
-- **Glossario**: schede delle entità e profili delle serie del progetto, in sola lettura.
+- **Glossario**: schede delle entità e profili delle serie del progetto. Aprendo una scheda si vede che cosa sa già
+  l'archivio: passaggi letti e pertinenti, la linea del tempo per anno, le serie in cui compare, le risposte salvate,
+  le schede collegate (cliccabili) e i problemi trovati. Dalla scheda: «Cerca nelle fonti», «Evoluzione anno per
+  anno», e:
+  - **Modifica**: le forme del nome come chip, con il numero di righe delle fonti che contengono ciascuna (un clic sul
+    numero mostra un esempio, sul nome la segna ambigua, × la toglie); tipo, forma estesa, contesto, collegate, note.
+    I campi che il modulo non conosce (per esempio `nome_completo`) e i commenti di `entities.ini` restano come sono.
+  - **Rinomina** e **Unisci a…**: le letture dell'archivio passano al nome nuovo (equivalenza e riattribuzione, come
+    `archivio.py riattribuisci`), e le collegate di tutte le schede seguono. **Elimina** toglie la scheda; i suoi
+    passaggi restano nell'archivio.
+  - **Forme suggerite**: forme del nome trovate nei passaggi già letti e non ancora nella scheda, con un esempio;
+    «Aggiungi» la mette tra le forme, «Scarta» non la ripropone più.
+  In testa, «Controllo del glossario» elenca errori e avvisi di tutte le schede (gli stessi di `schede.py controlla`);
+  due schede con una forma o gli stessi passaggi in comune si uniscono da lì. I problemi che si correggono da soli
+  hanno «Correggi», e «Correggi tutto ciò che si corregge da sé» li fa tutti: forme brevi segnate ambigue, forme
+  ambigue che non sono tra le forme tolte, i campi vecchi `nome_completo` e `forma_italiana` portati in `forma_estesa`
+  (o tolti se ripetono il nome). Le note vuote aprono la scheda in modifica, sulle note.
+  La maggior parte dei problemi non nasce più: una forma breve (un cognome da solo, una sigla corta, una parola sola
+  sotto le 8 lettere) entra in ogni scheda già ambigua, che venga dall'esplorazione del nome, dalle forme suggerite,
+  dalla modifica o dalla conversazione; creando una scheda si scrive chi è (le note); e sia la creazione sia la
+  modifica mostrano i problemi della scheda prima di salvare. Un numero sul pulsante Glossario dice che
+  ci sono errori. Anche i profili delle serie hanno «Modifica», con l'anteprima dal vivo della citazione su un
+  documento vero della serie; i segnaposti sconosciuti nel modello `chicago` si segnalano.
+  Ogni modifica fa una copia del file per il giorno (`entities.ini.pressmark-<data>.bak`, accanto) e una riga per
+  campo in `audit/changes.csv`.
 
 Il server ascolta solo sul tuo computer (`127.0.0.1`) e accetta solo il browser aperto con il collegamento della
 sessione. Opzioni: `--porta 8770` (porta fissa), `--senza-browser`.

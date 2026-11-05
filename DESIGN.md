@@ -237,6 +237,7 @@ A warm, low-chroma paper-and-ink palette with one rust accent and three status h
 - **Pending Ochre** (`pending`): in progress, optional, or advisory (a hint, not an error). Also used as text: 4.5:1 on paper and surface.
 - **Highlight Wash** (`highlight`): the highlighted source line, citation hover, text selection, the top notice bar.
 - **Doubt Wash** (`doubt`): rows flagged for review in the revision table.
+- **Page Veil** (`--velo-pagina`, cited line `--velo-pagina-forte`) and **Page Selection** (`--selezione-pagina`): the passage and the text selection drawn over a page image. Translucent and identical in both themes, because they sit on Scan Paper, which is always white.
 
 ### Named Rules
 **The One Rust Rule.** Rust is the only accent. It marks what can be acted on or what currently holds focus. Never introduce a second accent hue, and never use rust for decoration, headings or large fills beyond a primary button or the send button.
@@ -338,7 +339,7 @@ Quiet and tactile: they respond instantly to a press and change colour gently on
 
 ### Inputs / Fields
 - **Style:** surface background, 1px field-rule outline (3:1), 6px radius, 0.35 × 0.5rem padding. Placeholders in muted ink at full opacity.
-- **Composer:** a 16px surface box with field-rule outline; on `:focus-within` the outline turns rust. The textarea inside is borderless and grows to 200px.
+- **Composer:** a 16px surface box with field-rule outline; on `:focus-within` the outline turns rust. The textarea inside is borderless and grows to 200px. The row beneath it sits on one 2rem centreline; its buttons (filters, providers, send) never shrink. As the column narrows, the filter summary and model name truncate with an ellipsis first, and the usage note hides below a 30rem box (container query).
 - **Uncommitted choice:** a select changed by arrow keys but not yet confirmed shows a dashed rust outline.
 - **Model picker:** a borderless select sized to its content (`field-sizing: content`), muted until hover/focus, when it gains the hover wash and a hairline, so it reads as a control and not a caption.
 
@@ -360,6 +361,7 @@ The heart of the product: every claim links to its source.
 - **Preview (`anteprima`):** a floating card (surface, hairline, 10px, tooltip lift) showing the reference and the start of the translation; grows from the reference with `scale(.97)` over 125ms; chained previews appear without motion.
 - **Verified quote (`citazione`):** 2px green underline plus a small tick icon. **Not found:** dashed red underline, red text, and an exclamation-circle icon.
 - **Highlighted source line:** highlight wash plus a 3px rust bar on the left edge.
+- **Source viewer (`p-fonte`):** fills the side panel. A fixed head (title clamped to two lines with the open-original link at its right; one row of page arrows + select, a two-segment "Pagina | Testo" switch whose pressed half gets the hover wash and a rust border, and the zoom group − 100% +); every control in that row is 2rem tall, and the page arrows are drawn chevrons, not text glyphs, then one scrolling body: the page (`foglio`, scrolls both ways when zoomed) or the transcription. On the always-white page the passage is a translucent yellow veil with `mix-blend-mode: multiply` (`--velo-pagina`, the cited line `--velo-pagina-forte` plus a 3px rust bar, the same grammar as the highlighted source line); the values are identical in both themes because the paper is. A transparent text layer (`strato`, sized in `cqw` so it follows the zoom) allows selection, shown in `--selezione-pagina`. While a scan's words are still being read by OCR, one muted label ("Leggo il testo della pagina…") sits in the control row; no spinner, the page is already usable. The full citation is not repeated in the viewer: it lives in the answer and in the technical record.
 
 ### Dialogs
 - Surface, hairline, 10px, `min(32rem, 92vw)` (wide variant `min(44rem, 94vw)`). Open from centre with fade + `scale(.96)` in 200ms; close faster (150ms). Backdrop fades to 35% black. Actions sit right-aligned in a `menu` row.
@@ -378,6 +380,11 @@ Components that help the researcher follow, filter and correct the evidence. The
 - **Command palette (`dialog.comandi`):** Ctrl+K. A dialog without padding anchored 14vh from the top, a borderless 1rem input with a rust underline on focus, results grouped under label-style headings; the active row gets the hover wash and a 2px rust inset on the left. Keys shown as `kbd`.
 - **Popover menus (`menu-esporta`, `consumo`):** a `details` whose panel is a surface card with a hairline and 10px radius (no shadow: they sit over quiet areas). Export drops below its link; the usage meter rises above the composer. Both grow from their anchor with `scale(.97)` over 160ms and close on Escape or a click elsewhere.
 - **Answer comparison (`confronto`):** above a re-run answer, one muted line, or a bordered disclosure with "cited now / cited before" lists and the two short answers side by side in Georgia. New references in the text carry a small green "nuovo" label (text, not just colour).
+- **Glossary card (`voce-glossario`):** a disclosure row; opened, it becomes the entity's page: a tabular summary line, a small non-interactive timeline (`linea-tempo piccola`, same columns as the passages panel), series and related cards as quiet rust links, then the fields and a wrapping row of small action buttons ("Elimina…" is a danger button, never filled). Editing happens inside the card, never in a dialog: labels in label style above full-width fields.
+- **Editable form chips (`chip-forma modifica`):** three segments in one pill: the name (click toggles "ambiguous", shown by a dashed underline), the line count in tabular muted figures behind a hairline (click shows an example quote in Georgia below), and ×. A form found in no line gets a dashed outline and an ochre count, so a typo shows before saving.
+- **Glossary check (`controllo-glossario`):** a bordered disclosure at the top of the panel, open when there are errors (then its border is fault red). Rows carry a "!" (red for errors, ochre for warnings) or "i", plus "Unisci…" buttons when two cards can be merged. A small red-outlined count on the Glossario button (`segno-barra`) says errors exist.
+- **Check before saving (`controllo-prima`):** in card creation and in the card editor, just above the buttons, the same problem rows the glossary check would show later, refreshed as you type (debounced 450–500ms); when clean, one muted line with a green ✓. Fixable rows in the glossary check carry a small "Correggi" button with the fix in muted text beside it; one primary "Correggi tutto…" button at the top when more than one fix applies.
+- **Citation preview (`anteprima-citazione`):** while a series profile is edited, the citation rendered on a real document of the series, in Georgia on paper inside a hairline box; unknown placeholders are listed in fault red with the available ones beneath.
 - **OCR health list (`elenco-ocr`):** suspect documents as hairline rows: title as a quiet rust link, the reason in ochre after a "!", then a language select and "Rifai l'OCR".
 
 ### Interface language

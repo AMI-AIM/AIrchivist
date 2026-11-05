@@ -25,15 +25,18 @@ Uso (nella cartella scripts):
   python app.py --senza-browser    stampa solo il collegamento
 """
 import argparse
+import base64
 import configparser
 import datetime as dt
 import json
 import os
 import re
 import secrets
+import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.parse
 import webbrowser
 from http.cookies import SimpleCookie
@@ -686,16 +689,19 @@ class App:
         return {"ultima": ultima, "letti": letti,
                 "minuti_per_passaggio": ritmi[len(ritmi) // 2] if ritmi else None, "campioni": len(ritmi)}
 
-    def crea_scheda(self, nome, varianti, forme_ambigue=None, tipo="", contesto=None, scartate=None, cercato=""):
+    def crea_scheda(self, nome, varianti, forme_ambigue=None, tipo="", contesto=None, scartate=None, cercato="",
+                    descrizione=""):
         """Crea la scheda; «scartate»: le forme trovate e non spuntate, che si ricordano per il nome cercato e per
-        la scheda (varianti.py, rejected_variants.json), così una nuova esplorazione non le ripropone."""
+        la scheda (varianti.py, rejected_variants.json), così una nuova esplorazione non le ripropone.
+        «descrizione»: chi è (va nelle note). Le forme ambigue sono quelle scelte nella pagina, dove le brevi
+        arrivano già segnate (esplora): una scelta diversa di chi crea la scheda resta."""
         varianti = _elenco(varianti)
         if not varianti:
             raise Errore("Conferma almeno una forma del nome.")
         ambigue = [f for f in _elenco(forme_ambigue) if f in varianti]
         tipo = tipo if tipo in TIPI_SCHEDA else ""
-        r = M.t_crea_scheda(nome.strip(), varianti, contesto=_elenco(contesto) or None,
-                            forme_ambigue=ambigue or None, tipo=tipo)
+        r = M.t_crea_scheda(nome.strip(), varianti, descrizione=re.sub(r"\s+", " ", descrizione or "").strip(),
+                            contesto=_elenco(contesto) or None, forme_ambigue=ambigue, tipo=tipo)
         if r.get("errore"):
             raise Errore(r["errore"])
         scartate = [f for f in _elenco(scartate) if f not in varianti]
@@ -704,6 +710,386 @@ class App:
             for chi in {nome.strip(), (cercato or "").strip()} - {""}:
                 mod_varianti.scarta(self.cfg(), chi, scartate)
         return r
+
+    # ------------------------------------------------------------ glossario: schede e serie modificabili
+    # Ogni modifica: una copia del file al giorno (<file>.pressmark-<data>.bak, come per la configurazione), una
+    # riga per campo in audit/changes.csv (revisione.registra_modifiche), e la scrittura riga per riga di
+    # schede.modifica_sezione, che lascia commenti e campi sconosciuti come sono.
+    def _copia_glossario(self, f):
+        if f.exists() and not any(f.parent.glob(f"{f.name}.pressmark-{installa.oggi()}*.bak")):
+            installa.copia_di_sicurezza(f)
+
+    def _registra_glossario(self, f, sezione, cambi, motivo):
+        import revisione
+        rel = f"{f.parent.name}/{f.name} [{sezione}]"
+        revisione.registra_modifiche(self.cfg(), [(rel, c, p or "(assente)", d or "(vuoto)", motivo)
+                                                  for c, p, d in cambi])
+
+    def _problemi_di(self, nome):
+        f = percorso(self.cfg(), "entita")
+        return [{"gravita": g, "schede": s, "problema": p} for g, s, p in schede.controlla(f)
+                if nome in [x.strip() for x in s.split(" / ")]]
+
+    def verifica_scheda(self, nome, campi, nuova=False):
+        """I problemi che la scheda avrebbe con questi campi, prima di salvarla: il controllo gira su una copia del
+        glossario con la modifica (o la scheda nuova) già fatta. Il file vero non cambia."""
+        import shutil
+        import tempfile
+        nome = (nome or "").strip()
+        campi = campi if isinstance(campi, dict) else {}
+        f = percorso(self.cfg(), "entita")
+        with tempfile.TemporaryDirectory() as d:
+            copia = Path(d) / "entities.ini"
+            if f.exists():
+                shutil.copy2(f, copia)
+            else:
+                copia.write_text("", encoding="utf-8")
+            try:
+                if nuova:
+                    if nome in schede.leggi_schede(copia).sections():
+                        return {"problemi": [{"gravita": "errore", "schede": nome,
+                                              "problema": f"esiste già una scheda «{nome}»"}]}
+                    schede.aggiungi_scheda(copia, schede.nome_valido(nome), _elenco(campi.get("varianti")),
+                                           campi.get("note") or "descrizione", _elenco(campi.get("contesto")),
+                                           _elenco(campi.get("forme_ambigue")), None, campi.get("tipo") or "")
+                    if not (campi.get("note") or "").strip():
+                        schede.modifica_sezione(copia, nome, {"note": ""})
+                else:
+                    schede.modifica_scheda(copia, nome, campi)
+            except ValueError as e:
+                return {"problemi": [{"gravita": "errore", "schede": nome, "problema": str(e)}]}
+            problemi = [{"gravita": g, "schede": s, "problema": p} for g, s, p in schede.controlla(copia)
+                        if nome in [x.strip() for x in s.split(" / ")]]
+        return {"problemi": problemi}
+
+    def correggi_scheda(self, nome="", tipo="", tutte=False):
+        """Una correzione automatica (schede.correzioni) di una scheda; con «tutte», tutte quelle di tutte le schede."""
+        f = percorso(self.cfg(), "entita")
+        da_fare = []
+        if tutte:
+            for s in schede.leggi_schede(f).sections():
+                da_fare += [(s, c["tipo"]) for c in schede.correzioni(f, s)]
+        else:
+            da_fare = [((nome or "").strip(), tipo)]
+        if not da_fare:
+            return {"corrette": 0, "nota": "Niente da correggere."}
+        self._copia_glossario(f)
+        fatte = 0
+        for s, t in da_fare:
+            try:
+                cambi = schede.correggi(f, s, t)
+            except ValueError as e:
+                raise Errore(str(e))
+            if cambi:
+                fatte += 1
+                self._registra_glossario(f, s, cambi, "correzione automatica dal controllo del glossario")
+        return {"corrette": fatte, "nota": f"{fatte} {'correzione fatta' if fatte == 1 else 'correzioni fatte'}."}
+
+    def leggi_scheda(self, nome):
+        """I campi di una scheda: quelli noti come elenchi, e tutti come sono nel file («campi»)."""
+        nome = (nome or "").strip()
+        f = percorso(self.cfg(), "entita")
+        s = schede.leggi_scheda(f, nome)
+        if s is None:
+            raise Errore(f"Scheda «{nome}» non trovata.")
+        cp = schede.leggi_schede(f)
+        s["campi"] = {k: v.strip() for k, v in cp[nome].items()}
+        s["tipi"] = list(schede.TIPI)
+        s["schede"] = [x for x in cp.sections() if x != nome]       # per scegliere le collegate
+        return s
+
+    def modifica_scheda(self, nome, campi):
+        """Cambia i campi della scheda (solo quelli passati). Dice che cosa cambia per le ricerche: forme nuove
+        (alla prossima ricerca si leggono solo i loro passaggi) e forme tolte (i passaggi letti restano in archivio)."""
+        nome = (nome or "").strip()
+        if not isinstance(campi, dict) or not campi:
+            raise Errore("Niente da cambiare.")
+        f = percorso(self.cfg(), "entita")
+        prima = schede.leggi_scheda(f, nome)
+        if prima is None:
+            raise Errore(f"Scheda «{nome}» non trovata.")
+        self._copia_glossario(f)
+        try:
+            cambi = schede.modifica_scheda(f, nome, campi)
+        except ValueError as e:
+            raise Errore(str(e))
+        self._registra_glossario(f, nome, cambi, "modificata dal glossario dell'interfaccia")
+        dopo = schede.leggi_scheda(f, nome)
+        nuove = [v for v in dopo["varianti"] if v not in prima["varianti"]]
+        tolte = [v for v in prima["varianti"] if v not in dopo["varianti"]]
+        nota = []
+        if nuove:
+            nota.append("Alla prossima ricerca si leggono i passaggi delle forme nuove; quelli già letti si riusano.")
+        if tolte:
+            nota.append("I passaggi già letti delle forme tolte restano nell'archivio; la prossima ricerca non li cerca più.")
+        return {"scheda": nome, "cambiati": [c for c, _, _ in cambi], "nuove": nuove, "tolte": tolte,
+                "problemi": self._problemi_di(nome), "nota": " ".join(nota) or ("Scheda salvata." if cambi else
+                                                                                   "Nessun cambiamento.")}
+
+    def _sposta_letture(self, vecchio, nuovo):
+        """Le letture dell'archivio sotto «vecchio» passano a «nuovo» (equivalenza e riattribuzione, archivio.py):
+        le ricerche successive su «nuovo» le riusano. Restituisce una frase su com'è andata."""
+        import contextlib
+        import io
+        import archivio
+        ris = percorso(self.cfg(), "risultati")
+        if not any(e == vecchio for _, e in archivio.Archivio(ris).per_id):
+            return ""
+        archivio.registra_equivalenza(ris, vecchio, nuovo, "dal glossario dell'interfaccia")
+        uscita = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(uscita):
+                archivio.riattribuisci(self.cfg(), vecchio, nuovo, applica=True)
+        except (SystemExit, Exception) as e:          # la scheda è cambiata lo stesso: l'archivio si sistema dopo
+            return f"Le letture di «{vecchio}» non si sono spostate ({e}): python archivio.py riattribuisci."
+        m = re.search(r"Aggiunte (\d+) letture", uscita.getvalue())
+        return f" {m.group(1)} letture dell'archivio passano a «{nuovo}»." if m else ""
+
+    def rinomina_scheda(self, nome, nuovo):
+        nome, nuovo = (nome or "").strip(), (nuovo or "").strip()
+        f = percorso(self.cfg(), "entita")
+        self._copia_glossario(f)
+        try:
+            vecchio, nuovo, cambiate = schede.rinomina_scheda(f, nome, nuovo)
+        except ValueError as e:
+            raise Errore(str(e))
+        self._registra_glossario(f, nuovo, [("nome", vecchio, nuovo)], "rinominata dal glossario dell'interfaccia")
+        letture = self._sposta_letture(vecchio, nuovo)
+        return {"vecchio": vecchio, "nuovo": nuovo, "collegate_aggiornate": cambiate,
+                "nota": f"Scheda rinominata in «{nuovo}».{letture}"}
+
+    def elimina_scheda(self, nome):
+        nome = (nome or "").strip()
+        f = percorso(self.cfg(), "entita")
+        self._copia_glossario(f)
+        try:
+            nome, cambiate = schede.elimina_scheda(f, nome)
+        except ValueError as e:
+            raise Errore(str(e))
+        self._registra_glossario(f, nome, [("scheda", nome, "")], "eliminata dal glossario dell'interfaccia")
+        return {"scheda": nome, "collegate_aggiornate": cambiate,
+                "nota": f"Scheda «{nome}» eliminata. I passaggi già letti restano nell'archivio; una copia del "
+                        f"glossario di oggi è accanto al file."}
+
+    def unisci_schede(self, da, verso):
+        """Due schede della stessa entità diventano una: forme e collegate di «da» vanno in «verso», le letture
+        dell'archivio pure, e «da» si toglie."""
+        da, verso = (da or "").strip(), (verso or "").strip()
+        f = percorso(self.cfg(), "entita")
+        self._copia_glossario(f)
+        try:
+            cambi = schede.unisci_schede(f, da, verso)
+        except ValueError as e:
+            raise Errore(str(e))
+        self._registra_glossario(f, verso, cambi + [("unita", da, verso)], "unite dal glossario dell'interfaccia")
+        letture = self._sposta_letture(da, verso)
+        return {"scheda": verso, "nota": f"«{da}» è ora parte di «{verso}».{letture}"}
+
+    def forme_suggerite(self, nome):
+        """Forme del nome trovate nei passaggi già letti e non ancora nella scheda (varianti.proposte), con quante
+        volte compaiono e un esempio; quelle scartate prima non tornano."""
+        import varianti as mod_varianti
+        nome = (nome or "").strip()
+        try:
+            p = mod_varianti.proposte(self.cfg(), nome) or {}
+        except Exception:
+            p = {}
+        voci = p.get(nome, []) if isinstance(p, dict) else []
+        return {"scheda": nome, "forme": [{"forma": v.get("variante", ""), "volte": v.get("volte", 0),
+                                           "esempio": (v.get("esempio") or {})} for v in voci[:30]]}
+
+    def decidi_forme(self, nome, aggiungi=None, scarta=None):
+        """Forme suggerite accettate (entrano tra le varianti) o scartate (non si propongono più)."""
+        import varianti as mod_varianti
+        nome = (nome or "").strip()
+        aggiungi, scarta = _elenco(aggiungi), _elenco(scarta)
+        f = percorso(self.cfg(), "entita")
+        if aggiungi:
+            prima = schede.leggi_scheda(f, nome)
+            if prima is None:
+                raise Errore(f"Scheda «{nome}» non trovata.")
+            self._copia_glossario(f)
+            varianti = prima["varianti"] + [x for x in aggiungi if x not in prima["varianti"]]
+            try:                                       # le forme brevi entrano già ambigue (schede.forma_breve)
+                cambi = schede.modifica_scheda(f, nome, {"varianti": varianti, "forme_ambigue": schede.con_brevi_ambigue(
+                    [x for x in varianti if x in aggiungi], prima["forme_ambigue"])})
+            except ValueError as e:
+                raise Errore(str(e))
+            self._registra_glossario(f, nome, cambi, "forme suggerite accettate dal glossario dell'interfaccia")
+        if scarta:
+            mod_varianti.scarta(self.cfg(), nome, scarta)
+        brevi = [x for x in aggiungi if schede.forma_breve(x)]
+        nota = "Rifai la ricerca: si leggono solo i passaggi delle forme nuove." if aggiungi else ""
+        if brevi:
+            nota += f" {'; '.join(brevi)}: forma breve, segnata come ambigua (il modello ne controlla sempre i passaggi)."
+        return {"aggiunte": aggiungi, "scartate": scarta, "ambigue": brevi, "nota": nota.strip()}
+
+    def conta_forme(self, forme):
+        """{forma: righe delle fonti che la contengono}, una per una (il conteggio accanto a ogni forma mentre si
+        modifica una scheda). None se l'indice non è pronto."""
+        forme = _elenco(forme)[:40]
+        ind, errore = M.indice_pronto()
+        if errore:
+            return {"conti": {f: None for f in forme}, "esempi": {}, "nota": "indice delle fonti in costruzione"}
+        out, esempi = {}, {}
+        for f in forme:
+            try:
+                righe = ind.cerca(f)
+            except Exception:
+                out[f] = None
+                continue
+            out[f] = len({(x["file"], x["riga"]) for x in righe})
+            if righe:                                   # un esempio: la riga, e da dove viene
+                x = righe[len(righe) // 2]
+                esempi[f] = {"testo": re.sub(r"\s+", " ", x["testo"]).strip()[:280],
+                             "riferimento": x.get("citazione") or x["file"], "file": x["file"], "riga": x["riga"]}
+        return {"conti": out, "esempi": esempi, "brevi": [f for f in forme if schede.forma_breve(f)]}
+
+    def pagina_scheda(self, nome):
+        """Che cosa si sa già dell'entità, dall'archivio: passaggi letti e pertinenti, per anno e per serie; le
+        ricerche fatte e le risposte salvate; le schede collegate."""
+        import archivio
+        nome = (nome or "").strip()
+        c = self.cfg()
+        f = percorso(c, "entita")
+        s = schede.leggi_scheda(f, nome)
+        if s is None:
+            raise Errore(f"Scheda «{nome}» non trovata.")
+        ris = percorso(c, "risultati")
+        P = M.tutti_i_passaggi(ris)
+        letti = pertinenti = 0
+        per_anno, per_serie = {}, {}
+        for (pid, e), v in archivio.Archivio(ris).per_id.items():
+            if e != nome:
+                continue
+            a = v.get("analisi") or {}
+            p = P.get((pid, e)) or {}
+            letti += 1
+            si = a.get("pertinente") == "sì"
+            pertinenti += si
+            anno = str(p.get("data") or "")[:4]
+            if anno.isdigit():
+                x = per_anno.setdefault(anno, [0, 0])
+                x[0] += 1
+                x[1] += si
+            if si and p.get("fonte"):
+                per_serie[p["fonte"]] = per_serie.get(p["fonte"], 0) + 1
+        risposte = []
+        try:
+            for g in sorted(lavori.cartella_risposte(c).glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+                k = _chiave_risposta(g)
+                if k and k[0] == nome.lower():
+                    t = _intestazione_risposta(g)
+                    risposte.append({"file": g.name, "data": _data(g), "domanda": t["domanda"] or nome,
+                                     "evoluzione": k[1] == "evoluzione", "pertinenti": t["pertinenti"]})
+        except OSError:
+            pass
+        cp = schede.leggi_schede(f)
+        return {"scheda": nome, "tipo": s["tipo"], "letti": letti, "pertinenti": pertinenti,
+                "per_anno": dict(sorted(per_anno.items())),
+                "per_serie": dict(sorted(per_serie.items(), key=lambda x: -x[1])[:8]),
+                "risposte": risposte[:10],
+                "collegate": [{"nome": x, "esiste": x in cp.sections()} for x in s["collegate"]],
+                "problemi": self._problemi_di(nome)}
+
+    def controllo_glossario(self):
+        """I problemi delle schede (schede.controlla, con le schede che hanno gli stessi passaggi): per le coppie
+        di schede, «unibili» dice che si possono unire."""
+        c = self.cfg()
+        f = percorso(c, "entita")
+        try:
+            righe = schede.controlla(f, percorso(c, "risultati"))
+        except Exception as e:
+            raise Errore(f"Controllo non riuscito: {e}")
+        cp = schede.leggi_schede(f)
+        # quale correzione automatica risolve il problema (schede.correzioni); «note»: le scrive chi conosce l'entità
+        tipi = (("forme brevi", "brevi"), ("forma ambigua «", "ambigue_fuori"), ("campo nome_completo", "campo:nome_completo"),
+                ("campo forma_italiana", "campo:forma_italiana"), ("note vuote", "note"))
+        out = []
+        for g, s, p in righe:
+            coppia = [x.strip() for x in s.split(" / ")]
+            unibili = len(coppia) == 2 and all(x in cp.sections() for x in coppia) and bool(
+                re.search(r"stessa forma|stessi (\d+ )?passaggi", p))
+            x = {"gravita": g, "schede": coppia, "problema": p, "unibili": unibili}
+            tipo = next((t for inizio, t in tipi if p.startswith(inizio)), None)
+            if tipo and len(coppia) == 1 and coppia[0] in cp.sections():
+                if tipo == "note":
+                    x["correzione"] = {"tipo": "note", "descrizione": "Scrivi le note"}
+                else:
+                    c = next((c for c in schede.correzioni(f, coppia[0]) if c["tipo"] == tipo), None)
+                    if c:
+                        x["correzione"] = c
+            out.append(x)
+        automatiche = sum(1 for x in out if x.get("correzione") and x["correzione"]["tipo"] != "note")
+        return {"problemi": out, "errori": sum(1 for x in out if x["gravita"] == "errore"),
+                "avvisi": sum(1 for x in out if x["gravita"] == "avviso"), "automatiche": automatiche}
+
+    # profili delle serie (series.ini): stessi strumenti, con l'anteprima della citazione su un documento vero
+    def _file_serie(self):
+        return percorso(self.cfg(), "serie")
+
+    def leggi_serie(self, nome):
+        nome = (nome or "").strip()
+        cp = schede.leggi_schede(self._file_serie())
+        if nome not in cp.sections():
+            raise Errore(f"Serie «{nome}» non trovata.")
+        return {"serie": nome, "campi": {k: v.strip() for k, v in cp[nome].items()},
+                "tipi": ["periodico", "articolo", "volume", "archivio", "raccolta"]}
+
+    def modifica_serie(self, nome, campi):
+        nome = (nome or "").strip()
+        if not isinstance(campi, dict) or not campi:
+            raise Errore("Niente da cambiare.")
+        f = self._file_serie()
+        self._copia_glossario(f)
+        try:
+            cambi = schede.modifica_sezione(f, nome, campi)
+        except ValueError as e:
+            raise Errore(str(e))
+        self._registra_glossario(f, nome, cambi, "modificata dal glossario dell'interfaccia")
+        profili.tutti(ricarica=True)
+        return {"serie": nome, "cambiati": [c for c, _, _ in cambi],
+                "nota": "Profilo salvato. Le citazioni nuove lo usano; le risposte già scritte restano come sono."
+                if cambi else "Nessun cambiamento."}
+
+    def anteprima_serie(self, nome, campi=None):
+        """La citazione che il profilo (con le modifiche non ancora salvate) dà su un documento vero della serie."""
+        import citazioni
+        nome = (nome or "").strip()
+        dati = percorso(self.cfg(), "dati")
+        cp = schede.leggi_schede(self._file_serie())
+        base = {k: v.strip() for k, v in cp[nome].items()} if nome in cp.sections() else {}
+        base.update({k: str(v) for k, v in (campi or {}).items()})
+        documento, meta = None, None
+        for k, f in enumerate(sorted(dati.rglob("*.txt"))):
+            if k > 5000:
+                break
+            try:
+                with open(f, encoding="utf-8", errors="replace") as h:
+                    m, _ = leggi_intestazione(h.read(6000))
+            except OSError:
+                continue
+            if (m.get("SERIES") or "").strip() == nome:
+                documento, meta = f.relative_to(dati).as_posix(), m
+                break
+        if meta is None:
+            return {"documento": "", "citazione": "", "nota": "Nessun documento di questa serie tra le fonti."}
+        try:
+            profilo = profili.completa(nome, base)
+            testo = citazioni.voce(meta, profilo, pagina="12")
+        except Exception as e:
+            return {"documento": documento, "citazione": "", "errore": f"Il modello non funziona: {e}"}
+        out = {"documento": documento, "titolo": meta.get("TITLE") or documento, "citazione": testo,
+               "nota": "Con la pagina 12 come esempio."}
+        # segnaposti che il motore non conosce (diventerebbero vuoti senza dirlo) o graffe rimaste nel testo
+        noti = set(citazioni.valori_da_intestazione(meta, profilo)) | {"pagina"}
+        ignoti = [n for n in dict.fromkeys(re.findall(r"\{(\w+)\}", profilo.get("chicago") or "")) if n not in noti]
+        resti = re.findall(r"\{[^{}]*\}?", testo)
+        if ignoti or resti:
+            out["errore"] = "Segnaposti sconosciuti: " + ", ".join("{" + n + "}" for n in ignoti) if ignoti else \
+                "Nel modello restano parti non riconosciute: " + ", ".join(dict.fromkeys(resti))
+            out["segnaposti"] = sorted(noti)
+        return out
 
     def avvia(self, entita, domanda="", dal=None, al=None, fonti=None, evoluzione=False):
         r = M.t_avvia_ricerca(entita, modalita="evoluzione" if evoluzione else "occorrenze",
@@ -940,9 +1326,10 @@ class App:
         f = (originali / rel).resolve()
         return f if originali in f.parents and f.is_file() else None
 
-    def fonte(self, file, riga="", pagina="", etichetta="", tra=""):
+    def fonte(self, file, riga="", pagina="", etichetta="", tra="", ocr=""):
         """Una pagina della fonte. `etichetta` (il numero stampato, «47») sceglie la pagina citata; `tra` (righe
-        separate da virgole: quelle del passaggio) dice quale riga evidenziare in quella pagina."""
+        separate da virgole: quelle del passaggio) dice quale riga evidenziare in quella pagina. «ocr_pagina»: la
+        pagina aspetta l'OCR per evidenze e strato; la stessa richiesta con `ocr`=1 lo legge (_pagina_pdf)."""
         f = self._file_dati(file)
         righe = f.read_text(encoding="utf-8", errors="replace").splitlines()
         meta, _ = leggi_intestazione("\n".join(righe[:80]))
@@ -961,27 +1348,159 @@ class App:
         else:
             n = 1
         p = pagine[n - 1]
-        immagine = ""
-        if p.get("pdf") and self._originale(meta) is not None and _fitz() is not None:
-            immagine = "/fonte/pagina?" + urllib.parse.urlencode({"file": file, "pdf": p["pdf"]})
+        immagine, originale, evidenze, strato, serve_ocr = "", "", [], [], False
+        if self._originale(meta) is not None:
+            originale = "/fonte/pdf?" + urllib.parse.urlencode({"file": file})
+            if p.get("pdf"):
+                originale += f"#page={p['pdf']}"
+                if _fitz() is not None:
+                    immagine = "/fonte/pagina?" + urllib.parse.urlencode({"file": file, "pdf": p["pdf"]})
+                    evidenze, strato, serve_ocr = self._pagina_pdf(meta, p["pdf"], righe, p, riga, ocr == "1")
         titolo = meta.get("TITLE") or " ".join(x for x in (meta.get("SERIES"), meta.get("DATE")) if x)
         return {"file": file, "titolo": titolo or f.stem, "citazione": meta.get("FULL_CITATION", ""),
                 "pagine": [{"etichetta": x["etichetta"], "pdf": x.get("pdf")} for x in pagine], "pagina": n,
                 "righe": [{"n": k, "testo": righe[k - 1]} for k in range(p["da"], p["a"] + 1)],
-                "evidenzia": riga if riga and p["da"] <= riga <= p["a"] else None, "immagine": immagine}
+                "evidenzia": riga if riga and p["da"] <= riga <= p["a"] else None, "immagine": immagine,
+                "originale": originale, "evidenze": evidenze, "strato": strato, "ocr_pagina": serve_ocr}
 
-    def immagine_pagina(self, file, pdf):
-        """La pagina `pdf` (1 = la prima) del PDF originale, in PNG."""
+    def immagine_pagina(self, file, pdf, dpi=""):
+        """La pagina `pdf` (1 = la prima) del PDF originale, in PNG; `dpi` 150 di norma, fino a 300 per l'ingrandimento."""
         f = self._file_dati(file)
         meta, _ = leggi_intestazione(f.read_text(encoding="utf-8", errors="replace")[:20000])
         originale, fitz = self._originale(meta), _fitz()
         if originale is None or fitz is None:
             raise Errore("Originale non disponibile.")
+        risoluzione = min(max(int(dpi), 72), 300) if str(dpi or "").isdigit() else 150
         with fitz.open(originale) as doc:
             k = int(pdf) if str(pdf or "").isdigit() else 0
             if not 1 <= k <= len(doc):
                 raise Errore("Pagina inesistente.")
-            return doc[k - 1].get_pixmap(dpi=150).tobytes("png")     # la pagina è ora la vista principale
+            return doc[k - 1].get_pixmap(dpi=risoluzione).tobytes("png")
+
+    def pdf_originale(self, file):
+        """(byte, nome) del PDF originale del documento, per aprirlo nel lettore del browser."""
+        f = self._file_dati(file)
+        meta, _ = leggi_intestazione(f.read_text(encoding="utf-8", errors="replace")[:20000])
+        originale = self._originale(meta)
+        if originale is None:
+            raise Errore("Originale non disponibile.")
+        return originale.read_bytes(), originale.name
+
+    def _parole_ocr(self, originale, meta, pdf, leggi):
+        """Le parole della pagina `pdf` lette con Tesseract, con la loro posizione (importa.parole_tsv), dalla
+        cache del progetto (system/cache/ocr_pagine); se mancano e `leggi`, le legge ora (un paio di secondi a
+        pagina) e le conserva. None se mancano, o se Tesseract o le sue lingue non ci sono. L'importazione tiene
+        il solo testo dell'OCR: le posizioni si ricavano qui, la prima volta che la pagina si guarda."""
+        import hashlib
+        import importa
+        lingue = importa.LINGUE_OCR.get(meta.get("LANG", ""), meta.get("LANG", "")) or "eng"
+        st = originale.stat()
+        firma = hashlib.sha1(f"{originale}|{st.st_size}|{st.st_mtime_ns}|{lingue}".encode("utf-8")).hexdigest()[:20]
+        f = percorso(self.cfg(), "cache") / "ocr_pagine" / firma / f"{pdf:05d}.json"
+        if f.is_file():
+            try:
+                return json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                pass
+        if not leggi:
+            return None
+        with _BLOCCO_OCR.setdefault(str(f), threading.Lock()):     # due richieste per la stessa pagina: una lettura
+            if f.is_file():
+                return json.loads(f.read_text(encoding="utf-8"))
+            try:
+                ocr = importa.Ocr(self.cfg(), lingue)
+            except SystemExit:                  # Tesseract o le lingue del documento mancano
+                return None
+            fitz = _fitz()
+            with fitz.open(originale) as doc:
+                pix = doc[pdf - 1].get_pixmap(dpi=ocr.dpi, colorspace=fitz.csGRAY)
+            f.parent.mkdir(parents=True, exist_ok=True)
+            img = f.with_suffix(".png")
+            try:
+                pix.save(img)
+                parole = ocr.leggi_parole(img, pix.width, pix.height)
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                return None
+            finally:
+                img.unlink(missing_ok=True)
+            f.write_text(json.dumps(parole, ensure_ascii=False), encoding="utf-8")
+            return parole
+
+    def _pagina_pdf(self, meta, pdf, righe, p, riga, leggi_ocr=False):
+        """Che cosa sta sopra l'immagine della pagina `pdf`: (evidenze, strato, serve l'OCR). «evidenze»: le righe
+        della pagina dove si ritrova il passaggio, con «citata» quelle della riga citata; «strato»: il testo da
+        selezionare, riga per riga; tutto in frazioni della pagina. Il passaggio è il capoverso della riga citata
+        (fino a 4 righe prima e dopo, senza uscire dalla pagina).
+        Le parole vengono dallo strato di testo del PDF, se la trascrizione viene da lì; altrimenti (scansione
+        senza strato, o strato scartato all'importazione perché peggiore dell'OCR) dall'OCR della pagina, che si
+        legge una volta e si conserva. «serve l'OCR»: la pagina ne ha bisogno e non è ancora letta (la pagina
+        richiede di nuovo con leggi_ocr, così la vista non aspetta Tesseract). Con un riscontro troppo debole:
+        niente evidenze, e la pagina mostra l'estratto."""
+        fitz, originale = _fitz(), self._originale(meta)
+        if fitz is None or originale is None or not pdf:
+            return [], [], False
+        metodo = meta.get("TEXT_METHOD", "")
+        scartato = metodo.startswith("OCR proprio") and "+" not in metodo
+        try:
+            with fitz.open(originale) as doc:
+                if not 1 <= pdf <= len(doc):
+                    return [], [], False
+                pag = doc[pdf - 1]
+                area, giro = pag.rect, pag.rotation_matrix
+                parole = []
+                if not scartato and area.width and area.height:
+                    for w in pag.get_text("words"):
+                        r = fitz.Rect(w[:4]) * giro
+                        parole.append([r.x0 / area.width, r.y0 / area.height, r.x1 / area.width,
+                                       r.y1 / area.height, w[4], w[5], w[6]])
+        except Exception:                      # PDF guasto o cifrato: la pagina resta senza evidenze
+            return [], [], False
+        if not parole:
+            parole = self._parole_ocr(originale, meta, pdf, leggi_ocr)
+            if parole is None:
+                return [], [], not leggi_ocr
+        if not parole:
+            return [], [], False
+
+        def riquadro(indici):
+            return [round(max(0.0, min(parole[i][0] for i in indici)), 4),
+                    round(max(0.0, min(parole[i][1] for i in indici)), 4),
+                    round(min(1.0, max(parole[i][2] for i in indici)), 4),
+                    round(min(1.0, max(parole[i][3] for i in indici)), 4)]
+
+        def per_linea(indici):              # le parole raggruppate per riga (blocco, riga)
+            out = {}
+            for i in indici:
+                out.setdefault((parole[i][5], parole[i][6]), []).append(i)
+            return out.values()
+
+        strato = [riquadro(idx) + [" ".join(parole[i][4] for i in idx)] for idx in per_linea(range(len(parole)))]
+        evidenze = []
+        if riga and p["da"] <= riga <= p["a"]:
+            vuota = lambda k: not righe[k - 1].strip() or righe[k - 1].lstrip().startswith("[")
+            da = riga
+            while da > max(p["da"], riga - 4) and not vuota(da - 1):
+                da -= 1
+            a = riga
+            while a < min(p["a"], riga + 4) and not vuota(a + 1):
+                a += 1
+            capoverso = _trova_nel_pdf(parole, "\n".join(righe[k - 1] for k in range(da, a + 1)))
+            if capoverso:
+                # la riga citata: le righe della pagina che ne condividono di più i frammenti (di norma una, due se
+                # la trascrizione va a capo altrove)
+                cercata = _normale(righe[riga - 1])
+                frammenti = {cercata[k:k + 3] for k in range(len(cercata) - 2)}
+                linee = list(per_linea(range(capoverso[0], capoverso[1] + 1)))
+                quote = []
+                for idx in linee:
+                    t = _normale("".join(parole[i][4] for i in idx))
+                    propri = {t[k:k + 3] for k in range(len(t) - 2)}
+                    # una riga di una parola sola starebbe tutta nella citata: conta almeno 8 frammenti
+                    quote.append(len(propri & frammenti) / max(8, min(len(propri), len(frammenti))))
+                meglio = max(quote, default=0)
+                for idx, q in zip(linee, quote):
+                    evidenze.append({"r": riquadro(idx), "citata": meglio >= .4 and q >= .75 * meglio})
+        return evidenze, strato, False
 
     def _cartella_ricerca_nome(self, ricerca):
         if not ricerca or Path(ricerca).name != ricerca or ricerca in (".", ".."):
@@ -1367,7 +1886,7 @@ class App:
         return r
 
     def glossario(self):
-        """Schede delle entità e profili delle serie del progetto (in sola lettura)."""
+        """Schede delle entità e profili delle serie del progetto (si modificano con le API qui sotto)."""
         if not self.progetto_in_uso():
             return {"schede": [], "serie": []}
         c = self.cfg()
@@ -1774,6 +2293,66 @@ def _rimandi(testo):
     return out
 
 
+_BLOCCO_OCR = {}           # una lettura OCR per pagina alla volta (_parole_ocr)
+
+
+def _normale(testo):
+    """Solo lettere e cifre, minuscole e senza accenti: il confronto tra trascrizione e PDF non guarda spazi,
+    punteggiatura, trattini di fine riga né i diacritici che l'OCR perde."""
+    return "".join(c for c in unicodedata.normalize("NFKD", testo.lower()) if c.isalnum())
+
+
+def _trova_nel_pdf(parole, testo, entro=None):
+    """(prima, ultima) parola del PDF (indici in `parole`, da get_text("words")) dove si ritrova `testo`, o None.
+    Frammenti di 4 caratteri (3 nelle scritture senza spazi, dove ogni carattere conta) del testo cercato votano le
+    posizioni della pagina in cui ricorrono, se ci ricorrono al più 3 volte; vince il tratto della pagina lungo
+    quanto il testo con più voti. Regge differenze di OCR, accenti, a capo con trattino. `entro` (prima, ultima)
+    limita la ricerca a un tratto già trovato."""
+    cercato = _normale(testo)
+    if len(cercato) < 4:
+        return None
+    lettere, di_parola = [], []
+    for i, w in enumerate(parole):
+        if entro and not entro[0] <= i <= entro[1]:
+            continue
+        for c in _normale(w[4]):
+            lettere.append(c)
+            di_parola.append(i)
+    pagina = "".join(lettere)
+    n = 3 if sum(1 for c in cercato if ord(c) > 0x2E80) > len(cercato) / 2 else 4
+    dove = {}
+    for k in range(len(pagina) - n + 1):
+        dove.setdefault(pagina[k:k + n], []).append(k)
+    voti = sorted(k for g in {cercato[k:k + n] for k in range(len(cercato) - n + 1)}
+                  for k in dove.get(g, ())[:4] if len(dove[g]) <= 3)
+    frammenti = max(1, len(cercato) - n + 1)
+    if len(voti) < max(2, frammenti * 0.3):     # riscontro troppo debole: meglio nessuna evidenza che una sbagliata
+        return None
+    lungo = int(len(cercato) * 1.25) + n
+    migliore, da = (0, 0, 0), 0
+    for a in range(len(voti)):                  # finestra scorrevole sulle posizioni votate
+        while voti[a] - voti[da] > lungo:
+            da += 1
+        if a - da + 1 > migliore[0]:
+            migliore = (a - da + 1, voti[da], voti[a] + n - 1)
+    if migliore[0] < max(2, frammenti * 0.3):
+        return None
+    # un voto vale se il frammento sta nella pagina più o meno alla stessa distanza dall'inizio del passaggio a cui
+    # sta nel testo cercato: un frammento comune ripetuto poco prima o poco dopo ("con il", "-zione" in un titolo)
+    # cade fuori dall'allineamento del resto e non allarga il tratto
+    nel_cercato = {}
+    for k in range(len(cercato) - n + 1):
+        nel_cercato.setdefault(cercato[k:k + n], []).append(k)
+    dentro = [k for k in voti if migliore[1] <= k <= migliore[2] - n + 1]
+    scarti = sorted(k - t for k in dentro for t in nel_cercato[pagina[k:k + n]])
+    centro = scarti[len(scarti) // 2]             # lo scarto della maggior parte dei voti: l'allineamento
+    tolleranza = max(12, min(40, len(cercato) * .08))   # la deriva di un OCR imperfetto, non una riga intera
+    allineati = [k for k in dentro if min(abs(k - t - centro) for t in nel_cercato[pagina[k:k + n]]) <= tolleranza]
+    if len(allineati) < max(2, frammenti * 0.3):
+        return None
+    return di_parola[allineati[0]], di_parola[min(allineati[-1] + n - 1, len(di_parola) - 1)]
+
+
 def _fitz():
     try:
         import fitz
@@ -1796,9 +2375,14 @@ GET = {"/api/stato": lambda a, q: a.stato(),
        "/api/tabella": lambda a, q: a.tabella(q.get("percorso", "")),
        "/api/conversazione": lambda a, q: a.conversazione(q.get("riprova") == "1"),
        "/api/fonte": lambda a, q: a.fonte(q.get("file", ""), q.get("riga", ""), q.get("pagina", ""),
-                                          q.get("etichetta", ""), q.get("tra", "")),
+                                          q.get("etichetta", ""), q.get("tra", ""), q.get("ocr", "")),
        "/api/passaggi": lambda a, q: a.passaggi(q.get("risposta", ""), q.get("ricerca", "")),
        "/api/glossario": lambda a, q: a.glossario(),
+       "/api/scheda": lambda a, q: a.leggi_scheda(q.get("nome", "")),
+       "/api/scheda/pagina": lambda a, q: a.pagina_scheda(q.get("nome", "")),
+       "/api/scheda/forme": lambda a, q: a.forme_suggerite(q.get("nome", "")),
+       "/api/glossario/controllo": lambda a, q: a.controllo_glossario(),
+       "/api/serie": lambda a, q: a.leggi_serie(q.get("nome", "")),
        "/api/documento": lambda a, q: a.corpo_documento(q.get("risposta", ""), q.get("ricerca", "")),
        "/api/fili": lambda a, q: a.fili(),
        "/api/filo": lambda a, q: a.filo(q.get("id", "")),
@@ -1830,11 +2414,23 @@ POST = {"/api/progetto": lambda a, d: a.cambia_progetto(d.get("cartella", "")),
         "/api/esplora": lambda a, d: a.esplora(d.get("nome", ""), d.get("indizi"), d.get("candidate")),
         "/api/scheda": lambda a, d: a.crea_scheda(d.get("nome", ""), d.get("varianti"), d.get("forme_ambigue"),
                                                  d.get("tipo", ""), d.get("contesto"), d.get("scartate"),
-                                                 d.get("cercato", "")),
+                                                 d.get("cercato", ""), d.get("descrizione", "")),
+        "/api/scheda/verifica": lambda a, d: a.verifica_scheda(d.get("nome", ""), d.get("campi"),
+                                                               bool(d.get("nuova"))),
+        "/api/scheda/correggi": lambda a, d: a.correggi_scheda(d.get("nome", ""), d.get("tipo", ""),
+                                                               bool(d.get("tutte"))),
         "/api/ricerca/avvia": lambda a, d: a.avvia(d.get("entita", ""), d.get("domanda", ""), d.get("dal"),
                                                   d.get("al"), d.get("fonti"), bool(d.get("evoluzione"))),
         "/api/ricerca/ferma": lambda a, d: a.ferma(),
         "/api/ricerca/riprova": lambda a, d: a.riprova_ricerca(),
+        "/api/scheda/modifica": lambda a, d: a.modifica_scheda(d.get("nome", ""), d.get("campi")),
+        "/api/scheda/rinomina": lambda a, d: a.rinomina_scheda(d.get("nome", ""), d.get("nuovo", "")),
+        "/api/scheda/elimina": lambda a, d: a.elimina_scheda(d.get("nome", "")),
+        "/api/scheda/unisci": lambda a, d: a.unisci_schede(d.get("da", ""), d.get("verso", "")),
+        "/api/scheda/forme": lambda a, d: a.decidi_forme(d.get("nome", ""), d.get("aggiungi"), d.get("scarta")),
+        "/api/forme/conta": lambda a, d: a.conta_forme(d.get("forme")),
+        "/api/serie/modifica": lambda a, d: a.modifica_serie(d.get("nome", ""), d.get("campi")),
+        "/api/serie/anteprima": lambda a, d: a.anteprima_serie(d.get("nome", ""), d.get("campi")),
         "/api/passaggio/correggi": lambda a, d: a.correggi_passaggio(d.get("ricerca", ""), d.get("id", ""),
                                                                      d.get("pertinente"), d.get("traduzione")),
         "/api/rifai-ocr": lambda a, d: a.rifai_ocr(d.get("file", ""), d.get("lingue", "")),
@@ -1949,10 +2545,17 @@ def gestore(app):
                                                       f"filename*=UTF-8''{urllib.parse.quote(nome)}"})
             if u.path == "/fonte/pagina":
                 try:
-                    png = app.immagine_pagina(q.get("file", ""), q.get("pdf", ""))
+                    png = app.immagine_pagina(q.get("file", ""), q.get("pdf", ""), q.get("dpi", ""))
                 except Errore as e:
                     return self._invia(404, {"errore": str(e)})
                 return self._invia(200, png, "image/png")
+            if u.path == "/fonte/pdf":                  # l'originale intero, nel lettore PDF del browser
+                try:
+                    corpo, nome = app.pdf_originale(q.get("file", ""))
+                except Errore as e:
+                    return self._invia(404, f"<!doctype html><meta charset=utf-8><p>{e}</p>", "text/html; charset=utf-8")
+                return self._invia(200, corpo, "application/pdf",
+                                   {"Content-Disposition": f"inline; filename*=UTF-8''{urllib.parse.quote(nome)}"})
             nome = "index.html" if u.path == "/" else u.path.lstrip("/")
             base, tipi = PAGINE, TIPI
             if nome.startswith("marchio/"):              # da assets solo le immagini SVG del marchio

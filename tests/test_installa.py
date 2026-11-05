@@ -125,5 +125,20 @@ class AvvioGuidato(unittest.TestCase):
         self.assertNotIn("Tutto pronto", testo)
 
 
+class VariabiliSalvate(unittest.TestCase):
+    """Le chiavi salvate da Pressmark si annotano (una volta sola) per la disinstallazione, solo nel modo installato."""
+
+    def test_annota_solo_nel_modo_installato(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"PRESSMARK_DATI": d}):
+            I.ricorda_variabile("GROQ_API_KEY")
+            I.ricorda_variabile("GROQ_API_KEY")
+            I.ricorda_variabile("GEMINI_API_KEY")
+            f = Path(d) / I.FILE_VARIABILI_SALVATE
+            self.assertEqual(f.read_text(encoding="utf-8").split(), ["GROQ_API_KEY", "GEMINI_API_KEY"])
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(I.posizioni, "installato", return_value=False),                 mock.patch.object(I.posizioni, "cartella_dati", return_value=Path(d)):
+            I.ricorda_variabile("GROQ_API_KEY")
+            self.assertEqual(list(Path(d).iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,7 +42,8 @@
     </nav>
     <div class="barra-piede">
       <button type="button" class="voce-barra" data-pannello-apri="glossario" aria-controls="laterale"
-        aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/></svg> Glossario</button>
+        aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0M3 6v13M12 6v13M21 6v13"/></svg> Glossario
+        <span id="gl-segno" class="segno-barra" title="Errori nel glossario" hidden></span></button>
       <button type="button" class="voce-barra" id="b-importa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M7 9l5-5l5 5M12 4v12"/></svg> Importa fonti</button>
       <button type="button" class="voce-barra" id="b-impostazioni"
         title="Impostazioni: progetti, modelli, ambiente (Ctrl+,)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3a1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg> Impostazioni</button>
@@ -303,20 +304,40 @@
       <p id="fonte-vuota" class="nota">Qui compare la pagina di una fonte: aprila con «Apri la fonte» nel
         documento della risposta o da un passaggio.</p>
       <div id="fonte" hidden>
-          <p id="fonte-titolo" class="titolo-ricerca"></p>
-        <p id="fonte-citazione" class="nota"></p>
-        <div class="riga sfoglia">
-          <button type="button" id="fonte-prima" aria-label="Pagina precedente" title="Pagina precedente (freccia sinistra)">‹</button>
-          <select id="fonte-pagine" aria-label="Pagina"></select>
-          <button type="button" id="fonte-dopo" aria-label="Pagina successiva" title="Pagina successiva (freccia destra)">›</button>
+        <div class="fonte-testa">
+          <p id="fonte-titolo" class="fonte-titolo"></p>
+          <a id="fonte-originale" class="icona" target="_blank" rel="noopener" aria-label="Apri il PDF originale"
+            title="Apri il PDF originale a questa pagina"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        </div>
+        <div class="fonte-comandi">
+          <div class="sfoglia">
+            <button type="button" id="fonte-prima" aria-label="Pagina precedente" title="Pagina precedente (freccia sinistra)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <select id="fonte-pagine" aria-label="Pagina"></select>
+            <button type="button" id="fonte-dopo" aria-label="Pagina successiva" title="Pagina successiva (freccia destra)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          </div>
+          <div id="fonte-viste" class="viste-fonte" role="group" aria-label="Vista">
+            <button type="button" data-vista="pagina" aria-pressed="true">Pagina</button>
+            <button type="button" data-vista="testo" aria-pressed="false">Testo</button>
+          </div>
+          <span id="fonte-ocr" class="etichetta lettura-ocr" role="status" hidden>Leggo il testo della pagina…</span>
+          <div id="fonte-zoom" class="zoom-fonte" role="group" aria-label="Ingrandimento">
+            <button type="button" id="fonte-meno" class="icona" aria-label="Riduci" title="Riduci (−)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+            <button type="button" id="fonte-adatta" class="misura" title="Adatta alla larghezza (0)">100%</button>
+            <button type="button" id="fonte-piu" class="icona" aria-label="Ingrandisci" title="Ingrandisci (+)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          </div>
         </div>
         <div id="fonte-estratto" class="estratto" hidden></div>
-        <img id="fonte-img" class="fonte-img" alt="Pagina dell'originale" hidden>
-        <details id="fonte-trascrizione" class="trascrizione">
-          <summary id="fonte-trascrizione-titolo">Testo trascritto</summary>
+        <div id="fonte-foglio" class="foglio" hidden>
+          <div id="fonte-carta" class="carta">
+            <img id="fonte-img" class="fonte-img" alt="Pagina dell'originale">
+            <div id="fonte-evidenze" class="evidenze" aria-hidden="true"></div>
+            <div id="fonte-strato" class="strato"></div>
+          </div>
+        </div>
+        <div id="fonte-trascrizione" class="trascrizione">
           <div id="fonte-testo" class="fonte-testo"></div>
-        </details>
-        <details id="fonte-scheda" class="scheda-tecnica" hidden></details>
+          <details id="fonte-scheda" class="scheda-tecnica" hidden></details>
+        </div>
       </div>
     </div>
     <div class="pannello" id="p-passaggi" role="tabpanel" aria-labelledby="t-passaggi" data-pannello="passaggi"
@@ -336,8 +357,9 @@
     </div>
     <div class="pannello" id="p-glossario" role="tabpanel" aria-labelledby="t-glossario" data-pannello="glossario"
       hidden>
-      <p class="nota">Le schede si leggono qui e da ognuna si avvia una ricerca. Una scheda nuova nasce quando
-        cerchi un nome e confermi le sue forme.</p>
+      <p class="nota">Apri una scheda per vedere che cosa sa già l'archivio, cercarla nelle fonti o modificarla. Una
+        scheda nuova nasce quando cerchi un nome e confermi le sue forme.</p>
+      <div id="gl-controllo" hidden></div>
       <input id="gl-filtro" type="search" placeholder="filtra per nome o forma" aria-label="Filtra il glossario">
       <h3>Schede delle entità <span id="gl-n-schede" class="nota"></span></h3>
       <div id="gl-schede"></div>
@@ -371,6 +393,8 @@
       <dt><kbd>O</kbd> o <kbd>Invio</kbd></dt><dd>Passaggi: apri la fonte</dd>
       <dt><kbd>R</kbd></dt><dd>Passaggi: correggi la pertinenza (sì ↔ no)</dd>
       <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Fonte: pagina precedente e seguente</dd>
+      <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>Fonte: ingrandisci, riduci, adatta alla larghezza</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>rotella</kbd></dt><dd>Fonte: ingrandisci attorno al puntatore</dd>
       <dt><kbd>Spazio</kbd> <kbd>A</kbd></dt><dd>Forme del nome: accendi o spegni, segna ambigua</dd>
       <dt><kbd>?</kbd></dt><dd>Questo elenco</dd>
     </dl>
@@ -392,7 +416,7 @@
     <label>Nome della ricerca <input id="np-nome" type="text" required></label>
     <label>Descrizione (facoltativa) <input id="np-descrizione" type="text"></label>
     <p class="nota" id="np-dove"></p>
-    <menu><button value="annulla">Annulla</button> <button id="np-crea" value="crea" class="primario">Crea</button></menu>
+    <menu><button type="button" id="np-annulla">Annulla</button> <button id="np-crea" value="crea" class="primario">Crea</button></menu>
   </form>
 </dialog>
 
@@ -414,7 +438,7 @@
     <p class="nota">La chiave non si scrive mai nei file: nel profilo resta solo il nome della variabile. Prima di
       usare il modello, il sistema fa una prova di collegamento.</p>
     <pre id="am-messaggi" class="registro" hidden></pre>
-    <menu><button value="annulla">Chiudi</button> <button id="am-aggiungi" value="aggiungi" class="primario">Aggiungi e prova</button></menu>
+    <menu><button type="button" id="am-chiudi">Chiudi</button> <button id="am-aggiungi" value="aggiungi" class="primario">Aggiungi e prova</button></menu>
   </form>
 </dialog>
 </body>

@@ -12,6 +12,9 @@
   --avviso: #fff4d6;
   --dubbio: #fbe9e7;          /* righe da controllare nella tabella di revisione */
   --carta: #ffffff;           /* fondo delle pagine scansionate, che possono avere trasparenze */
+  --velo-pagina: rgba(255, 214, 0, .28);         /* il passaggio sulla pagina: la carta è sempre bianca, */
+  --velo-pagina-forte: rgba(255, 196, 0, .55);   /* così questi tre valori sono uguali nei due temi */
+  --selezione-pagina: rgba(138, 59, 18, .25);
   --bordo-campo: #8a877d;     /* contorno dei campi: almeno 3:1 sullo sfondo (WCAG 1.4.11) */
   --barra: #efede6;           /* barra laterale, un tono sotto lo sfondo del filo */
   --bolla: #e9e6dc;           /* messaggi di chi scrive */
@@ -37,6 +40,9 @@
     --male: #f2867e;
     --attesa: #e0c060;
     --avviso: #3b3220;
+    --velo-pagina: rgba(255, 214, 0, .28);
+    --velo-pagina-forte: rgba(255, 196, 0, .55);
+    --selezione-pagina: rgba(138, 59, 18, .25);
     --dubbio: #402a26;
     --bordo-campo: #77756d;
     --barra: #161614;
@@ -110,9 +116,9 @@ label.casella, .riga label { display: inline-flex; align-items: center; gap: .35
 .app.barra-chiusa { grid-template-columns: 3.25rem minmax(0, 1fr) auto; }
 svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round;
   stroke-linejoin: round; flex: none; }
-button.icona { display: inline-grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0;
+button.icona, a.icona { display: inline-grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0;
   background: none; color: var(--tenue); border-radius: 6px; }
-button.icona:hover:not(:disabled) { background: var(--sopra); color: var(--testo); }
+button.icona:hover:not(:disabled), a.icona:hover { background: var(--sopra); color: var(--testo); }
 .spazio { flex: 1; }
 
 .fianco { position: relative; display: flex; flex-direction: column; gap: .15rem; padding: .6rem .5rem; background: var(--barra);
@@ -300,11 +306,15 @@ html[data-tastiera] .letture-vive > li { transition: none; }
 button.fonti-risposta { border: 1px solid var(--bordo-campo); border-radius: 999px; padding: .3rem .85rem;
   background: var(--superficie); color: var(--testo); font-size: .88rem; }
 button.fonti-risposta:hover { border-color: var(--accento); }
+/* collegamento e menu alti quanto il pulsante e centrati con lui: i margini generici di details e summary
+   alzavano «Esporta» sopra la linea degli altri */
+.azioni-risposta > a, .menu-esporta > summary { display: inline-flex; align-items: center; min-height: 2rem;
+  line-height: 1.3; }
 .azioni-risposta a { color: var(--tenue); text-underline-offset: 2px; }
 .azioni-risposta a:hover { color: var(--testo); }
 /* Esporta: un piccolo menu che scende sotto la sua voce; le voci sono collegamenti di scaricamento */
-.menu-esporta { position: relative; }
-.menu-esporta > summary { color: var(--tenue); cursor: pointer; list-style: none; text-decoration: underline;
+.menu-esporta { position: relative; margin: 0; }
+.menu-esporta > summary { margin: 0; color: var(--tenue); cursor: pointer; list-style: none; text-decoration: underline;
   text-underline-offset: 2px; }
 .menu-esporta > summary::-webkit-details-marker { display: none; }
 .menu-esporta > summary::after { content: ""; display: inline-block; width: .35rem; height: .35rem; margin-left: .4rem;
@@ -347,12 +357,22 @@ span.chip.statico { background: none; }
 .scatola:focus-within { border-color: var(--accento); }
 #testo { display: block; width: 100%; border: 0; outline: 0; resize: none; background: transparent; font: inherit;
   line-height: 1.5; color: inherit; padding: .1rem 0; max-height: 200px; }
-.composer-riga { display: flex; align-items: center; gap: .4rem; margin-top: .35rem; }
-.chip-filtri { font-size: .8rem; color: var(--tenue); }
+/* la riga sotto la domanda: i comandi (filtri, fornitori, invia) hanno misura fissa e non si schiacciano mai; quando
+   la colonna si stringe cedono prima il riassunto dei filtri e il nome del modello (con i puntini), poi il consumo
+   sparisce. Tutto sta su una linea mediana di 2rem */
+.scatola { container-type: inline-size; }
+.composer-riga { display: flex; align-items: center; gap: .4rem; margin-top: .35rem; min-height: 2rem; }
+.composer-riga > button { flex: none; }
+.composer-riga > .spazio { min-width: 0; }
+.chip-filtri { font-size: .8rem; color: var(--tenue); min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+@container (max-width: 30rem) { .composer-riga > .consumo { display: none; } }
 /* consumo di oggi accanto al modello: una nota piccola e tenue; il dettaglio sale sopra la casella */
-.consumo { position: relative; }
-.consumo > summary { list-style: none; cursor: pointer; font-size: .78rem; color: var(--tenue); padding: .2rem .45rem;
-  border-radius: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* senza i margini generici di details e summary, che lo alzavano sopra la mediana della riga */
+.consumo { position: relative; display: flex; flex: 0 1 auto; min-width: 0; margin: 0; }
+.consumo > summary { margin: 0; list-style: none; cursor: pointer; font-size: .78rem; line-height: 1.5rem; color: var(--tenue);
+  padding: 0 .45rem; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  font-variant-numeric: tabular-nums; }
 .consumo > summary::-webkit-details-marker { display: none; }
 .consumo > summary:hover, .consumo[open] > summary { background: var(--sopra); color: var(--testo); }
 .consumo-dettaglio { position: absolute; z-index: 6; right: 0; bottom: calc(100% + .5rem); width: min(22rem, 80vw);
@@ -372,11 +392,13 @@ html[data-tastiera] .consumo-dettaglio { transition: none; }
 .consumo-servizi .conto { color: var(--tenue); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .consumo-dettaglio > .nota { margin: .6rem 0 0; font-size: .78rem; }
 /* il modello in uso: un menu quieto, con i soli modelli disponibili raggruppati per fornitore */
-.modello-scelta { display: inline-flex; align-items: center; gap: .35rem; min-width: 0; }
+.modello-scelta { display: inline-flex; align-items: center; gap: .35rem; flex: 0 1 auto; min-width: 3rem; }
+.modello-scelta .pallino { margin-right: .1rem; }
 /* il menu stretto sul suo testo (la freccia accanto al nome, non in fondo a uno spazio vuoto) e con un contorno al
    passaggio: si legge come un controllo, non come una didascalia */
 .modello-scelta select { field-sizing: content; border: 1px solid transparent; background: none; color: var(--tenue);
-  max-width: 18rem; font-size: .85rem; padding: .2rem .35rem; border-radius: 6px; }
+  min-width: 0; max-width: min(18rem, 100%); height: 1.75rem; font-size: .85rem; padding: 0 .35rem; border-radius: 6px;
+  text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
 .modello-scelta select:hover, .modello-scelta select:focus-visible { background: var(--sopra); color: var(--testo);
   border-color: var(--bordo); }
 .modello-scelta select option, .modello-scelta select optgroup { color: var(--testo); background: var(--superficie); }
@@ -547,17 +569,56 @@ label.scelta-scheda { display: flex; margin: 0 0 .3rem; }
 .attenzione-testo { color: var(--male); }
 
 /* visore della fonte, passaggi, glossario */
-/* la pagina dell'originale è la vista principale: piena larghezza; il testo trascritto sta sotto, chiuso */
-.fonte-img { display: block; width: 100%; height: auto; margin: .8rem 0; border: 1px solid var(--bordo);
-  background: var(--carta); }
-.sfoglia { display: flex; align-items: center; gap: .4rem; }
-.sfoglia button { min-width: 2.25rem; min-height: 2.25rem; padding: 0; font-size: 1.1rem; line-height: 1; }
-.estratto { margin: .8rem 0 0; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif; }
+/* il visore riempie il pannello: testa ferma (titolo, pagine, vista), sotto la pagina o il testo con il loro
+   scorrimento, così sfogliando e ingrandendo i comandi restano dove sono */
+#p-fonte:not([hidden]) { display: flex; flex-direction: column; }
+#fonte:not([hidden]) { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: .6rem; }
+.fonte-titolo { margin: 0; min-width: 0; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.fonte-comandi { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; }
+.fonte-testa { display: flex; align-items: flex-start; gap: .5rem; }
+.fonte-testa .fonte-titolo { flex: 1; }
+.fonte-testa #fonte-originale { flex: none; margin-top: -.3rem; }
+/* tutti i comandi della testa alti uguali (2rem), così frecce, pagina, vista e zoom stanno su una linea anche
+   quando la riga va a capo stringendo il pannello */
+.fonte-comandi > * { flex: none; }
+.sfoglia { display: flex; align-items: center; gap: .3rem; }
+.sfoglia select { height: 2rem; padding-top: 0; padding-bottom: 0; }
+/* Pagina | Testo: due metà di un solo controllo; la scelta ha il velo e il bordo color ruggine */
+.viste-fonte { display: inline-flex; }
+.viste-fonte button { font-size: .85rem; height: 2rem; padding: 0 .7rem; }
+.viste-fonte button:first-child { border-radius: 6px 0 0 6px; }
+.viste-fonte button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.viste-fonte button[aria-pressed="true"] { background: var(--sopra); border-color: var(--accento); font-weight: 600;
+  position: relative; }
+.zoom-fonte { display: inline-flex; align-items: center; }
+.lettura-ocr { font-weight: 400; }   /* in attesa dell'OCR della pagina: una nota, non un avviso */
+.zoom-fonte button.misura { border: 0; background: none; min-width: 3.4rem; height: 2rem; padding: 0 .3rem; font-size: .8rem;
+  color: var(--tenue); font-variant-numeric: tabular-nums; }
+.zoom-fonte button.misura:hover { color: var(--testo); }
+/* la pagina: scorre nei due sensi quando è ingrandita; la carta è sempre bianca, come l'originale */
+.foglio { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--bordo); border-radius: 6px;
+  background: var(--barra); overscroll-behavior: contain; }
+.carta { position: relative; width: 100%; container-type: inline-size; background: var(--carta); }
+.fonte-img { display: block; width: 100%; height: auto; }
+/* il passaggio sulla pagina: un velo giallo che lascia leggere l'inchiostro (moltiplica), più deciso sulla riga
+   citata, che ha anche la barra color ruggine a sinistra, come nel testo trascritto */
+.evidenze { position: absolute; inset: 0; pointer-events: none; }
+.evidenza { position: absolute; margin: -.25% -.4%; padding: .25% .4%; box-sizing: content-box;
+  background: var(--velo-pagina); mix-blend-mode: multiply; border-radius: 2px; }
+.evidenza.citata { background: var(--velo-pagina-forte); box-shadow: -3px 0 0 var(--accento); }
+/* lo strato di testo: trasparente, si vede solo la selezione */
+.strato { position: absolute; inset: 0; line-height: 1; }
+.strato span { position: absolute; white-space: pre; color: transparent; transform-origin: 0 0;
+  font-family: sans-serif; cursor: text; }
+.strato span::selection { background: var(--selezione-pagina); color: transparent; }
+.sfoglia button { display: inline-grid; place-items: center; width: 2rem; height: 2rem; padding: 0; }
+.estratto { margin: 0; font-size: .9rem; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif; }
 .estratto p { margin: .15rem 0 0; }
 .etichetta { font: 600 .75rem/1.3 system-ui, sans-serif; letter-spacing: .02em; color: var(--tenue); }
 .elenco .etichetta { font-weight: 400; }
-.trascrizione > summary, .scheda-tecnica > summary { margin: .4rem 0; }
-.scheda-tecnica { margin: 0 0 .6rem; }
+.scheda-tecnica > summary { margin: .4rem 0; color: var(--tenue); font-size: .85rem; }
+.scheda-tecnica { margin: .4rem 0 0; }
 .scheda-tecnica dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .8rem; margin: .2rem 0 .6rem;
   font-size: .85rem; }
 .scheda-tecnica dt { color: var(--tenue); }
@@ -572,9 +633,9 @@ button.discreto:disabled { color: var(--tenue); }
 .scorciatoie dd { margin: 0; color: var(--tenue); }
 kbd { font-family: inherit; font-size: .8rem; font-weight: 500; line-height: 1; padding: .15rem .4rem; border: 1px solid var(--bordo-campo); border-bottom-width: 2px;
   border-radius: 4px; background: var(--sfondo); color: var(--testo); }
-.fonte-testo { position: relative; margin-top: .2rem; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif;
-  border: 1px solid var(--bordo); border-radius: 6px; background: var(--superficie); padding: .4rem 0;
-  max-height: 62vh; overflow: auto; }   /* scorre da sé: la testa del visore resta in vista */
+.trascrizione { flex: 1; min-height: 0; overflow: auto; }   /* scorre da sé: la testa del visore resta in vista */
+.fonte-testo { position: relative; font-family: Georgia, "Noto Serif", "Songti SC", "SimSun", serif;
+  border: 1px solid var(--bordo); border-radius: 6px; background: var(--superficie); padding: .4rem 0; }
 .riga-fonte { display: flex; gap: .6rem; padding: 0 .6rem; }
 .riga-fonte .n { color: var(--tenue); min-width: 3.2em; text-align: right; font: .75rem/1.9 system-ui, sans-serif;
   user-select: none; flex: none; }
@@ -651,7 +712,99 @@ table.passaggi td .riga { display: flex; gap: .4rem; margin-top: .35rem; }
   font-size: .88rem; }
 .voce-glossario dt { color: var(--tenue); }
 .voce-glossario dd { margin: 0; overflow-wrap: anywhere; }
-.voce-glossario > button { margin: .2rem 0 .4rem; font-size: .85rem; padding: .2rem .7rem; }
+.corpo-voce { padding: .2rem 0 .4rem; }
+/* azioni della scheda: piccole, su una riga che va a capo; «Elimina» resta un pulsante di pericolo, mai pieno */
+.azioni-scheda { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 .2rem; }
+.azioni-scheda button { font-size: .8rem; padding: .2rem .6rem; }
+.modulo-rinomina, .modulo-unisci { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .4rem 0;
+  font-size: .88rem; }
+.modulo-rinomina input { flex: 1 1 12rem; }
+/* segni sul nome della scheda chiusa: forme suggerite (ocra, è un consiglio) */
+.segno-suggerite { margin-left: .5rem; font-size: .75rem; font-weight: 400; color: var(--attesa); }
+.segno-barra { margin-left: auto; min-width: 1.2rem; padding: 0 .35rem; border-radius: 999px; font-size: .72rem;
+  font-weight: 700; line-height: 1.2rem; text-align: center; color: var(--male); border: 1px solid var(--male);
+  font-variant-numeric: tabular-nums; }
+/* pagina dell'entità: un riassunto, la linea del tempo, serie, risposte salvate, collegate */
+.pagina-scheda { margin: .2rem 0 .5rem; font-size: .88rem; }
+.pagina-scheda .riassunto-scheda { margin: .2rem 0 .4rem; font-variant-numeric: tabular-nums; }
+.pagina-scheda h4 { font-size: .75rem; font-weight: 600; letter-spacing: .02em; color: var(--tenue); margin: .6rem 0 .2rem; }
+.linea-tempo.piccola .barre-tempo { height: 2.2rem; }
+.linea-tempo.piccola .periodo { cursor: default; }
+.serie-scheda, .collegate-scheda { margin: .3rem 0; }
+.risposte-scheda { list-style: none; margin: 0; padding: 0; }
+.risposte-scheda li { display: flex; gap: .6rem; align-items: baseline; justify-content: space-between; padding: .15rem 0; }
+.risposte-scheda .nota { white-space: nowrap; font-size: .78rem; }
+.pagina-scheda .apri-passaggio, .collegate-scheda .apri-passaggio, .problemi-glossario .apri-passaggio,
+.esempio-forma .apri-passaggio { background: none; border: 0; padding: 0; color: var(--accento); text-align: left;
+  font: inherit; cursor: pointer; }
+.pagina-scheda .apri-passaggio:hover, .collegate-scheda .apri-passaggio:hover, .problemi-glossario .apri-passaggio:hover,
+.esempio-forma .apri-passaggio:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* forme suggerite dai passaggi letti */
+.suggerite { margin: .5rem 0; border: 1px solid var(--bordo); border-radius: 8px; padding: .4rem .6rem; }
+.suggerite > summary { cursor: pointer; font-size: .88rem; color: var(--attesa); }
+.suggerite > .nota { font-size: .8rem; margin: .3rem 0; }
+.elenco-suggerite { list-style: none; margin: 0; padding: 0; }
+.elenco-suggerite > li { border-top: 1px solid var(--bordo); padding: .35rem 0; }
+.elenco-suggerite .testa { display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: baseline; }
+.elenco-suggerite .testa button { font-size: .78rem; padding: .1rem .5rem; }
+.elenco-suggerite blockquote { margin: .25rem 0 0 .8rem; color: var(--tenue);
+  font: .85rem/1.5 Georgia, "Noto Serif", "Songti SC", "SimSun", serif; }
+/* modulo della scheda e del profilo della serie, dentro la voce */
+.modulo-scheda { display: flex; flex-direction: column; gap: .7rem; margin: .3rem 0 .5rem; font-size: .9rem; }
+.campo-scheda { display: flex; flex-direction: column; gap: .2rem; }
+.campo-scheda .etichetta-campo { font-size: .75rem; font-weight: 600; letter-spacing: .02em; color: var(--tenue); }
+.campo-scheda input[type=text], .campo-scheda textarea, .campo-scheda select, .modulo-scheda > select { width: 100%; }
+.campo-scheda .nota { font-size: .78rem; }
+.modulo-scheda textarea { font: inherit; background: var(--superficie); color: var(--testo); resize: vertical;
+  border: 1px solid var(--bordo-campo); border-radius: 6px; padding: .35rem .5rem; }
+/* le forme in modifica: chip con il nome (clic: ambigua), il conto delle righe (clic: un esempio) e × */
+.forme-chip.modifica { margin: .1rem 0 .3rem; }
+.chip-forma.modifica { display: inline-flex; align-items: center; gap: 0; padding: 0; border: 1px solid var(--bordo-campo);
+  border-radius: 999px; background: var(--superficie); font-size: .88rem; overflow: hidden; }
+.chip-forma.modifica button { border: 0; border-radius: 0; background: none; padding: .2rem .45rem; font-size: inherit; }
+.chip-forma.modifica button:hover { background: var(--sopra); }
+.chip-forma.modifica .nome-forma { padding-left: .7rem; }
+.chip-forma.modifica.ambigua .nome-forma { text-decoration: underline dashed; text-underline-offset: 3px; }
+.chip-forma.modifica .conto { color: var(--tenue); font-size: .78rem; font-variant-numeric: tabular-nums;
+  border-left: 1px solid var(--bordo); }
+.chip-forma.modifica.vuota { border-style: dashed; }
+.chip-forma.modifica.vuota .conto { color: var(--attesa); font-weight: 700; }
+.chip-forma.modifica .togli-forma { color: var(--tenue); padding-right: .6rem; }
+.chip-forma.modifica .togli-forma:hover { color: var(--male); }
+.togli-forma { border: 0; background: none; padding: 0 .15rem; color: var(--tenue); cursor: pointer; }
+.totale-forme { font-size: .78rem; margin: 0; font-variant-numeric: tabular-nums; }
+.esempio-forma { border-left: 2px solid var(--bordo); padding: .2rem .6rem; font-size: .85rem; }
+.esempio-forma blockquote { margin: .2rem 0; font: .88rem/1.55 Georgia, "Noto Serif", "Songti SC", "SimSun", serif; }
+.esito-scheda { margin: .3rem 0; }
+.esito-scheda > .nota { margin: 0 0 .3rem; }
+/* controllo del glossario: un riquadro chiudibile in testa; il segno dice la gravità anche senza colore */
+#gl-controllo { margin: .4rem 0 .6rem; }
+.controllo-glossario { border: 1px solid var(--bordo); border-radius: 8px; padding: .4rem .6rem; font-size: .88rem; }
+.controllo-glossario.con-errori { border-color: var(--male); }
+.controllo-glossario > summary { cursor: pointer; }
+.problemi-glossario { list-style: none; margin: .3rem 0 0; padding: 0; font-size: .85rem; }
+.problemi-glossario > li { display: grid; grid-template-columns: 1.1rem 1fr; column-gap: .3rem; padding: .3rem 0;
+  border-top: 1px solid var(--bordo); }
+.pagina-scheda .problemi-glossario > li:first-child, .esito-scheda .problemi-glossario > li:first-child { border-top: 0; }
+.segno-problema { font-weight: 700; text-align: center; color: var(--tenue); }
+.problemi-glossario > li.grav-errore .segno-problema { color: var(--male); }
+.problemi-glossario > li.grav-avviso .segno-problema { color: var(--attesa); }
+.problemi-glossario > li.grav-errore .testo-problema { color: var(--male); }
+.azioni-problema { grid-column: 2; display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .3rem; }
+.azioni-problema button { font-size: .78rem; padding: .1rem .5rem; }
+/* anteprima della citazione mentre si modifica il profilo di una serie: si legge, quindi è in Georgia */
+.anteprima-citazione { border: 1px solid var(--bordo); border-radius: 8px; padding: .5rem .7rem; background: var(--sfondo); }
+.citazione-anteprima { margin: .3rem 0; font: .95rem/1.55 Georgia, "Noto Serif", serif; overflow-wrap: anywhere; }
+.anteprima-citazione .nota { font-size: .78rem; margin: .2rem 0 0; }
+/* controllo prima di salvare o creare una scheda: gli stessi problemi del glossario, subito sopra i pulsanti */
+.controllo-prima { font-size: .85rem; }
+.controllo-prima > .nota { margin: 0 0 .2rem; }
+.controllo-prima .problemi-glossario > li:first-child { border-top: 0; }
+.descrizione-nuova { margin: .6rem 0 0; }
+.descrizione-nuova textarea { width: 100%; font: inherit; background: var(--superficie); color: var(--testo);
+  border: 1px solid var(--bordo-campo); border-radius: 6px; padding: .35rem .5rem; resize: vertical; }
+.azioni-problema .nota { font-size: .78rem; align-self: center; }
+.controllo-glossario .correggi-tutto { margin: .5rem 0 .2rem; font-size: .82rem; }
 
 a { color: var(--accento); }
 

@@ -21,6 +21,7 @@ from collections import Counter, defaultdict
 
 import profili
 from estrai_occorrenze import is_cjk
+from schede import forma_breve
 from sintesi import MESI_IT
 
 NOME_CINESE = re.compile(r"[\u4e00-\u9fff]{1,8}(?:[·・•][\u4e00-\u9fff]{1,8})+")
@@ -427,7 +428,9 @@ def esplora_nome(ind, dati, nome, indizi=None, candidate=None, dal=None, al=None
         "da_confermare_generate": gener,
         "da_confermare_dall_allineamento": dall_allin,
         "da_confermare_albanesi": list(out["forme_albanesi"]),
-        "forme_ambigue": [f for f in tutte if "attenzione" in tutte[f]],
+        # ambigue: quelle con un'attenzione e quelle brevi (cognome da solo, sigla corta): la regola del controllo
+        # delle schede (schede.forma_breve), applicata qui perché la scheda nasca già giusta
+        "forme_ambigue": [f for f in tutte if "attenzione" in tutte[f] or forma_breve(f)],
         "contesto": indizi,
         "nota": "Mostra all'utente le forme con conteggi ed esempi. Le forme generate dal motore (trascrizioni e "
                 "traduzioni cinesi) e quelle trovate con l'allineamento sono attestate ma possono indicare altre "

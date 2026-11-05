@@ -368,6 +368,35 @@ class Ocr:
             raise RuntimeError(r.stderr.decode("utf-8", "replace").strip()[-400:])
         return da_tsv(r.stdout.decode("utf-8", "replace"))
 
+    def leggi_parole(self, img, larghezza, altezza):
+        """Le parole di un'immagine con la loro posizione (parole_tsv): per lo strato di testo del visore."""
+        cmd = [self.exe, str(img), "stdout"] + (["--tessdata-dir", str(self.modelli)] if self.modelli else []) + \
+              ["-l", self.lingue, "--psm", self.psm, "-c", "tessedit_create_tsv=1"]
+        r = subprocess.run(cmd, capture_output=True, env=self.env, timeout=900,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.decode("utf-8", "replace").strip()[-400:])
+        return parole_tsv(r.stdout.decode("utf-8", "replace"), larghezza, altezza)
+
+
+def parole_tsv(tsv, larghezza, altezza):
+    """[[x0, y0, x1, y1, parola, blocco, riga]] dall'uscita TSV di Tesseract, in frazioni dell'immagine
+    (larghezza x altezza in pixel); blocco e riga come in da_tsv (blocco e paragrafo insieme)."""
+    out = []
+    for l in tsv.splitlines()[1:]:
+        c = l.split("\t")
+        if len(c) < 12 or c[0] != "5" or not c[11].strip():
+            continue
+        try:
+            x, y, w, h = (int(v) for v in c[6:10])
+            blocco = int(c[2]) * 1000 + int(c[3])
+            riga = int(c[4])
+        except ValueError:
+            continue
+        out.append([round(x / larghezza, 4), round(y / altezza, 4), round((x + w) / larghezza, 4),
+                    round((y + h) / altezza, 4), c[11].strip(), blocco, riga])
+    return out
+
 
 def da_tsv(tsv):
     """Ricompone il testo dall'uscita TSV di Tesseract: una riga per riga stampata, una riga vuota tra i

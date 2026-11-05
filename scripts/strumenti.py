@@ -109,6 +109,8 @@ def t_crea_scheda(nome, varianti, descrizione="", contesto=None, forme_ambigue=N
     sbagliate = [c for c in (collegate or []) if c not in sezioni]
     if sbagliate:
         return {"errore": f"Schede collegate inesistenti: {', '.join(sbagliate)}"}
+    if forme_ambigue is None:                  # chi crea non ha deciso: le forme brevi sono ambigue (schede.forma_breve)
+        forme_ambigue = schede.con_brevi_ambigue(varianti or [nome], []) or None
     out = {"scheda": schede.aggiungi_scheda(f, nome, varianti or [nome], descrizione or "", contesto,
                                             forme_ambigue, collegate, tipo, forma_estesa),
            "nota": "Scheda creata in entities.ini. Ora puoi avviare la ricerca."}

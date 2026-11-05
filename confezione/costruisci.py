@@ -9,7 +9,8 @@ l'installatore stesso se Inno Setup è presente:
     python/           Python «embeddable» ufficiale (python.org), con PyMuPDF e pywebview in Lib/site-packages
     scripts/          il motore (i file sotto git), config.ini senza scelte personali, installazione.ini
     assets/          logotipo e favicon (SVG, per l'interfaccia) e pressmark.ico (collegamenti, installatore)
-    tesseract/        Tesseract (copiato da un'installazione esistente) con le lingue scelte
+    tesseract/        Tesseract (copiato da un'installazione esistente: l'eseguibile e le sole DLL che carica)
+                      con le lingue scelte
     docs/             guide per gli utenti, LICENSE, TERZE_PARTI.txt
 
 installazione.ini mette il motore nel modo installato (posizioni.py): configurazione e profili nella cartella dei
@@ -156,19 +157,27 @@ def file_del_motore():
     return [RADICE / p for p in r.stdout.decode("utf-8").split("\0") if p]
 
 
+# sezioni della configurazione precedente ai profili (llm.profilo_precedente): servizi, indirizzi e modelli di chi
+# costruisce, che nel programma installato non servono (il modello si sceglie con un profilo)
+SEZIONI_PRECEDENTI = ("anthropic", "openai", "router", "ollama")
+
+
 def config_pulito(testo):
-    """config.ini senza le scelte di chi costruisce: nessun progetto, nessun profilo di modello scelto (il primo
-    avvio li chiede nella «Preparazione»). Il resto (commenti, parametri) resta com'è."""
+    """config.ini senza le scelte di chi costruisce: nessun progetto, nessun profilo di modello scelto, nessun
+    servizio della configurazione precedente (il primo avvio li chiede nella «Preparazione»). Il resto (commenti,
+    parametri) resta com'è."""
     fuori, sezione = [], ""
     for riga in testo.splitlines():
         m = re.match(r"^\s*\[([^\]]+)\]", riga)
         if m:
             sezione = m.group(1).strip()
+        if sezione in SEZIONI_PRECEDENTI:
+            continue
         voce = re.match(r"^\s*([A-Za-z_]+)\s*=", riga)
         if voce and sezione == "progetto" and voce.group(1) == "cartella":
             riga = "cartella ="
         elif voce and sezione == "modello" and voce.group(1) in ("profilo", "smistamento", "analisi", "sintesi",
-                                                                 "file_profili"):
+                                                                 "file_profili", "backend"):
             continue
         elif voce and sezione == "ocr" and voce.group(1) in ("tesseract", "modelli"):
             riga = f"{voce.group(1)} ="
@@ -229,13 +238,83 @@ def copia_marchio(dest):
 
 
 # ---------------------------------------------------------------- Tesseract
+def importazioni_pe(f):
+    """Nomi (minuscoli) delle DLL che un eseguibile o una DLL di Windows importa: tabella delle importazioni e
+    importazioni ritardate. Solo libreria standard."""
+    import struct
+    b = Path(f).read_bytes()
+    pe = struct.unpack_from("<I", b, 0x3C)[0]
+    if b[pe:pe + 4] != b"PE\0\0":
+        raise ValueError(f"{f}: non è un file PE")
+    n_sezioni, dim_opz = struct.unpack_from("<H", b, pe + 6)[0], struct.unpack_from("<H", b, pe + 20)[0]
+    opz = pe + 24
+    cartelle = opz + (112 if struct.unpack_from("<H", b, opz)[0] == 0x20B else 96)   # PE32+ o PE32
+    sezioni = [struct.unpack_from("<IIII", b, opz + dim_opz + i * 40 + 8) for i in range(n_sezioni)]
+
+    def posizione(rva):
+        for dim_virt, va, dim_dati, inizio in sezioni:
+            if va <= rva < va + max(dim_virt, dim_dati):
+                return rva - va + inizio
+        return None
+
+    def nome(rva):
+        p = posizione(rva)
+        return b[p:b.index(b"\0", p)].decode("ascii", "replace").lower() if p is not None else ""
+
+    nomi = []
+    for indice, passo, campo in ((1, 20, 12), (13, 32, 4)):          # importazioni, importazioni ritardate
+        rva = struct.unpack_from("<I", b, cartelle + indice * 8)[0]
+        p = posizione(rva) if rva else None
+        while p is not None and p + passo <= len(b):
+            rva_nome = struct.unpack_from("<I", b, p + campo)[0]
+            if not rva_nome:
+                break
+            nomi.append(nome(rva_nome))
+            p += passo
+    return nomi
+
+
+def dll_necessarie(cartella, eseguibile="tesseract.exe"):
+    """Le DLL della cartella che l'eseguibile carica, direttamente o tramite altre DLL della cartella. La build di
+    UB Mannheim porta anche le librerie degli strumenti di addestramento (pango, cairo, ICU...): il programma usa
+    solo tesseract.exe, quindi quelle restano fuori."""
+    locali = {f.name.lower(): f for f in Path(cartella).iterdir() if f.is_file() and f.suffix.lower() == ".dll"}
+    trovate, da_vedere = set(), [Path(cartella) / eseguibile]
+    while da_vedere:
+        for n in importazioni_pe(da_vedere.pop()):
+            if n in locali and n not in trovate:
+                trovate.add(n)
+                da_vedere.append(locali[n])
+    return sorted(locali[n] for n in trovate)
+
+
+def prova_ocr(cartella_tess):
+    """Il Tesseract copiato legge una riga di prova, senza il PATH del sistema (deve bastare la sua cartella)."""
+    import fitz
+    prova = cartella_tess.parent / "prova_ocr"
+    prova.mkdir(exist_ok=True)
+    try:
+        doc = fitz.open()
+        doc.new_page(width=600, height=200).insert_text((40, 100), "Pressmark 2026", fontsize=28)
+        doc[0].get_pixmap(dpi=200).save(prova / "riga.png")
+        env = {**os.environ, "PATH": os.environ.get("SystemRoot", r"C:\Windows") + r"\System32"}
+        r = subprocess.run([str(cartella_tess / "tesseract.exe"), str(prova / "riga.png"), "-", "-l", "eng",
+                            "--tessdata-dir", str(cartella_tess / "tessdata")], capture_output=True, env=env)
+        letto = r.stdout.decode("utf-8", "replace")
+        if r.returncode or "Pressmark" not in letto:
+            raise SystemExit("Il Tesseract incluso non legge la riga di prova (manca una DLL?):\n"
+                             + (letto + r.stderr.decode("utf-8", "replace"))[-2000:])
+    finally:
+        shutil.rmtree(prova, ignore_errors=True)
+
+
 def copia_tesseract(origine, dest, lingue):
-    """Eseguibile e DLL di Tesseract, configurazioni e modelli delle lingue scelte (None = tutte)."""
+    """Eseguibile e DLL che carica, configurazioni e modelli delle lingue scelte (None = tutte)."""
     origine = Path(origine)
     dest.mkdir(parents=True)
-    for f in origine.iterdir():
-        if f.is_file() and (f.name.lower() == "tesseract.exe" or f.suffix.lower() == ".dll"):
-            shutil.copy2(f, dest / f.name)
+    shutil.copy2(origine / "tesseract.exe", dest / "tesseract.exe")
+    for f in dll_necessarie(origine):
+        shutil.copy2(f, dest / f.name)
     td_o, td_d = origine / "tessdata", dest / "tessdata"
     td_d.mkdir()
     for sotto in ("configs", "tessconfigs"):
@@ -357,7 +436,9 @@ def main(argv=None):
         origine = Path(trovato).parent
     lingue = [l.strip() for l in args.lingue.split(",") if l.strip()] if args.lingue else None
     v_tess, scelte = copia_tesseract(origine, prog / "tesseract", lingue)
-    stampa(f"   {v_tess} da {origine}; lingue: {', '.join(scelte)}")
+    prova_ocr(prog / "tesseract")
+    n_dll = len(list((prog / "tesseract").glob("*.dll")))
+    stampa(f"   {v_tess} da {origine} ({n_dll} DLL, OCR provato); lingue: {', '.join(scelte)}")
     stampa("5. Documenti e licenze")
     copia_documenti(prog / "docs", TERZE_PARTI.format(python=args.python, pacchetti=", ".join(pacchetti),
                                                       tesseract=v_tess))

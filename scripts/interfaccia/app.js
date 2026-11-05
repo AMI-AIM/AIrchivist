@@ -394,23 +394,19 @@ async function apriFonte(file, riga, pagina, citata, origine) {
   mostra("fonte-vuota", false);
   mostra("fonte", true);
   $("fonte-titolo").textContent = r.titolo;
-  $("fonte-citazione").textContent = senzaMarkdown(r.citazione);
+  $("fonte-titolo").title = r.titolo;
   const sel = $("fonte-pagine");
-  sel.replaceChildren(...r.pagine.map((p, i) => new Option(`${p.etichetta} (${i + 1}/${r.pagine.length})`, i + 1)));
+  // l'etichetta basta: la posizione nel volume serve solo quando le pagine sono molte e la si cerca nell'elenco
+  sel.replaceChildren(...r.pagine.map((p, i) => new Option(r.pagine.length > 1 ? `${p.etichetta} · ${i + 1}/${r.pagine.length}` : p.etichetta, i + 1)));
   sel.value = String(r.pagina);
+  sel.disabled = r.pagine.length < 2;
   $("fonte-prima").disabled = r.pagina <= 1;
   $("fonte-dopo").disabled = r.pagina >= r.pagine.length;
+  const orig = $("fonte-originale");
+  orig.hidden = !r.originale;
+  if (r.originale) orig.href = r.originale;
 
-  // la pagina dell'originale è la vista principale; il testo trascritto resta sotto, chiuso se c'è l'immagine
-  const img = $("fonte-img");
-  if (r.immagine && img.getAttribute("src") !== r.immagine) img.src = r.immagine;
-  img.hidden = !r.immagine;
-  img.alt = `Pagina ${r.pagine[r.pagina - 1].etichetta} dell'originale` + (r.titolo ? `: ${r.titolo}` : "");
-  const trascrizione = $("fonte-trascrizione");
-  if (!r.immagine || !stato.fonteAperta) trascrizione.open = !r.immagine;
-  $("fonte-trascrizione-titolo").textContent = r.immagine ? "Testo trascritto" :
-    "Testo trascritto (l'originale non è un PDF disponibile)";
-
+  // il testo trascritto: le righe di servizio in testa vanno nella scheda tecnica, in fondo e chiusa
   const scheda = el("dl");
   const box = $("fonte-testo");
   box.replaceChildren();
@@ -423,6 +419,7 @@ async function apriFonte(file, riga, pagina, citata, origine) {
       continue;
     }
     if (RIGA_PAGINA.test(x.testo)) continue;
+    if (!x.testo.trim() && box.children.length === 0) continue;   // righe vuote tra la scheda e il testo
     const riga_ = el("div", null, "riga-fonte");
     if (/^\s*\[\[nota\]\]\s*$/.test(x.testo)) inNota = true;
     const marcatore = /^\s*\[\[(.*)\]\]\s*$/.exec(x.testo);
@@ -439,16 +436,24 @@ async function apriFonte(file, riga, pagina, citata, origine) {
   $("fonte-scheda").hidden = !scheda.children.length;
   $("fonte-scheda").replaceChildren(el("summary", "Scheda tecnica"), scheda);
 
-  // il passaggio citato, sopra l'immagine: la riga evidenziata e le due che seguono, per ritrovarlo sulla pagina
-  const estratto = $("fonte-estratto");
-  estratto.replaceChildren();
-  if (evidenziata) {
-    const i = r.righe.findIndex((x) => x.n === r.evidenzia);
-    const testo = r.righe.slice(i, i + 3).map((x) => x.testo).filter((t) => t.trim() && !/^\s*\[\[/.test(t));
-    estratto.append(el("span", `Riga ${r.evidenzia}`, "etichetta"), el("p", testo.join(" ")));
+  // la pagina dell'originale, con il passaggio evidenziato sopra e il suo testo selezionabile
+  stato.fonteEvidenziata = evidenziata;
+  sopraLaPagina(r);
+  $("fonte-strato").replaceChildren();
+  const img = $("fonte-img");
+  img.alt = `Pagina ${r.pagine[r.pagina - 1].etichetta} dell'originale` + (r.titolo ? `: ${r.titolo}` : "");
+  if (r.immagine) {
+    const pronta = () => { stratoTesto(r); vaiAlPassaggio(); };
+    img.onload = pronta;
+    const src = srcPagina(r.immagine);
+    if (img.getAttribute("src") !== src) img.src = src;
+    else if (img.complete) requestAnimationFrame(pronta);
   }
-  // l'estratto serve sopra l'immagine della pagina; senza immagine la riga è già evidenziata nel testo trascritto
-  estratto.hidden = !evidenziata || !r.immagine;
+  // una scansione senza strato di testo utilizzabile: le parole e la loro posizione vengono dall'OCR della pagina,
+  // letto dal server la prima volta (un paio di secondi) e poi conservato; la pagina intanto è già in vista
+  $("fonte-ocr").hidden = !r.ocr_pagina;
+  if (r.ocr_pagina) leggiPagina(q, r);
+  vistaFonte(r.immagine ? (stato.fonteVista || "pagina") : "testo", false);
 
   apriLaterale("fonte");
   // aperta dalla tastiera, il fuoco era su un pulsante ora nascosto (passaggi) o dentro il documento: passa al visore
@@ -456,11 +461,120 @@ async function apriFonte(file, riga, pagina, citata, origine) {
   if ((fuoco && fuoco.tagName === "IFRAME") || (fuoco && fuoco !== document.body && !fuoco.offsetParent)) {
     $("p-fonte").focus({ preventScroll: true });
   }
-  // la testa del visore (titolo, citazione, pagine) resta in vista: scorre il solo testo trascritto, che ha la sua
-  // altezza, fino alla riga citata
-  $("p-fonte").scrollTop = 0;
-  if (evidenziata && trascrizione.open) {
-    requestAnimationFrame(() => { box.scrollTop = evidenziata.offsetTop - box.clientHeight / 2 + evidenziata.offsetHeight / 2; });
+  if (!r.immagine) vaiAlPassaggio();
+}
+
+// evidenze del passaggio sulla pagina e, quando non si è potuto evidenziare (riscontro troppo debole), il passaggio
+// a parole sopra la pagina
+function sopraLaPagina(r) {
+  const evidenze = r.evidenze || [];
+  $("fonte-evidenze").replaceChildren(...evidenze.map((e) => {
+    const d = el("div", null, e.citata ? "evidenza citata" : "evidenza");
+    const [x0, y0, x1, y1] = e.r;
+    Object.assign(d.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` });
+    return d;
+  }));
+  const estratto = $("fonte-estratto");
+  estratto.replaceChildren();
+  if (stato.fonteEvidenziata && r.immagine && !evidenze.length && !r.ocr_pagina) {
+    const i = r.righe.findIndex((x) => x.n === r.evidenzia);
+    const testo = r.righe.slice(i, i + 3).map((x) => x.testo).filter((t) => t.trim() && !/^\s*\[\[/.test(t));
+    estratto.append(el("span", "Il passaggio, non ritrovato sulla pagina", "etichetta"), el("p", testo.join(" ")));
+  }
+  estratto.hidden = $("fonte-foglio").hidden || !estratto.children.length;
+}
+
+// la seconda richiesta di una pagina che aspetta l'OCR: arrivata la lettura, evidenze e strato si aggiungono alla
+// pagina già in vista, se è ancora quella
+async function leggiPagina(q, r) {
+  let n = null;
+  try { n = await api("/api/fonte?" + new URLSearchParams({ ...q, pagina: r.pagina, ocr: "1" })); } catch (e) { /* resta senza strato */ }
+  if (stato.fonte !== r) return;                // sfogliata nel frattempo: la pagina nuova fa da sé
+  $("fonte-ocr").hidden = true;
+  r.ocr_pagina = false;
+  if (n) Object.assign(r, { evidenze: n.evidenze, strato: n.strato });
+  sopraLaPagina(r);
+  stratoTesto(r);
+  vaiAlPassaggio();
+}
+
+// l'immagine della pagina: più definita quando la si ingrandisce
+function srcPagina(base) {
+  return (stato.fonteZoom || 1) > 1.4 ? `${base}&dpi=300` : base;
+}
+
+// «pagina» o «testo»: l'originale (se c'è) o la trascrizione, una alla volta, ciascuna con il suo scorrimento
+function vistaFonte(vista, scelta = true) {
+  const r = stato.fonte;
+  if (!r) return;
+  if (scelta) stato.fonteVista = vista;
+  const pagina = vista === "pagina" && !!r.immagine;
+  $("fonte-viste").hidden = !r.immagine;
+  $("fonte-viste").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.vista === "pagina") === pagina)));
+  $("fonte-zoom").hidden = !pagina;
+  $("fonte-foglio").hidden = !pagina;
+  $("fonte-estratto").hidden = !pagina || !$("fonte-estratto").children.length;
+  $("fonte-trascrizione").hidden = pagina;
+  if (scelta) vaiAlPassaggio();
+}
+
+// porta in vista il passaggio: sulla pagina la prima riga evidenziata (la citata, se c'è), nel testo la riga citata
+function vaiAlPassaggio() {
+  if (!$("fonte-foglio").hidden) {
+    const foglio = $("fonte-foglio");
+    const e = $("fonte-evidenze").querySelector(".citata") || $("fonte-evidenze").firstElementChild;
+    if (!e) { foglio.scrollTop = 0; foglio.scrollLeft = 0; return; }
+    foglio.scrollTop = e.offsetTop - foglio.clientHeight / 3;
+    foglio.scrollLeft = e.offsetLeft - 16;
+  } else {
+    const box = $("fonte-trascrizione");
+    const r = stato.fonteEvidenziata;
+    box.scrollTop = r ? r.offsetTop - box.clientHeight / 2 + r.offsetHeight / 2 : 0;
+  }
+}
+
+// lo strato di testo sopra l'immagine: righe trasparenti nella posizione delle righe del PDF, da selezionare e
+// copiare. Grandezza in cqw (la larghezza della pagina), così segue l'ingrandimento senza ricalcoli; la larghezza
+// di ogni riga si adatta con scaleX, misurata una volta sola.
+function stratoTesto(r) {
+  const img = $("fonte-img");
+  const strato = $("fonte-strato");
+  if (stato.fonte !== r || !img.naturalWidth || !(r.strato || []).length) return strato.replaceChildren();
+  const alto = img.naturalHeight / img.naturalWidth;              // altezza della pagina in larghezze
+  const ctx = (stratoTesto.ctx ||= document.createElement("canvas").getContext("2d"));
+  ctx.font = "100px sans-serif";
+  strato.replaceChildren(...r.strato.flatMap(([x0, y0, x1, y1, testo]) => {
+    const s = el("span", testo);
+    const corpo = (y1 - y0) * alto * 100 * 0.88;                  // in cqw: l'altezza della riga, meno l'interlinea
+    const largo = ctx.measureText(testo).width / 100 * corpo;      // in cqw, al corpo scelto
+    Object.assign(s.style, { left: `${x0 * 100}%`, top: `${y0 * 100}%`, fontSize: `${corpo}cqw`,
+      transform: `scaleX(${largo ? ((x1 - x0) * 100) / largo : 1})` });
+    return [s, document.createElement("br")];                     // copiate, le righe restano righe
+  }));
+}
+
+// ingrandimento della pagina: 1 = larghezza del pannello; da 0.5 a 4
+function zoomFonte(z, perno) {
+  const foglio = $("fonte-foglio");
+  const prima = stato.fonteZoom || 1;
+  z = Math.min(4, Math.max(0.5, Math.round(z * 100) / 100));
+  if (z === prima || foglio.hidden) return;
+  // il punto sotto il puntatore (o il centro) resta dov'è
+  const px = perno ? perno.x : foglio.clientWidth / 2, py = perno ? perno.y : foglio.clientHeight / 2;
+  const fx = (foglio.scrollLeft + px) / foglio.scrollWidth, fy = (foglio.scrollTop + py) / foglio.scrollHeight;
+  stato.fonteZoom = z;
+  $("fonte-carta").style.width = `${z * 100}%`;
+  $("fonte-adatta").textContent = `${Math.round(z * 100)}%`;
+  $("fonte-meno").disabled = z <= 0.5;
+  $("fonte-piu").disabled = z >= 4;
+  foglio.scrollLeft = fx * foglio.scrollWidth - px;
+  foglio.scrollTop = fy * foglio.scrollHeight - py;
+  const img = $("fonte-img");
+  if (stato.fonte && stato.fonte.immagine && img.getAttribute("src") !== srcPagina(stato.fonte.immagine)) {
+    // la versione più definita sostituisce l'altra quando è pronta, senza lampi
+    const nuova = new Image();
+    nuova.onload = () => { if (stato.fonte && stato.fonte.immagine && nuova.src.endsWith(srcPagina(stato.fonte.immagine))) { img.onload = null; img.src = nuova.src; } };
+    nuova.src = srcPagina(stato.fonte.immagine);
   }
 }
 
@@ -477,6 +591,11 @@ function sfoglia(passo) {
 // nel visore: frecce sinistra e destra (o Pagina su e giù) sfogliano, se il fuoco non è in un campo
 function tastiFonte(e) {
   if (/^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName) || e.altKey || e.ctrlKey || e.metaKey) return;
+  const z = { "+": 1.25, "=": 1.25, "-": 0.8 }[e.key];
+  if (z || e.key === "0") {
+    e.preventDefault();
+    return zoomFonte(z ? (stato.fonteZoom || 1) * z : 1);
+  }
   const passo = { ArrowLeft: -1, PageUp: -1, ArrowRight: 1, PageDown: 1 }[e.key];
   if (!passo) return;
   e.preventDefault();
@@ -837,48 +956,720 @@ function tastiPassaggi(e) {
 const ETICHETTE_CAMPI = { tipo: "Tipo", varianti: "Forme del nome", forme_ambigue: "Forme ambigue",
   contesto: "Contesto", note: "Note", sigla: "Sigla", lingua: "Lingua", lingue: "Lingue", luogo: "Luogo",
   editore: "Editore", periodicita: "Periodicità", formato: "Formato", citazione: "Citazione",
-  chicago: "Citazione (Chicago)", nome_completo: "Nome completo" };
+  chicago: "Citazione (Chicago)", nome_completo: "Nome completo", forma_estesa: "Forma estesa", collegate: "Collegate",
+  curatori: "Curatori", titolo_volume: "Titolo del volume", autore: "Autore", titolo: "Titolo",
+  nota_limiti: "Nota sui limiti", ocr_lingue: "Lingue dell'OCR", cartella: "Cartella", periodo: "Periodo" };
 function etichettaCampo(k) {
   if (ETICHETTE_CAMPI[k]) return ETICHETTE_CAMPI[k];
   const t = String(k).replace(/_/g, " ");
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
-async function caricaGlossario() {
-  if (stato.glossario) return;
+async function caricaGlossario(riapri) {
+  if (stato.glossario && !riapri) return;
   let r;
   try { r = await api("/api/glossario"); } catch (e) { avviso(e.message, true); return; }
   stato.glossario = r;
-  const voci = (box, elenco, cercabili) => {
+  const voci = (box, elenco, tipo) => {
     box.replaceChildren();
-    for (const v of elenco) {
-      const d = el("details", null, "voce-glossario");
-      d.append(el("summary", v.nome));
-      const dl = el("dl");
-      for (const [k, val] of Object.entries(v.campi)) {
-        if (!String(val).trim()) continue;
-        dl.append(el("dt", etichettaCampo(k)), el("dd", val));
-      }
-      d.append(dl);
-      // da una scheda del glossario si parte con la ricerca guidata su quel nome (riepilogo e avvio come sempre)
-      if (cercabili) {
-        d.append(pulsante(`Cerca «${v.nome}» nelle fonti`, () => {
-          if (stato.inCorso) { avviso("C'è già una ricerca in corso: aspetta che finisca.", true); return; }
-          nuovoThread();
-          $("testo").value = v.nome;
-          invia();
-        }));
-      }
-      d.dataset.cerca = (v.nome + " " + Object.values(v.campi).join(" ")).toLowerCase();
-      box.append(d);
-    }
+    for (const v of elenco) box.append(voceGlossario(v, tipo));
     if (!elenco.length) box.append(el("p", "Nessuna.", "nota"));
   };
-  voci($("gl-schede"), r.schede, true);
-  voci($("gl-serie"), r.serie);
+  voci($("gl-schede"), r.schede, "scheda");
+  voci($("gl-serie"), r.serie, "serie");
   $("gl-n-schede").textContent = `(${r.schede.length})`;
   $("gl-n-serie").textContent = `(${r.serie.length})`;
   filtraGlossario();
+  controllaGlossario();
+  if (riapri) apriVoceGlossario(riapri.tipo, riapri.nome);
+}
+
+// una voce del glossario: chiusa, il nome; aperta, la pagina dell'entità (schede) o il profilo (serie), le azioni
+function voceGlossario(v, tipo) {
+  const d = el("details", null, "voce-glossario");
+  d.dataset.nome = v.nome;
+  d.dataset.tipo = tipo;
+  const titolo = el("summary");
+  titolo.append(el("span", v.nome, "nome-voce"));           // il nome non si traduce, i segni accanto sì (i18n.js)
+  d.append(titolo);
+  const corpo = el("div", null, "corpo-voce");
+  d.append(corpo);
+  d.dataset.cerca = (v.nome + " " + Object.values(v.campi).join(" ")).toLowerCase();
+  d.addEventListener("toggle", () => { if (d.open && !corpo.childElementCount) mostraVoce(d, v, tipo); });
+  return d;
+}
+
+function apriVoceGlossario(tipo, nome) {
+  const d = [...document.querySelectorAll(".voce-glossario")].find((x) => x.dataset.tipo === tipo && x.dataset.nome === nome);
+  if (!d) return;
+  d.hidden = false;
+  d.open = true;
+  d.scrollIntoView({ block: "nearest" });
+  d.querySelector("summary").focus({ preventScroll: true });
+}
+
+function campiLetti(v) {
+  const dl = el("dl");
+  for (const [k, val] of Object.entries(v.campi)) {
+    if (!String(val).trim()) continue;
+    dl.append(el("dt", etichettaCampo(k)), el("dd", val));
+  }
+  return dl;
+}
+
+function mostraVoce(d, v, tipo) {
+  const corpo = d.querySelector(".corpo-voce");
+  corpo.replaceChildren();
+  if (tipo === "serie") {
+    corpo.append(campiLetti(v));
+    const azioni = el("div", null, "azioni-scheda");
+    azioni.append(pulsante("Modifica", () => modificaSerie(d, v)));
+    corpo.append(azioni);
+    return;
+  }
+  const pagina = el("div", null, "pagina-scheda");
+  pagina.append(el("p", "Carico ciò che l'archivio sa di questa entità…", "nota in-attesa"));
+  const suggerite = el("div", null, "forme-suggerite");
+  corpo.append(pagina, campiLetti(v), suggerite, azioniScheda(d, v));
+  disegnaPaginaScheda(pagina, v.nome);
+  disegnaSuggerite(suggerite, v.nome, d);
+}
+
+function cercaDalGlossario(nome, evoluzione) {
+  if (stato.inCorso) { avviso("C'è già una ricerca in corso: aspetta che finisca.", true); return; }
+  nuovoThread();
+  if ($("evoluzione")) { $("evoluzione").checked = !!evoluzione; riassumiFiltri(); }
+  $("testo").value = nome;
+  invia();
+}
+
+function azioniScheda(d, v) {
+  const azioni = el("div", null, "azioni-scheda");
+  azioni.append(
+    pulsante("Cerca nelle fonti", () => cercaDalGlossario(v.nome, false), true),
+    pulsante("Evoluzione anno per anno", () => cercaDalGlossario(v.nome, true)),
+    pulsante("Modifica", () => modificaScheda(d, v.nome)),
+    pulsante("Rinomina…", () => rinominaScheda(d, v.nome)),
+    pulsante("Unisci a…", () => unisciScheda(d, v.nome)));
+  const elimina = pulsante("Elimina…", () => eliminaScheda(v.nome));
+  elimina.classList.add("pericolo");
+  azioni.append(elimina);
+  return azioni;
+}
+
+// ---------------------------------------- la pagina dell'entità: che cosa sa già l'archivio
+async function disegnaPaginaScheda(box, nome) {
+  let r;
+  try { r = await api("/api/scheda/pagina?" + new URLSearchParams({ nome })); } catch (e) {
+    box.replaceChildren(el("p", e.message, "nota attenzione-testo"));
+    return;
+  }
+  box.replaceChildren();
+  const anni = Object.keys(r.per_anno);
+  box.append(el("p", r.letti
+    ? `${r.letti} ${r.letti === 1 ? "passaggio letto" : "passaggi letti"}, ${r.pertinenti} ${r.pertinenti === 1 ? "pertinente" : "pertinenti"}` +
+      (anni.length ? ` · ${anni[0]}${anni.length > 1 ? "–" + anni[anni.length - 1] : ""}` : "")
+    : "Nessun passaggio ancora letto: avvia una ricerca.", "riassunto-scheda"));
+  if (anni.length > 1) box.append(tempoScheda(r.per_anno));
+  const serie = Object.entries(r.per_serie);
+  if (serie.length) {
+    const p = el("p", null, "nota serie-scheda");
+    p.append(el("span", "Nelle serie: ", "etichetta-faccetta"),
+      document.createTextNode(serie.map(([s, n]) => `${senzaMarkdown(s)} (${n})`).join(" · ")));
+    box.append(p);
+  }
+  if (r.risposte.length) {
+    const ul = el("ul", null, "risposte-scheda");
+    for (const x of r.risposte) {
+      const li = el("li");
+      const b = el("button", x.domanda + (x.evoluzione ? " (evoluzione)" : ""), "apri-passaggio");
+      b.type = "button";
+      b.addEventListener("click", () => apriDalloStorico({ documento: "/documento?" + new URLSearchParams({ risposta: x.file }),
+        domanda: x.domanda, entita: nome }));
+      li.append(b, el("span", x.data, "nota"));
+      ul.append(li);
+    }
+    box.append(el("h4", "Risposte salvate"), ul);
+  }
+  if (r.collegate.length) {
+    const p = el("p", null, "collegate-scheda");
+    p.append(el("span", "Collegate: ", "etichetta-faccetta"));
+    r.collegate.forEach((c, i) => {
+      if (i) p.append(document.createTextNode(" · "));
+      if (c.esiste) {
+        const b = el("button", c.nome, "apri-passaggio");
+        b.type = "button";
+        b.addEventListener("click", () => apriVoceGlossario("scheda", c.nome));
+        p.append(b);
+      } else {
+        p.append(el("span", `${c.nome} (senza scheda)`, "attenzione-testo"));
+      }
+    });
+    box.append(p);
+  }
+  if (r.problemi.length) box.append(elencoProblemi(r.problemi, true));
+}
+
+// la linea del tempo della scheda: le stesse colonne del pannello dei passaggi, senza filtri
+function tempoScheda(perAnno) {
+  const anni = Object.keys(perAnno).map(Number);
+  const tutti = [];
+  for (let a = anni[0]; a <= anni[anni.length - 1]; a++) tutti.push(String(a));
+  const massimo = Math.max(1, ...Object.values(perAnno).map((x) => x[0]));
+  const tempo = el("div", null, "linea-tempo piccola");
+  tempo.setAttribute("role", "img");
+  tempo.setAttribute("aria-label", "Passaggi letti per anno: " +
+    Object.entries(perAnno).map(([a, [n, si]]) => `${a}: ${n}, ${si} pertinenti`).join("; "));
+  const barre = el("div", null, "barre-tempo");
+  for (const a of tutti) {
+    const [n, si] = perAnno[a] || [0, 0];
+    const b = el("span", null, "periodo");
+    b.title = `${a}: ${n} letti, ${si} pertinenti`;
+    const c = el("span", null, "colonna");
+    c.style.setProperty("--alto", String(n / massimo));
+    c.style.setProperty("--pieno", String(n ? si / n : 0));
+    b.append(c);
+    barre.append(b);
+  }
+  const asse = el("div", null, "asse-tempo");
+  asse.append(el("span", tutti[0]), el("span", tutti[tutti.length - 1]));
+  tempo.append(barre, asse);
+  return tempo;
+}
+
+// ---------------------------------------- forme suggerite dai passaggi letti
+async function disegnaSuggerite(box, nome, d) {
+  let r;
+  try { r = await api("/api/scheda/forme?" + new URLSearchParams({ nome })); } catch (e) { return; }
+  box.replaceChildren();
+  if (!r.forme.length) return;
+  const det = el("details", null, "suggerite");
+  det.append(el("summary", `Forme suggerite dai passaggi letti (${r.forme.length})`));
+  det.append(el("p", "Compaiono nei passaggi già letti e non sono nella scheda. «Aggiungi» le mette tra le forme " +
+    "(la prossima ricerca legge solo i passaggi nuovi); «Scarta» non le ripropone più.", "nota"));
+  const ul = el("ul", null, "elenco-suggerite");
+  for (const f of r.forme) {
+    const li = el("li");
+    const testa = el("div", null, "testa");
+    testa.append(el("strong", f.forma), el("span", `${f.volte} ${f.volte === 1 ? "volta" : "volte"}`, "nota"));
+    const agg = pulsante("Aggiungi", () => decidiForma(nome, f.forma, true, li, d));
+    const sca = pulsante("Scarta", () => decidiForma(nome, f.forma, false, li, d));
+    sca.classList.add("discreto");
+    testa.append(agg, sca);
+    li.append(testa);
+    if (f.esempio && f.esempio.testo) {
+      const q = el("blockquote", f.esempio.testo.trim().slice(0, 240));
+      q.title = senzaMarkdown(f.esempio.citazione || "");
+      li.append(q);
+    }
+    ul.append(li);
+  }
+  det.append(ul);
+  box.append(det);
+  segnaSuggerite(nome, r.forme.length);
+}
+
+function segnaSuggerite(nome, n) {
+  const d = [...document.querySelectorAll(".voce-glossario")].find((x) => x.dataset.tipo === "scheda" && x.dataset.nome === nome);
+  if (!d) return;
+  const s = d.querySelector("summary");
+  let segno = s.querySelector(".segno-suggerite");
+  if (!n) { if (segno) segno.remove(); return; }
+  if (!segno) { segno = el("span", "", "segno-suggerite"); s.append(segno); }
+  segno.textContent = `${n} ${n === 1 ? "forma suggerita" : "forme suggerite"}`;
+}
+
+async function decidiForma(nome, forma, aggiungi, li, d) {
+  try {
+    const r = await api("/api/scheda/forme", aggiungi ? { nome, aggiungi: [forma] } : { nome, scarta: [forma] });
+    li.remove();
+    annuncia(`${forma}: ${aggiungi ? "aggiunta alla scheda" : "scartata"}.`);
+    if (r.nota) avviso(r.nota);
+    const resto = d.querySelectorAll(".elenco-suggerite > li").length;
+    segnaSuggerite(nome, resto);
+    if (!resto) d.querySelector(".forme-suggerite").replaceChildren();
+    if (aggiungi) { precedentiDi.clear(); await caricaGlossario({ tipo: "scheda", nome }); }
+  } catch (e) {
+    avviso(e.message, true);
+  }
+}
+
+// ---------------------------------------- modifica di una scheda, nel pannello
+// Le forme sono chip: il numero accanto dice quante righe delle fonti la contengono (si contano mentre si scrive),
+// un clic sul nome la segna ambigua, × la toglie. Si salvano solo i campi cambiati; i campi che il modulo non conosce
+// restano nel file come sono.
+async function modificaScheda(d, nome) {
+  let s;
+  try { s = await api("/api/scheda?" + new URLSearchParams({ nome })); } catch (e) { avviso(e.message, true); return; }
+  const corpo = d.querySelector(".corpo-voce");
+  const modulo = el("form", null, "modulo-scheda");
+  modulo.noValidate = true;
+  const ambigue = new Set(s.forme_ambigue);
+  const forme = [...s.varianti];
+  const conti = {};
+  const esempi = {};
+  const lista = el("div", null, "forme-chip modifica");
+  lista.setAttribute("role", "list");
+  lista.setAttribute("aria-label", "Forme del nome");
+  const esempio = el("div", null, "esempio-forma");
+  esempio.hidden = true;
+  const totale = el("p", "", "nota totale-forme");
+  let controllaPrima = () => {};               // assegnata più sotto, quando tutti i campi esistono
+  const disegnaForme = () => {
+    lista.replaceChildren();
+    for (const f of forme) {
+      const chip = el("span", null, "chip-forma modifica" + (ambigue.has(f) ? " ambigua" : ""));
+      chip.setAttribute("role", "listitem");
+      const nomeF = el("button", f, "nome-forma");
+      nomeF.type = "button";
+      nomeF.setAttribute("aria-pressed", String(ambigue.has(f)));
+      nomeF.title = "Segna o togli «ambigua»";
+      nomeF.addEventListener("click", () => { if (ambigue.has(f)) ambigue.delete(f); else ambigue.add(f); disegnaForme(); });
+      const conto = el("button", conti[f] === undefined ? "…" : conti[f] === null ? "?" : String(conti[f]), "conto");
+      conto.type = "button";
+      conto.title = "Righe delle fonti con questa forma: un clic mostra un esempio";
+      conto.setAttribute("aria-label", `${f}: ${conti[f] ?? "righe non ancora contate"} righe. Mostra un esempio`);
+      if (conti[f] === 0) chip.classList.add("vuota");
+      conto.addEventListener("click", () => mostraEsempio(f));
+      const togli = el("button", "×", "togli-forma");
+      togli.type = "button";
+      togli.setAttribute("aria-label", `Togli «${f}»`);
+      togli.addEventListener("click", () => {
+        forme.splice(forme.indexOf(f), 1);
+        ambigue.delete(f);
+        disegnaForme();
+        nuova.focus();
+      });
+      chip.append(nomeF, conto, togli);
+      lista.append(chip);
+    }
+    const noti = forme.filter((f) => typeof conti[f] === "number");
+    totale.textContent = noti.length ? `${noti.reduce((n, f) => n + conti[f], 0)} righe in tutto (una riga con due forme ` +
+      "conta due volte). Clic sul nome: ambigua; sul numero: un esempio." : "";
+    controllaPrima();
+  };
+  const mostraEsempio = (f) => {
+    const e = esempi[f];
+    esempio.hidden = false;
+    esempio.replaceChildren(el("strong", f), e ? el("blockquote", e.testo) : el("p", "Nessuna riga delle fonti contiene questa forma.", "nota"));
+    if (e) {
+      const a = el("button", senzaMarkdown(e.riferimento), "apri-passaggio");
+      a.type = "button";
+      a.addEventListener("click", () => apriFonte(e.file, e.riga, null, null, "glossario"));
+      esempio.append(a);
+    }
+  };
+  // segna: le forme appena aggiunte che sono brevi (un cognome da solo, una sigla corta) entrano già ambigue,
+  // come fanno la creazione e le forme suggerite: il controllo del glossario non ha più niente da dire dopo
+  const conta = async (nuove, segna) => {
+    const da = nuove.filter((f) => !(f in conti));
+    if (!da.length) return;
+    try {
+      const r = await api("/api/forme/conta", { forme: da });
+      Object.assign(conti, r.conti);
+      Object.assign(esempi, r.esempi || {});
+      const brevi = segna ? (r.brevi || []).filter((f) => nuove.includes(f) && forme.includes(f)) : [];
+      for (const f of brevi) ambigue.add(f);
+      if (brevi.length) annuncia(`${brevi.join("; ")}: forma breve, segnata ambigua.`);
+    } catch (e) { for (const f of da) conti[f] = null; }
+    disegnaForme();
+  };
+  const nuova = document.createElement("input");
+  nuova.type = "text";
+  nuova.placeholder = "aggiungi una forma, poi Invio (più forme: separate da ;)";
+  nuova.setAttribute("aria-label", "Aggiungi una forma del nome");
+  nuova.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const nuove = nuova.value.split(/[;；]/).map((x) => x.trim()).filter((x) => x && !forme.includes(x));
+    if (!nuove.length) return;
+    forme.push(...nuove);
+    nuova.value = "";
+    disegnaForme();
+    conta(nuove, true);
+  });
+  const campo = (etichetta, controllo, spiega) => {
+    const l = el("label", null, "campo-scheda");
+    l.append(el("span", etichetta, "etichetta-campo"), controllo);
+    if (spiega) l.append(el("span", spiega, "nota"));
+    return l;
+  };
+  const tipo = document.createElement("select");
+  tipo.append(new Option("—", ""));
+  for (const t of s.tipi) tipo.append(new Option(t, t));
+  tipo.value = s.tipo || "";
+  const estesa = document.createElement("input");
+  estesa.type = "text";
+  estesa.value = s.forma_estesa;
+  const contesto = document.createElement("input");
+  contesto.type = "text";
+  contesto.value = s.contesto.join("; ");
+  const collegate = new Set(s.collegate);
+  const boxColl = el("div", null, "chip-riga");
+  const sceltaColl = document.createElement("select");
+  const disegnaColl = () => {
+    boxColl.replaceChildren();
+    for (const c of collegate) {
+      const chip = el("span", null, "chip statico");
+      const x = el("button", "×", "togli-forma");
+      x.type = "button";
+      x.setAttribute("aria-label", `Togli «${c}» dalle collegate`);
+      x.addEventListener("click", () => { collegate.delete(c); disegnaColl(); });
+      chip.append(document.createTextNode(c + " "), x);
+      boxColl.append(chip);
+    }
+    sceltaColl.replaceChildren(new Option("aggiungi una scheda collegata…", ""));
+    for (const c of s.schede) if (!collegate.has(c)) sceltaColl.append(new Option(c, c));
+    controllaPrima();
+  };
+  sceltaColl.addEventListener("change", () => { if (sceltaColl.value) { collegate.add(sceltaColl.value); disegnaColl(); } });
+  const note = document.createElement("textarea");
+  note.rows = 3;
+  note.value = s.note;
+  const noti = new Set(["tipo", "forma_estesa", "varianti", "contesto", "forme_ambigue", "collegate", "note"]);
+  const altri = Object.keys(s.campi).filter((k) => !noti.has(k) && String(s.campi[k]).trim());
+  const esito = el("div", null, "esito-scheda");
+  const salva = el("button", "Salva", "primario");
+  salva.type = "submit";
+  const annulla = el("button", "Annulla");
+  annulla.type = "button";
+  annulla.addEventListener("click", () => {
+    const v = stato.glossario.schede.find((x) => x.nome === nome);
+    mostraVoce(d, v, "scheda");
+  });
+  const riga = el("div", null, "riga");
+  riga.append(salva, annulla);
+  const gruppoForme = el("div", null, "campo-scheda");
+  gruppoForme.append(el("span", "Forme del nome", "etichetta-campo"), lista, nuova, totale, esempio);
+  modulo.append(gruppoForme,
+    campo("Tipo", tipo),
+    campo("Forma estesa", estesa, "il nome per esteso, se la scheda è una sigla"),
+    campo("Contesto", contesto, "parole che aiutano il modello a riconoscerla, separate da ;"),
+    campo("Collegate", boxColl), sceltaColl,
+    campo("Note", note, "chi è, il periodo, gli omonimi da non confondere"));
+  if (altri.length) modulo.append(el("p", `Altri campi, che restano come sono: ${altri.join(", ")}.`, "nota"));
+  // il controllo della scheda così com'è nel modulo, prima di salvare (una copia del glossario, il file non cambia)
+  const prima = el("div", null, "controllo-prima");
+  prima.setAttribute("aria-live", "polite");
+  let attesaControllo = null;
+  controllaPrima = () => {
+    clearTimeout(attesaControllo);
+    attesaControllo = setTimeout(async () => {
+      if (!forme.length) return;
+      try {
+        const v = await api("/api/scheda/verifica", { nome, campi: {
+          varianti: forme, forme_ambigue: forme.filter((f) => ambigue.has(f)), tipo: tipo.value,
+          forma_estesa: estesa.value, contesto: contesto.value, collegate: [...collegate], note: note.value } });
+        prima.replaceChildren(...(v.problemi.length ? [el("p", "Prima di salvare:", "nota"), elencoProblemi(v.problemi, true)]
+          : [el("p", "Nessun problema: la scheda è in ordine.", "nota esito-ocr-ok")]));
+      } catch (e) { prima.replaceChildren(); }
+    }, 500);
+  };
+  for (const c of [tipo, estesa, contesto, note]) c.addEventListener("input", controllaPrima);
+  modulo.append(prima, riga, esito);
+  modulo.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); annulla.click(); } });
+  modulo.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!forme.length) { avviso("Una scheda ha almeno una forma del nome.", true); nuova.focus(); return; }
+    salva.disabled = true;
+    try {
+      const r = await api("/api/scheda/modifica", { nome, campi: {
+        varianti: forme, forme_ambigue: forme.filter((f) => ambigue.has(f)), tipo: tipo.value,
+        forma_estesa: estesa.value, contesto: contesto.value, collegate: [...collegate], note: note.value } });
+      precedentiDi.clear();
+      contiRighe.clear();
+      annuncia(r.cambiati.length ? `Scheda «${nome}» salvata.` : "Nessun cambiamento.");
+      await caricaGlossario({ tipo: "scheda", nome });
+      const dopo = [...document.querySelectorAll(".voce-glossario")].find((x) => x.dataset.tipo === "scheda" && x.dataset.nome === nome);
+      if (dopo) {
+        const box = el("div", null, "esito-scheda");
+        box.append(el("p", r.nota, "nota"));
+        if (r.problemi.length) box.append(elencoProblemi(r.problemi, true));
+        dopo.querySelector(".corpo-voce").prepend(box);
+      }
+    } catch (err) {
+      salva.disabled = false;
+      esito.replaceChildren(el("p", err.message, "nota attenzione-testo"));
+    }
+  });
+  corpo.replaceChildren(modulo);
+  disegnaForme();
+  disegnaColl();
+  nuova.focus();
+  conta(forme);
+}
+
+async function rinominaScheda(d, nome) {
+  const corpo = d.querySelector(".corpo-voce");
+  if (corpo.querySelector(".modulo-rinomina")) return;
+  const f = el("form", null, "modulo-rinomina riga");
+  const i = document.createElement("input");
+  i.type = "text";
+  i.value = nome;
+  i.setAttribute("aria-label", "Nuovo nome della scheda");
+  const ok = el("button", "Rinomina", "primario");
+  ok.type = "submit";
+  const no = el("button", "Annulla");
+  no.type = "button";
+  no.addEventListener("click", () => f.remove());
+  f.append(i, ok, no);
+  f.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); f.remove(); } });
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nuovo = i.value.trim();
+    if (!nuovo || nuovo === nome) { f.remove(); return; }
+    try {
+      const r = await api("/api/scheda/rinomina", { nome, nuovo });
+      avviso(r.nota);
+      precedentiDi.clear();
+      await caricaGlossario({ tipo: "scheda", nome: r.nuovo });
+    } catch (err) { avviso(err.message, true); }
+  });
+  corpo.querySelector(".azioni-scheda").after(f);
+  i.select();
+}
+
+async function unisciScheda(d, nome) {
+  const corpo = d.querySelector(".corpo-voce");
+  if (corpo.querySelector(".modulo-unisci")) return;
+  const altre = (stato.glossario.schede || []).map((x) => x.nome).filter((x) => x !== nome);
+  if (!altre.length) { avviso("Non ci sono altre schede a cui unirla.", true); return; }
+  const f = el("form", null, "modulo-unisci riga");
+  const sel = document.createElement("select");
+  sel.setAttribute("aria-label", "Scheda in cui unire");
+  for (const x of altre) sel.append(new Option(x, x));
+  const ok = el("button", "Unisci", "primario");
+  ok.type = "submit";
+  const no = el("button", "Annulla");
+  no.type = "button";
+  no.addEventListener("click", () => f.remove());
+  f.append(el("span", `Unisci «${nome}» a`), sel, ok, no);
+  f.addEventListener("submit", async (e) => { e.preventDefault(); await unisciSchede(nome, sel.value); });
+  corpo.querySelector(".azioni-scheda").after(f);
+  sel.focus();
+}
+
+async function unisciSchede(da, verso) {
+  if (!await conferma(`Unire «${da}» a «${verso}»?`, `Forme, forme ambigue e collegate di «${da}» passano a «${verso}», ` +
+    `e così le letture dell'archivio; «${da}» si toglie dal glossario. Una copia del glossario di oggi resta accanto al file.`,
+    "Unisci")) return;
+  try {
+    const r = await api("/api/scheda/unisci", { da, verso });
+    avviso(r.nota);
+    precedentiDi.clear();
+    await caricaGlossario({ tipo: "scheda", nome: verso });
+  } catch (e) { avviso(e.message, true); }
+}
+
+async function eliminaScheda(nome) {
+  if (!await conferma(`Eliminare la scheda «${nome}»?`, "La scheda esce dal glossario e dalle collegate delle altre. " +
+    "I passaggi già letti restano nell'archivio, e una copia del glossario di oggi resta accanto al file.", "Elimina")) return;
+  try {
+    const r = await api("/api/scheda/elimina", { nome });
+    avviso(r.nota);
+    await caricaGlossario({});
+  } catch (e) { avviso(e.message, true); }
+}
+
+// ---------------------------------------- salute del glossario
+function elencoProblemi(problemi, breve) {
+  const ul = el("ul", null, "problemi-glossario");
+  const segni = { errore: "!", avviso: "!", info: "i" };
+  for (const p of problemi) {
+    const li = el("li", null, "grav-" + p.gravita);      // «avviso» è già la barra degli avvisi
+    const segno = el("span", segni[p.gravita] || "·", "segno-problema");
+    segno.setAttribute("aria-hidden", "true");
+    li.append(segno);
+    const testo = el("span", null, "testo-problema");
+    testo.append(el("span", p.gravita === "errore" ? "Errore: " : p.gravita === "avviso" ? "Avviso: " : "Nota: ", "solo-lettori"));
+    if (!breve) {
+      const schede_ = Array.isArray(p.schede) ? p.schede : [p.schede];
+      schede_.forEach((s, i) => {
+        if (i) testo.append(document.createTextNode(" / "));
+        const b = el("button", s, "apri-passaggio");
+        b.type = "button";
+        b.addEventListener("click", () => apriVoceGlossario("scheda", s));
+        testo.append(b);
+      });
+      testo.append(document.createTextNode(": "));
+    }
+    testo.append(document.createTextNode(p.problema));
+    li.append(testo);
+    if (p.unibili) {
+      const [a, b] = p.schede;
+      const azioni = el("span", null, "azioni-problema");
+      azioni.append(pulsante(`Unisci «${a}» a «${b}»`, () => unisciSchede(a, b)),
+        pulsante(`Unisci «${b}» a «${a}»`, () => unisciSchede(b, a)));
+      li.append(azioni);
+    }
+    if (p.correzione && !breve) {
+      const s = Array.isArray(p.schede) ? p.schede[0] : p.schede;
+      const azioni = el("span", null, "azioni-problema");
+      const b = pulsante(p.correzione.tipo === "note" ? "Scrivi le note" : "Correggi", () =>
+        p.correzione.tipo === "note" ? scriviNote(s) : correggiProblema(s, p.correzione.tipo, b));
+      b.title = p.correzione.descrizione;
+      azioni.append(b, el("span", p.correzione.tipo === "note" ? "" : p.correzione.descrizione, "nota"));
+      li.append(azioni);
+    }
+    ul.append(li);
+  }
+  return ul;
+}
+
+async function controllaGlossario() {
+  const box = $("gl-controllo");
+  let r;
+  try { r = await api("/api/glossario/controllo"); } catch (e) { box.hidden = true; return; }
+  const seri = r.problemi.filter((p) => p.gravita !== "info");
+  box.hidden = !r.problemi.length;
+  const segno = $("gl-segno");
+  if (segno) {
+    segno.hidden = !r.errori;
+    segno.textContent = r.errori ? String(r.errori) : "";
+  }
+  if (!r.problemi.length) return;
+  const aperto = box.querySelector("details") && box.querySelector("details").open;
+  const det = el("details", null, "controllo-glossario" + (r.errori ? " con-errori" : ""));
+  const parti = [];
+  if (r.errori) parti.push(`${r.errori} ${r.errori === 1 ? "errore" : "errori"}`);
+  if (r.avvisi) parti.push(`${r.avvisi} ${r.avvisi === 1 ? "avviso" : "avvisi"}`);
+  const note = r.problemi.length - seri.length;
+  if (note) parti.push(`${note} ${note === 1 ? "nota" : "note"}`);
+  det.append(el("summary", `Controllo del glossario: ${parti.join(", ")}`));
+  if (r.automatiche > 1) {
+    const tutte = pulsante(`Correggi tutto ciò che si corregge da sé (${r.automatiche})`, async () => {
+      tutte.disabled = true;
+      try {
+        const x = await api("/api/scheda/correggi", { tutte: true });
+        avviso(x.nota);
+        await caricaGlossario({});
+      } catch (e) { tutte.disabled = false; avviso(e.message, true); }
+    }, true);
+    tutte.classList.add("correggi-tutto");
+    det.append(tutte);
+  }
+  det.append(elencoProblemi(r.problemi, false));
+  det.open = aperto || r.errori > 0;
+  box.replaceChildren(det);
+}
+
+async function correggiProblema(nome, tipo, b) {
+  b.disabled = true;
+  try {
+    const r = await api("/api/scheda/correggi", { nome, tipo });
+    annuncia(r.nota);
+    precedentiDi.clear();
+    await caricaGlossario({ tipo: "scheda", nome });
+  } catch (e) { b.disabled = false; avviso(e.message, true); }
+}
+
+// le note non si scrivono da sole: si apre la scheda in modifica, con il cursore nelle note
+async function scriviNote(nome) {
+  apriVoceGlossario("scheda", nome);
+  const d = [...document.querySelectorAll(".voce-glossario")].find((x) => x.dataset.tipo === "scheda" && x.dataset.nome === nome);
+  if (!d) return;
+  await modificaScheda(d, nome);
+  const t = d.querySelector(".modulo-scheda textarea");
+  if (t) { t.focus(); t.scrollIntoView({ block: "center" }); }
+}
+
+// ---------------------------------------- profili delle serie, con l'anteprima della citazione
+const CAMPI_SERIE = ["tipo", "lingua", "sigla", "chicago", "citazione", "autore", "titolo", "luogo", "editore",
+  "curatori", "titolo_volume", "periodicita", "nota_limiti", "ocr_lingue"];
+
+async function modificaSerie(d, v) {
+  let s;
+  try { s = await api("/api/serie?" + new URLSearchParams({ nome: v.nome })); } catch (e) { avviso(e.message, true); return; }
+  const corpo = d.querySelector(".corpo-voce");
+  const modulo = el("form", null, "modulo-scheda modulo-serie");
+  const campi = {};
+  const anteprima = el("div", null, "anteprima-citazione");
+  anteprima.setAttribute("aria-live", "polite");
+  let attesa = null;
+  const aggiornaAnteprima = () => {
+    clearTimeout(attesa);
+    attesa = setTimeout(async () => {
+      const valori = Object.fromEntries(Object.entries(campi).map(([k, c]) => [k, c.value]));
+      let r;
+      try { r = await api("/api/serie/anteprima", { nome: v.nome, campi: valori }); } catch (e) { return; }
+      anteprima.replaceChildren(el("span", "Anteprima della citazione", "etichetta-campo"));
+      if (r.citazione) {
+        const p = el("p", null, "citazione-anteprima");
+        // corsivo del Markdown (*Titolo*) come nella risposta
+        for (const [k, pezzo] of r.citazione.split(/\*([^*]+)\*/).entries()) p.append(k % 2 ? el("em", pezzo) : document.createTextNode(pezzo));
+        anteprima.append(p);
+      }
+      if (r.errore) anteprima.append(el("p", r.errore, "nota attenzione-testo"));
+      if (r.segnaposti) anteprima.append(el("p", "Quelli che esistono: " + r.segnaposti.map((n) => `{${n}}`).join(" "), "nota"));
+      anteprima.append(el("p", r.documento ? `${r.nota || ""} Documento: ${r.titolo || r.documento}.` : r.nota, "nota"));
+    }, 350);
+  };
+  const aggiungiCampo = (k, val) => {
+    if (campi[k]) { campi[k].focus(); return; }
+    const lungo = ["chicago", "citazione", "nota_limiti"].includes(k);
+    let c;
+    if (k === "tipo") {
+      c = document.createElement("select");
+      for (const t of s.tipi) c.append(new Option(t, t));
+      if (val && !s.tipi.includes(val)) c.append(new Option(val, val));
+    } else {
+      c = document.createElement(lungo ? "textarea" : "input");
+      if (lungo) c.rows = 3; else c.type = "text";
+    }
+    c.value = val || "";
+    c.addEventListener("input", aggiornaAnteprima);
+    c.addEventListener("change", aggiornaAnteprima);
+    campi[k] = c;
+    const l = el("label", null, "campo-scheda");
+    l.append(el("span", etichettaCampo(k), "etichetta-campo"), c);
+    if (k === "chicago") l.append(el("span", "Segnaposti tra graffe: {autore_bib}, {titolo}, {data_o_anno}, {pagine}, " +
+      "{pagina}…; le parti tra [ ] spariscono se il loro segnaposto è vuoto.", "nota"));
+    elenco.append(l);
+    return c;
+  };
+  const elenco = el("div", null, "campi-serie");
+  for (const [k, val] of Object.entries(s.campi)) aggiungiCampo(k, val);
+  const nuovo = document.createElement("select");
+  const disegnaNuovo = () => {
+    nuovo.replaceChildren(new Option("aggiungi un campo…", ""));
+    for (const k of CAMPI_SERIE) if (!campi[k]) nuovo.append(new Option(etichettaCampo(k), k));
+  };
+  nuovo.setAttribute("aria-label", "Aggiungi un campo al profilo");
+  nuovo.addEventListener("change", () => {
+    if (!nuovo.value) return;
+    const c = aggiungiCampo(nuovo.value, "");
+    disegnaNuovo();
+    c.focus();
+  });
+  disegnaNuovo();
+  const esito = el("div", null, "esito-scheda");
+  const salva = el("button", "Salva", "primario");
+  salva.type = "submit";
+  const annulla = el("button", "Annulla");
+  annulla.type = "button";
+  annulla.addEventListener("click", () => mostraVoce(d, v, "serie"));
+  const riga = el("div", null, "riga");
+  riga.append(salva, annulla);
+  modulo.append(elenco, nuovo, anteprima, riga, esito);
+  modulo.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); annulla.click(); } });
+  modulo.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    salva.disabled = true;
+    try {
+      const valori = Object.fromEntries(Object.entries(campi).map(([k, c]) => [k, c.value]));
+      const r = await api("/api/serie/modifica", { nome: v.nome, campi: valori });
+      annuncia(r.nota);
+      avviso(r.nota);
+      await caricaGlossario({ tipo: "serie", nome: v.nome });
+    } catch (err) {
+      salva.disabled = false;
+      esito.replaceChildren(el("p", err.message, "nota attenzione-testo"));
+    }
+  });
+  corpo.replaceChildren(modulo);
+  aggiornaAnteprima();
+  const primo = elenco.querySelector("input, textarea, select");
+  if (primo) primo.focus();
 }
 
 function filtraGlossario() {
@@ -930,6 +1721,7 @@ async function caricaTutto() {
     `${s.progetto.nome}${s.progetto.documenti ? ` · ${s.progetto.documenti} documenti` : ""}` : "";
   await Promise.all([caricaModelli(), caricaFonti(), caricaStorico()]);
   await mostraRicerca(s.ricerca, true);
+  if (s.progetto) controllaGlossario();          // il segno sul pulsante Glossario, se ci sono errori nelle schede
 }
 
 function apriNuovoProgetto() {
@@ -1033,7 +1825,7 @@ async function cambiaProgetto(p) {
 async function creaProgetto(evento) {
   evento.preventDefault();
   const nome = $("np-nome").value.trim();
-  if (!nome) return;
+  if (!nome) { $("np-nome").reportValidity(); $("np-nome").focus(); return; }
   try {
     await api("/api/progetto/nuovo", { nome, descrizione: $("np-descrizione").value.trim() });
     $("d-progetto").close();
@@ -2712,6 +3504,31 @@ function mostraFormeTrovate(m, box, r, entita, domanda, campoNome) {
   const scelte = () => [...box.querySelectorAll("input.sceglie:checked")].map((c) => c.value);
   const tipo = document.createElement("select");
   for (const t of ["persona", "organizzazione", "testata", "stato", "altro"]) tipo.append(new Option(t, t));
+  // chi è: va nelle note della scheda; senza, il controllo del glossario la segnalerebbe dopo
+  const descr = document.createElement("textarea");
+  descr.rows = 2;
+  descr.placeholder = "chi è, il periodo, gli omonimi da non confondere";
+  const ld = el("label", "Chi è (note della scheda)", "campo-scheda descrizione-nuova");
+  ld.append(descr);
+  // il controllo della scheda prima di crearla: gli stessi problemi che il glossario segnalerebbe dopo
+  const controlloNuova = el("div", null, "controllo-prima");
+  controlloNuova.setAttribute("aria-live", "polite");
+  let attesaVerifica = null;
+  const verifica = () => {
+    clearTimeout(attesaVerifica);
+    attesaVerifica = setTimeout(async () => {
+      const varianti = scelte();
+      if (!varianti.length) { controlloNuova.replaceChildren(); return; }
+      const nomeScheda = (campoNome && campoNome.value.trim()) || entita;
+      try {
+        const v = await api("/api/scheda/verifica", { nome: nomeScheda, nuova: true, campi: {
+          varianti, forme_ambigue: [...box.querySelectorAll("input.ambigua:checked")].map((c) => c.value),
+          tipo: tipo.value, note: descr.value } });
+        controlloNuova.replaceChildren(...(v.problemi.length ? [el("p", "Prima di creare la scheda:", "nota"),
+          elencoProblemi(v.problemi, true)] : []));
+      } catch (e) { controlloNuova.replaceChildren(); }
+    }, 450);
+  };
   const aggiorna = () => {
     const varianti = scelte();
     const ambigue = [...box.querySelectorAll("input.ambigua:checked")].map((c) => c.value).filter((f) => varianti.includes(f));
@@ -2721,10 +3538,13 @@ function mostraFormeTrovate(m, box, r, entita, domanda, campoNome) {
       const a = box.querySelector(`input.ambigua[data-i="${c.dataset.i}"]`);
       c.classList.toggle("ambigua", !!(a && a.checked));
     });
+    verifica();
   };
   box.addEventListener("change", (e) => {
     if (e.target.classList.contains("sceglie") || e.target.classList.contains("ambigua") || e.target === tipo) aggiorna();
   });
+  descr.addEventListener("input", verifica);
+  if (campoNome) campoNome.addEventListener("input", verifica);
   const lt = el("label", "Tipo di entità ");
   lt.append(tipo);
   // creare la scheda e avviare la ricerca sono due passi: la scheda resta nel glossario anche se non si avvia nulla
@@ -2752,7 +3572,7 @@ function mostraFormeTrovate(m, box, r, entita, domanda, campoNome) {
     const scartate = r.forme.map((f) => f.forma).filter((f) => !varianti.includes(f));
     try {
       const s = await api("/api/scheda", { nome: nomeScheda, varianti, forme_ambigue: ambigue, tipo: tipo.value,
-        contesto: r.contesto, scartate, cercato: entita });
+        contesto: r.contesto, scartate, cercato: entita, descrizione: descr.value });
       if (s.avviso) avviso(s.avviso);
       stato.glossario = null;                      // la scheda nuova entra nel glossario
       const creata = s.scheda || nomeScheda;
@@ -2768,7 +3588,7 @@ function mostraFormeTrovate(m, box, r, entita, domanda, campoNome) {
   box.addEventListener("keydown", (e) => tastiForme(e, box, crea));
   aggiorna();
   stato.aggiornaRiepilogo = () => { if (!m.classList.contains("decisa")) aggiorna(); };
-  box.append(lt, sommario, crea);
+  box.append(lt, ld, sommario, controlloNuova, crea);
   annuncia(`${r.forme.length} forme trovate: accendi quelle giuste.`);
 }
 
@@ -4236,7 +5056,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("b-modelli").addEventListener("click", () => apriImpostazioni("modelli"));
   $("cfg-nuovo-progetto").addEventListener("click", apriNuovoProgetto);
   sceltaConConferma($("modello"), sceltaModello);
+  // Invio nei campi preme il primo pulsante d'invio del modulo: per questo Annulla e Chiudi sono pulsanti semplici
   $("np-crea").addEventListener("click", creaProgetto);
+  $("np-annulla").addEventListener("click", () => $("d-progetto").close());
+  $("am-chiudi").addEventListener("click", () => $("d-modello").close());
   $("am-servizio").addEventListener("change", scegliServizio);
   $("am-elenca").addEventListener("click", elencaModelli);
   $("am-aggiungi").addEventListener("click", aggiungiModello);
@@ -4300,7 +5123,17 @@ document.addEventListener("DOMContentLoaded", () => {
   $("fonte-dopo").addEventListener("click", () => sfoglia(1));
   $("fonte-pagine").addEventListener("change", () => stato.fonte && apriFonte(stato.fonte.file, null, $("fonte-pagine").value));
   $("p-fonte").addEventListener("keydown", tastiFonte);
-  $("fonte-trascrizione").addEventListener("toggle", () => { stato.fonteAperta = $("fonte-trascrizione").open; });
+  $("fonte-viste").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) vistaFonte(b.dataset.vista); });
+  $("fonte-meno").addEventListener("click", () => zoomFonte((stato.fonteZoom || 1) / 1.25));
+  $("fonte-piu").addEventListener("click", () => zoomFonte((stato.fonteZoom || 1) * 1.25));
+  $("fonte-adatta").addEventListener("click", () => zoomFonte(1));
+  // Ctrl + rotella ingrandisce attorno al puntatore; la rotella sola scorre la pagina
+  $("fonte-foglio").addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const b = $("fonte-foglio").getBoundingClientRect();
+    zoomFonte((stato.fonteZoom || 1) * (e.deltaY < 0 ? 1.15 : 1 / 1.15), { x: e.clientX - b.left, y: e.clientY - b.top });
+  }, { passive: false });
   $("passaggi-filtro").addEventListener("input", filtraPassaggi);
   $("gl-filtro").addEventListener("input", filtraGlossario);
   $("b-impostazioni").addEventListener("click", apriImpostazioniRicordate);

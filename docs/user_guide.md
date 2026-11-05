@@ -272,9 +272,17 @@ project's language.
 - **Storico** (history): the project's previous answers and searches, with question and entity; opening one, the
   right column summarises it and "Cerca di nuovo" (search again) repeats the same search.
 - **Fonte** (source): a page of a document. If the original is a PDF in `sources/` and PyMuPDF is installed, the
-  main view is the page image, with the cited line above it; the transcribed text (with the line highlighted and
-  the file's technical record) opens below. You browse by printed page (`[[p. N]]` markers, also with the left
-  and right arrow keys) or, in files without markers, by blocks of lines. It opens from the "Apri la fonte"
+  main view is the page image with the passage highlighted on it: the paragraph of the cited line in yellow, the
+  cited line itself darker with a rust bar. The passage is found among the PDF's own words, so it works despite OCR
+  differences. "Pagina" and
+  "Testo" switch between the page and the transcribed text (with the line highlighted and, on the first page, the
+  file's technical record). On the page: zoom with − / + (or the + − 0 keys, or Ctrl + wheel around the pointer),
+  select and copy its text, and open the whole original PDF at this page in the browser's own reader (the arrow icon next to the title). You browse by printed page
+  (`[[p. N]]` markers, also with the left and right arrow keys) or, in files without markers, by blocks of lines.
+  Words and their positions come from the PDF's text layer when the transcription came from it; on scans (no text
+  layer, or one discarded at import because the OCR was better) Tesseract reads the page the first time you look
+  at it ("Leggo il testo della pagina…", a couple of seconds, the page is visible meanwhile) and the result is kept
+  in `system/cache/ocr_pagine`, so it is instant afterwards. Without Tesseract, the passage is shown above the page. It opens from the "Apri la fonte"
   button next to each citation of the answer document (the citation's own page), or from the Passaggi tab;
   "Torna al documento" goes back to where you started.
 - **Passaggi** (passages): the passages of the open document; for a search, and for a saved answer whose search
@@ -287,7 +295,32 @@ project's language.
   "Correggi" (correct) under a translation lets you rewrite it. A correction is saved in the search and in the
   single archive of readings as a manual reading: later searches use it and never send that passage back to the
   model. The answer changes when you run the search again.
-- **Glossario** (glossary): the project's entity records and series profiles, read-only.
+- **Glossario** (glossary): the project's entity cards and series profiles. Opening a card shows what the archive
+  already knows: passages read and relevant, a timeline per year, the series it appears in, saved answers, related
+  cards (clickable), and the problems found in it. From the card: "Cerca nelle fonti" (search), "Evoluzione anno per
+  anno" (year-by-year evolution), and:
+  - **Modifica** (edit): forms of the name as chips with the number of source lines that contain each one (click the
+    number for an example, click the name to mark it ambiguous, × removes it); type, full form, context, related
+    cards, notes. Fields the form does not know (e.g. `nome_completo`) and comments in `entities.ini` stay as they are.
+  - **Rinomina** (rename) and **Unisci a…** (merge into): the archive's readings move to the new name (equivalence
+    and reassignment, as `archivio.py riattribuisci`); related cards everywhere follow. **Elimina** (delete) removes
+    the card; its passages stay in the archive.
+  - **Forme suggerite** (suggested forms): forms of the name found in the passages already read and not in the card,
+    with an example; "Aggiungi" adds one, "Scarta" stops suggesting it.
+  At the top, "Controllo del glossario" (glossary check) lists errors and warnings of all cards (the same as
+  `schede.py controlla`); two cards sharing a form or the same passages can be merged from there. Problems that fix
+  themselves have a "Correggi" (fix) button, and "Correggi tutto ciò che si corregge da sé" (fix everything that fixes
+  itself) does them all: short forms marked ambiguous, ambiguous forms that are not among the forms removed, the old
+  fields `nome_completo` and `forma_italiana` moved to `forma_estesa` (or removed if they repeat the name). Empty
+  notes open the card's editor on the notes.
+  Most problems no longer arise: a short form (a surname alone, a short abbreviation, a single word under 8 letters)
+  enters every card already ambiguous, whether it comes from the name exploration, a suggested form, the editor or
+  the conversation; creating a card asks who it is (the notes); and both the creation and the editor show the card's
+  problems before you save. A number on the
+  Glossario button means there are errors. Series profiles have "Modifica" too, with a live preview of the citation
+  on a real document of the series; unknown placeholders in the `chicago` template are flagged.
+  Every change makes a copy of the file for the day (`entities.ini.pressmark-<date>.bak`, next to it) and a line per
+  field in `audit/changes.csv`.
 
 The server listens only on your computer (`127.0.0.1`) and accepts only the browser opened with the session link.
 Options: `--porta 8770` (fixed port), `--senza-browser` (do not open the browser).
